@@ -264,6 +264,9 @@ func createKubeClient(kubeConfig *rest.Config) kube_client.Interface {
 }
 
 func registerSignalHandlers(ctx context.Context, autoscaler core.Autoscaler) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "registerSignalHandlers")
+	defer span.Finish()
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGQUIT)
 	klog.V(1).Info("Registered cleanup signal handler")
@@ -279,6 +282,9 @@ func registerSignalHandlers(ctx context.Context, autoscaler core.Autoscaler) {
 }
 
 func buildAutoscaler(ctx context.Context) (core.Autoscaler, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "buildAutoscaler")
+	defer span.Finish()
+
 	// Create basic config from flags.
 	autoscalingOptions := createAutoscalingOptions()
 	kubeClient := createKubeClient(getKubeConfig())
@@ -304,6 +310,9 @@ func buildAutoscaler(ctx context.Context) (core.Autoscaler, error) {
 }
 
 func run(ctx context.Context, healthCheck *metrics.HealthCheck) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "run")
+	defer span.Finish()
+
 	metrics.RegisterAll()
 
 	autoscaler, err := buildAutoscaler(ctx)
@@ -409,6 +418,9 @@ func main() {
 			RetryPeriod:   leaderElection.RetryPeriod.Duration,
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(ctx context.Context) {
+					span, ctx := opentracing.StartSpanFromContext(ctx, "func")
+					defer span.Finish()
+
 					// Since we are committing a suicide after losing
 					// mastership, we can safely ignore the argument.
 					run(ctx, healthCheck)

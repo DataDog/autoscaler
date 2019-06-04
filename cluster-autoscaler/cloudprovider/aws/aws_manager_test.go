@@ -225,7 +225,7 @@ func TestFetchExplicitAsgs(t *testing.T) {
 	defer resetAWSRegion(os.LookupEnv("AWS_REGION"))
 	os.Setenv("AWS_REGION", "fanghorn")
 	// fetchExplicitASGs is called at manager creation time.
-	m, err := createAWSManagerInternal(nil, do, &autoScalingWrapper{s, map[string]string{}}, nil)
+	m, err := createAWSManagerInternal(ctx, nil, do, &autoScalingWrapper{s, map[string]string{}}, nil)
 	assert.NoError(t, err)
 
 	asgs := m.asgCache.Get()
@@ -253,7 +253,7 @@ func TestBuildInstanceType(t *testing.T) {
 	// #1449 Without AWS_REGION getRegion() lookup runs till timeout during tests.
 	defer resetAWSRegion(os.LookupEnv("AWS_REGION"))
 	os.Setenv("AWS_REGION", "fanghorn")
-	m, err := createAWSManagerInternal(nil, cloudprovider.NodeGroupDiscoveryOptions{}, nil, &ec2Wrapper{s})
+	m, err := createAWSManagerInternal(ctx, nil, cloudprovider.NodeGroupDiscoveryOptions{}, nil, &ec2Wrapper{s})
 	assert.NoError(t, err)
 
 	asg := asg{
@@ -261,7 +261,7 @@ func TestBuildInstanceType(t *testing.T) {
 		LaunchTemplateVersion: ltVersion,
 	}
 
-	builtInstanceType, err := m.buildInstanceType(&asg)
+	builtInstanceType, err := m.buildInstanceType(ctx, &asg)
 
 	assert.NoError(t, err)
 	assert.Equal(t, instanceType, builtInstanceType)
@@ -318,7 +318,7 @@ func TestGetASGTemplate(t *testing.T) {
 			// #1449 Without AWS_REGION getRegion() lookup runs till timeout during tests.
 			defer resetAWSRegion(os.LookupEnv("AWS_REGION"))
 			os.Setenv("AWS_REGION", "fanghorn")
-			m, err := createAWSManagerInternal(nil, cloudprovider.NodeGroupDiscoveryOptions{}, nil, &ec2Wrapper{s})
+			m, err := createAWSManagerInternal(ctx, nil, cloudprovider.NodeGroupDiscoveryOptions{}, nil, &ec2Wrapper{s})
 			assert.NoError(t, err)
 
 			asg := &asg{
@@ -326,10 +326,10 @@ func TestGetASGTemplate(t *testing.T) {
 				AvailabilityZones:     test.availabilityZones,
 				LaunchTemplateName:    ltName,
 				LaunchTemplateVersion: ltVersion,
-				Tags: tags,
+				Tags:                  tags,
 			}
 
-			template, err := m.getAsgTemplate(asg)
+			template, err := m.getAsgTemplate(ctx, asg)
 			if test.error {
 				assert.Error(t, err)
 			} else {
@@ -394,7 +394,7 @@ func TestFetchAutoAsgs(t *testing.T) {
 	defer resetAWSRegion(os.LookupEnv("AWS_REGION"))
 	os.Setenv("AWS_REGION", "fanghorn")
 	// fetchAutoASGs is called at manager creation time, via forceRefresh
-	m, err := createAWSManagerInternal(nil, do, &autoScalingWrapper{s, map[string]string{}}, nil)
+	m, err := createAWSManagerInternal(ctx, nil, do, &autoScalingWrapper{s, map[string]string{}}, nil)
 	assert.NoError(t, err)
 
 	asgs := m.asgCache.Get()
@@ -408,7 +408,7 @@ func TestFetchAutoAsgs(t *testing.T) {
 		fn(&autoscaling.DescribeTagsOutput{Tags: []*autoscaling.TagDescription{}}, false)
 	}).Return(nil).Once()
 
-	err = m.asgCache.regenerate()
+	err = m.asgCache.regenerate(ctx)
 	assert.NoError(t, err)
 	assert.Empty(t, m.asgCache.Get())
 }

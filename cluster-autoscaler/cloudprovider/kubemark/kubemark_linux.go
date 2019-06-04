@@ -27,16 +27,17 @@ import (
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
-	"k8s.io/autoscaler/cluster-autoscaler/config"
-	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
-	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/kubemark"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
+
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"k8s.io/autoscaler/cluster-autoscaler/config"
+	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
+	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 
 	"k8s.io/klog"
 )
@@ -81,16 +82,16 @@ func (kubemark *KubemarkCloudProvider) addNodeGroup(spec string) error {
 
 // Name returns name of the cloud provider.
 func (kubemark *KubemarkCloudProvider) Name(ctx context.Context) string {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Name")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Name")
+	defer span.Finish()
 
 	return ProviderName
 }
 
 // NodeGroups returns all node groups configured for this cloud provider.
 func (kubemark *KubemarkCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NodeGroups")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NodeGroups")
+	defer span.Finish()
 
 	result := make([]cloudprovider.NodeGroup, 0, len(kubemark.nodeGroups))
 	for _, nodegroup := range kubemark.nodeGroups {
@@ -101,16 +102,16 @@ defer span.Finish()
 
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (kubemark *KubemarkCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Pricing")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Pricing")
+	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
 }
 
 // NodeGroupForNode returns the node group for the given node.
 func (kubemark *KubemarkCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NodeGroupForNode")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NodeGroupForNode")
+	defer span.Finish()
 
 	nodeGroupName, err := kubemark.kubemarkController.GetNodeGroupForNode(node.ObjectMeta.Name)
 	if err != nil {
@@ -127,26 +128,26 @@ defer span.Finish()
 // GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
 // Implementation optional.
 func (kubemark *KubemarkCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.GetAvailableMachineTypes")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.GetAvailableMachineTypes")
+	defer span.Finish()
 
 	return []string{}, cloudprovider.ErrNotImplemented
 }
 
 // NewNodeGroup builds a theoretical node group based on the node definition provided.
 func (kubemark *KubemarkCloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string,
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NewNodeGroup")
-defer span.Finish()
-
 	taints []apiv1.Taint,
 	extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NewNodeGroup")
+	defer span.Finish()
+
 	return nil, cloudprovider.ErrNotImplemented
 }
 
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (kubemark *KubemarkCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.GetResourceLimiter")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.GetResourceLimiter")
+	defer span.Finish()
 
 	return kubemark.resourceLimiter, nil
 }
@@ -154,16 +155,16 @@ defer span.Finish()
 // Refresh is called before every main loop and can be used to dynamically update cloud provider state.
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (kubemark *KubemarkCloudProvider) Refresh(ctx context.Context) error {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Refresh")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Refresh")
+	defer span.Finish()
 
 	return nil
 }
 
 // Cleanup cleans up all resources before the cloud provider is removed
 func (kubemark *KubemarkCloudProvider) Cleanup(ctx context.Context) error {
-span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Cleanup")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Cleanup")
+	defer span.Finish()
 
 	return nil
 }
@@ -198,8 +199,8 @@ func (nodeGroup *NodeGroup) Debug() string {
 
 // Nodes returns a list of all nodes that belong to this node group.
 func (nodeGroup *NodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Nodes")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Nodes")
+	defer span.Finish()
 
 	instances := make([]cloudprovider.Instance, 0)
 	nodes, err := nodeGroup.kubemarkController.GetNodeNamesForNodeGroup(nodeGroup.Name)
@@ -214,8 +215,8 @@ defer span.Finish()
 
 // DeleteNodes deletes the specified nodes from the node group.
 func (nodeGroup *NodeGroup) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
-span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.DeleteNodes")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.DeleteNodes")
+	defer span.Finish()
 
 	size, err := nodeGroup.kubemarkController.GetNodeGroupTargetSize(nodeGroup.Name)
 	if err != nil {
@@ -234,8 +235,8 @@ defer span.Finish()
 
 // IncreaseSize increases NodeGroup size.
 func (nodeGroup *NodeGroup) IncreaseSize(ctx context.Context, delta int) error {
-span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.IncreaseSize")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.IncreaseSize")
+	defer span.Finish()
 
 	if delta <= 0 {
 		return fmt.Errorf("size increase must be positive")
@@ -254,8 +255,8 @@ defer span.Finish()
 // TargetSize returns the current TARGET size of the node group. It is possible that the
 // number is different from the number of nodes registered in Kubernetes.
 func (nodeGroup *NodeGroup) TargetSize(ctx context.Context) (int, error) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TargetSize")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TargetSize")
+	defer span.Finish()
 
 	size, err := nodeGroup.kubemarkController.GetNodeGroupTargetSize(nodeGroup.Name)
 	return int(size), err
@@ -286,8 +287,8 @@ func (nodeGroup *NodeGroup) DecreaseTargetSize(delta int) error {
 
 // TemplateNodeInfo returns a node template for this node group.
 func (nodeGroup *NodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TemplateNodeInfo")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TemplateNodeInfo")
+	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
 }
@@ -299,16 +300,16 @@ func (nodeGroup *NodeGroup) Exist() bool {
 
 // Create creates the node group on the cloud provider side.
 func (nodeGroup *NodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
-span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Create")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Create")
+	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
 }
 
 // Delete deletes the node group on the cloud provider side.
 func (nodeGroup *NodeGroup) Delete(ctx context.Context) error {
-span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Delete")
-defer span.Finish()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Delete")
+	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented
 }

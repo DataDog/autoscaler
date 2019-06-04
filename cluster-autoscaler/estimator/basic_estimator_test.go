@@ -68,7 +68,7 @@ func TestEstimate(t *testing.T) {
 	nodeInfo.SetNode(node)
 
 	estimator := NewBasicNodeEstimator()
-	estimate := estimator.Estimate(pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
+	estimate := estimator.Estimate(ctx, pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
 
 	// Check result.
 	assert.Equal(t, 3, estimate)
@@ -105,7 +105,7 @@ func TestEstimateWithComing(t *testing.T) {
 	nodeInfo.SetNode(node)
 
 	estimator := NewBasicNodeEstimator()
-	estimate := estimator.Estimate(pods, nodeInfo, []*schedulernodeinfo.NodeInfo{nodeInfo, nodeInfo})
+	estimate := estimator.Estimate(ctx, pods, nodeInfo, []*schedulernodeinfo.NodeInfo{nodeInfo, nodeInfo})
 
 	// Check result.
 	assert.Equal(t, 1, estimate)
@@ -146,7 +146,7 @@ func TestEstimateWithPorts(t *testing.T) {
 	nodeInfo.SetNode(node)
 
 	estimator := NewBasicNodeEstimator()
-	estimate := estimator.Estimate(pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
+	estimate := estimator.Estimate(ctx, pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
 	assert.Contains(t, estimator.GetDebug(), "CPU")
 	assert.Equal(t, 5, estimate)
 }

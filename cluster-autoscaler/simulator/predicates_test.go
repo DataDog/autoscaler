@@ -17,6 +17,7 @@ limitations under the License.
 package simulator
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -49,21 +50,23 @@ func TestPredicates(t *testing.T) {
 
 	predicateChecker := NewTestPredicateChecker()
 
-	r1, err := predicateChecker.FitsAny(p2, nodeInfos)
+	ctx := context.TODO()
+
+	r1, err := predicateChecker.FitsAny(ctx, p2, nodeInfos)
 	assert.NoError(t, err)
 	assert.Equal(t, "n2", r1)
 
-	_, err = predicateChecker.FitsAny(p3, nodeInfos)
+	_, err = predicateChecker.FitsAny(ctx, p3, nodeInfos)
 	assert.Error(t, err)
 
-	predicateErr := predicateChecker.CheckPredicates(p2, nil, ni1)
+	predicateErr := predicateChecker.CheckPredicates(ctx, p2, nil, ni1)
 	assert.NotNil(t, predicateErr)
 	assert.True(t, strings.Contains(predicateErr.Error(), "Predicates failed"))
 	assert.True(t, strings.Contains(predicateErr.VerboseError(), "Insufficient cpu"))
 
-	assert.NotNil(t, predicateChecker.CheckPredicates(p2, nil, ni1))
-	assert.Nil(t, predicateChecker.CheckPredicates(p4, nil, ni1))
-	assert.Nil(t, predicateChecker.CheckPredicates(p2, nil, ni2))
-	assert.Nil(t, predicateChecker.CheckPredicates(p4, nil, ni2))
-	assert.NotNil(t, predicateChecker.CheckPredicates(p3, nil, ni2))
+	assert.NotNil(t, predicateChecker.CheckPredicates(ctx, p2, nil, ni1))
+	assert.Nil(t, predicateChecker.CheckPredicates(ctx, p4, nil, ni1))
+	assert.Nil(t, predicateChecker.CheckPredicates(ctx, p2, nil, ni2))
+	assert.Nil(t, predicateChecker.CheckPredicates(ctx, p4, nil, ni2))
+	assert.NotNil(t, predicateChecker.CheckPredicates(ctx, p3, nil, ni2))
 }

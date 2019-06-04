@@ -327,6 +327,9 @@ func (csr *ClusterStateRegistry) Recalculate(ctx context.Context) {
 
 // getTargetSizes gets target sizes of node groups.
 func getTargetSizes(ctx context.Context, cp cloudprovider.CloudProvider) (map[string]int, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getTargetSizes")
+	defer span.Finish()
+
 	result := make(map[string]int)
 	for _, ng := range cp.NodeGroups(ctx) {
 		size, err := ng.TargetSize(ctx)
@@ -947,6 +950,9 @@ func (csr *ClusterStateRegistry) GetUpcomingNodes(ctx context.Context) map[strin
 // getCloudProviderNodeInstances returns map keyed on node group id where value is list of node instances
 // as returned by NodeGroup.Nodes().
 func getCloudProviderNodeInstances(ctx context.Context, cloudProvider cloudprovider.CloudProvider) (map[string][]cloudprovider.Instance, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getCloudProviderNodeInstances")
+	defer span.Finish()
+
 	allInstances := make(map[string][]cloudprovider.Instance)
 	for _, nodeGroup := range cloudProvider.NodeGroups(ctx) {
 		nodeGroupInstances, err := nodeGroup.Nodes(ctx)

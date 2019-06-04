@@ -164,11 +164,9 @@ func getRegion(cfg ...*aws.Config) string {
 //
 //	defer resetAWSRegion(os.LookupEnv("AWS_REGION"))
 //	os.Setenv("AWS_REGION", "fanghorn")
-func createAWSManagerInternal(
-	configReader io.Reader,
-	discoveryOpts cloudprovider.NodeGroupDiscoveryOptions,
-	autoScalingService *autoScalingWrapper,
-	ec2Service *ec2Wrapper) (*AwsManager, error) {
+func createAWSManagerInternal(ctx context.Context, configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, autoScalingService *autoScalingWrapper, ec2Service *ec2Wrapper) (*AwsManager, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "createAWSManagerInternal")
+	defer span.Finish()
 
 	cfg, err := readAWSCloudConfig(configReader)
 	if err != nil {
@@ -200,7 +198,7 @@ func createAWSManagerInternal(
 		return nil, err
 	}
 
-	cache, err := newASGCache(*autoScalingService, discoveryOpts.NodeGroupSpecs, specs)
+	cache, err := newASGCache(ctx, *autoScalingService, discoveryOpts.NodeGroupSpecs, specs)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +209,7 @@ func createAWSManagerInternal(
 		asgCache:           cache,
 	}
 
-	if err := manager.forceRefresh(); err != nil {
+	if err := manager.forceRefresh(ctx); err != nil {
 		return nil, err
 	}
 
@@ -234,8 +232,11 @@ func readAWSCloudConfig(config io.Reader) (*provider_aws.CloudConfig, error) {
 }
 
 // CreateAwsManager constructs awsManager object.
-func CreateAwsManager(configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions) (*AwsManager, error) {
-	return createAWSManagerInternal(configReader, discoveryOpts, nil, nil)
+func CreateAwsManager(ctx context.Context, configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions) (*AwsManager, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "CreateAwsManager")
+	defer span.Finish()
+
+	return createAWSManagerInternal(ctx, configReader, discoveryOpts, nil, nil)
 }
 
 // Refresh is called before every main loop and can be used to dynamically update cloud provider state.
@@ -247,11 +248,14 @@ func (m *AwsManager) Refresh(ctx context.Context) error {
 	if m.lastRefresh.Add(refreshInterval).After(time.Now()) {
 		return nil
 	}
-	return m.forceRefresh()
+	return m.forceRefresh(ctx)
 }
 
-func (m *AwsManager) forceRefresh() error {
-	if err := m.asgCache.regenerate(); err != nil {
+func (m *AwsManager) forceRefresh(ctx context.Context) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "forceRefresh")
+	defer span.Finish()
+
+	if err := m.asgCache.regenerate(ctx); err != nil {
 		klog.Errorf("Failed to regenerate ASG cache: %v", err)
 		return err
 	}
@@ -278,13 +282,19 @@ func (m *AwsManager) getAsgs() []*asg {
 }
 
 // SetAsgSize sets ASG size.
-func (m *AwsManager) SetAsgSize(asg *asg, size int) error {
-	return m.asgCache.SetAsgSize(asg, size)
+func (m *AwsManager) SetAsgSize(ctx context.Context, asg *asg, size int) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "SetAsgSize")
+	defer span.Finish()
+
+	return m.asgCache.SetAsgSize(ctx, asg, size)
 }
 
 // DeleteInstances deletes the given instances. All instances must be controlled by the same ASG.
-func (m *AwsManager) DeleteInstances(instances []*AwsInstanceRef) error {
-	return m.asgCache.DeleteInstances(instances)
+func (m *AwsManager) DeleteInstances(ctx context.Context, instances []*AwsInstanceRef) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "DeleteInstances")
+	defer span.Finish()
+
+	return m.asgCache.DeleteInstances(ctx, instances)
 }
 
 // GetAsgNodes returns Asg nodes.
@@ -292,7 +302,10 @@ func (m *AwsManager) GetAsgNodes(ref AwsRef) ([]AwsInstanceRef, error) {
 	return m.asgCache.InstancesByAsg(ref)
 }
 
-func (m *AwsManager) getAsgTemplate(asg *asg) (*asgTemplate, error) {
+func (m *AwsManager) getAsgTemplate(ctx context.Context, asg *asg) (*asgTemplate, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getAsgTemplate")
+	defer span.Finish()
+
 	if len(asg.AvailabilityZones) < 1 {
 		return nil, fmt.Errorf("unable to get first AvailabilityZone for ASG %q", asg.Name)
 	}
@@ -304,7 +317,7 @@ func (m *AwsManager) getAsgTemplate(asg *asg) (*asgTemplate, error) {
 		klog.Warningf("Found multiple availability zones for ASG %q; using %s\n", asg.Name, az)
 	}
 
-	instanceTypeName, err := m.buildInstanceType(asg)
+	instanceTypeName, err := m.buildInstanceType(ctx, asg)
 	if err != nil {
 		return nil, err
 	}
@@ -320,11 +333,14 @@ func (m *AwsManager) getAsgTemplate(asg *asg) (*asgTemplate, error) {
 	return nil, fmt.Errorf("ASG %q uses the unknown EC2 instance type %q", asg.Name, instanceTypeName)
 }
 
-func (m *AwsManager) buildInstanceType(asg *asg) (string, error) {
+func (m *AwsManager) buildInstanceType(ctx context.Context, asg *asg) (string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "buildInstanceType")
+	defer span.Finish()
+
 	if asg.LaunchConfigurationName != "" {
-		return m.autoScalingService.getInstanceTypeByLCName(asg.LaunchConfigurationName)
+		return m.autoScalingService.getInstanceTypeByLCName(ctx, asg.LaunchConfigurationName)
 	} else if asg.LaunchTemplateName != "" && asg.LaunchTemplateVersion != "" {
-		return m.ec2Service.getInstanceTypeByLT(asg.LaunchTemplateName, asg.LaunchTemplateVersion)
+		return m.ec2Service.getInstanceTypeByLT(ctx, asg.LaunchTemplateName, asg.LaunchTemplateVersion)
 	}
 
 	return "", errors.New("Unable to get instance type from launch config or launch template")

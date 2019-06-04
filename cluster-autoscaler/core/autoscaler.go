@@ -32,6 +32,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/backoff"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
+	"github.com/opentracing/opentracing-go"
 	kube_client "k8s.io/client-go/kubernetes"
 )
 
@@ -60,6 +61,9 @@ type Autoscaler interface {
 
 // NewAutoscaler creates an autoscaler of an appropriate type according to the parameters
 func NewAutoscaler(ctx context.Context, opts AutoscalerOptions) (Autoscaler, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NewAutoscaler")
+	defer span.Finish()
+
 	err := initializeDefaultOptions(ctx, &opts)
 	if err != nil {
 		return nil, errors.ToAutoscalerError(errors.InternalError, err)
@@ -76,6 +80,9 @@ func NewAutoscaler(ctx context.Context, opts AutoscalerOptions) (Autoscaler, err
 
 // Initialize default options if not provided.
 func initializeDefaultOptions(ctx context.Context, opts *AutoscalerOptions) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "initializeDefaultOptions")
+	defer span.Finish()
+
 	if opts.Processors == nil {
 		opts.Processors = ca_processors.DefaultProcessors()
 	}

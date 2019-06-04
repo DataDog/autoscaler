@@ -118,6 +118,9 @@ type scaleDownResourcesDelta map[string]int64
 const scaleDownLimitUnknown = math.MinInt64
 
 func computeScaleDownResourcesLeftLimits(ctx context.Context, nodes []*apiv1.Node, resourceLimiter *cloudprovider.ResourceLimiter, cp cloudprovider.CloudProvider, timestamp time.Time) scaleDownResourcesLimits {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleDownResourcesLeftLimits")
+	defer span.Finish()
+
 	totalCores, totalMem := calculateScaleDownCoresMemoryTotal(nodes, timestamp)
 
 	var totalGpus map[string]int64
@@ -176,6 +179,9 @@ func calculateScaleDownCoresMemoryTotal(nodes []*apiv1.Node, timestamp time.Time
 }
 
 func calculateScaleDownGpusTotal(ctx context.Context, nodes []*apiv1.Node, cp cloudprovider.CloudProvider, timestamp time.Time) (map[string]int64, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateScaleDownGpusTotal")
+	defer span.Finish()
+
 	type gpuInfo struct {
 		name  string
 		count int64
@@ -247,6 +253,9 @@ func copyScaleDownResourcesLimits(source scaleDownResourcesLimits) scaleDownReso
 }
 
 func computeScaleDownResourcesDelta(ctx context.Context, node *apiv1.Node, nodeGroup cloudprovider.NodeGroup, resourcesWithLimits []string) (scaleDownResourcesDelta, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleDownResourcesDelta")
+	defer span.Finish()
+
 	resultScaleDownDelta := make(scaleDownResourcesDelta)
 
 	nodeCPU, nodeMemory := getNodeCoresAndMemory(node)
@@ -404,7 +413,7 @@ func (sd *ScaleDown) UpdateUnneededNodes(ctx context.Context, nodes []*apiv1.Nod
 			klog.Errorf("Node info for %s not found", node.Name)
 			continue
 		}
-		utilInfo, err := simulator.CalculateUtilization(node, nodeInfo, sd.context.IgnoreDaemonSetsUtilization, sd.context.IgnoreMirrorPodsUtilization)
+		utilInfo, err := simulator.CalculateUtilization(ctx, node, nodeInfo, sd.context.IgnoreDaemonSetsUtilization, sd.context.IgnoreMirrorPodsUtilization)
 
 		if err != nil {
 			klog.Warningf("Failed to calculate utilization for %s: %v", node.Name, err)
@@ -437,9 +446,7 @@ func (sd *ScaleDown) UpdateUnneededNodes(ctx context.Context, nodes []*apiv1.Nod
 	currentCandidates, currentNonCandidates := sd.chooseCandidates(currentlyUnneededNonEmptyNodes)
 
 	// Look for nodes to remove in the current candidates
-	nodesToRemove, unremovable, newHints, simulatorErr := simulator.FindNodesToRemove(
-		currentCandidates, nodes, nonExpendablePods, nil, sd.context.PredicateChecker,
-		len(currentCandidates), true, sd.podLocationHints, sd.usageTracker, timestamp, pdbs)
+	nodesToRemove, unremovable, newHints, simulatorErr := simulator.FindNodesToRemove(ctx, currentCandidates, nodes, nonExpendablePods, nil, sd.context.PredicateChecker, len(currentCandidates), true, sd.podLocationHints, sd.usageTracker, timestamp, pdbs)
 	if simulatorErr != nil {
 		return sd.markSimulationError(ctx, simulatorErr, timestamp)
 	}
@@ -460,9 +467,7 @@ func (sd *ScaleDown) UpdateUnneededNodes(ctx context.Context, nodes []*apiv1.Nod
 		// Look for additional nodes to remove among the rest of nodes.
 		klog.V(3).Infof("Finding additional %v candidates for scale down.", additionalCandidatesCount)
 		additionalNodesToRemove, additionalUnremovable, additionalNewHints, simulatorErr :=
-			simulator.FindNodesToRemove(currentNonCandidates[:additionalCandidatesPoolSize], nodes, nonExpendablePods, nil,
-				sd.context.PredicateChecker, additionalCandidatesCount, true,
-				sd.podLocationHints, sd.usageTracker, timestamp, pdbs)
+			simulator.FindNodesToRemove(ctx, currentNonCandidates[:additionalCandidatesPoolSize], nodes, nonExpendablePods, nil, sd.context.PredicateChecker, additionalCandidatesCount, true, sd.podLocationHints, sd.usageTracker, timestamp, pdbs)
 		if simulatorErr != nil {
 			return sd.markSimulationError(ctx, simulatorErr, timestamp)
 		}
@@ -738,9 +743,7 @@ func (sd *ScaleDown) TryToScaleDown(ctx context.Context, allNodes []*apiv1.Node,
 	// Only scheduled non expendable pods are taken into account and have to be moved.
 	nonExpendablePods := filterOutExpendablePods(pods, sd.context.ExpendablePodsPriorityCutoff)
 	// We look for only 1 node so new hints may be incomplete.
-	nodesToRemove, _, _, err := simulator.FindNodesToRemove(candidates, nodesWithoutMaster, nonExpendablePods, sd.context.ListerRegistry,
-		sd.context.PredicateChecker, 1, false,
-		sd.podLocationHints, sd.usageTracker, time.Now(), pdbs)
+	nodesToRemove, _, _, err := simulator.FindNodesToRemove(ctx, candidates, nodesWithoutMaster, nonExpendablePods, sd.context.ListerRegistry, sd.context.PredicateChecker, 1, false, sd.podLocationHints, sd.usageTracker, time.Now(), pdbs)
 	findNodesToRemoveDuration = time.Now().Sub(findNodesToRemoveStart)
 
 	if err != nil {
@@ -805,12 +808,17 @@ func updateScaleDownMetrics(scaleDownStart time.Time, findNodesToRemoveDuration 
 }
 
 func getEmptyNodesNoResourceLimits(ctx context.Context, candidates []*apiv1.Node, pods []*apiv1.Pod, maxEmptyBulkDelete int, cloudProvider cloudprovider.CloudProvider) []*apiv1.Node {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getEmptyNodesNoResourceLimits")
+	defer span.Finish()
+
 	return getEmptyNodes(ctx, candidates, pods, maxEmptyBulkDelete, noScaleDownLimitsOnResources(), cloudProvider)
 }
 
 // This functions finds empty nodes among passed candidates and returns a list of empty nodes
 // that can be deleted at the same time.
 func getEmptyNodes(ctx context.Context, candidates []*apiv1.Node, pods []*apiv1.Pod, maxEmptyBulkDelete int, resourcesLimits scaleDownResourcesLimits, cloudProvider cloudprovider.CloudProvider) []*apiv1.Node {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getEmptyNodes")
+	defer span.Finish()
 
 	emptyNodes := simulator.FindEmptyNodesToRemove(candidates, pods)
 	availabilityMap := make(map[string]int)
@@ -1069,6 +1077,9 @@ func drainNode(node *apiv1.Node, pods []*apiv1.Pod, client kube_client.Interface
 // Removes the given node from cloud provider. No extra pre-deletion actions are executed on
 // the Kubernetes side.
 func deleteNodeFromCloudProvider(ctx context.Context, node *apiv1.Node, cloudProvider cloudprovider.CloudProvider, recorder kube_record.EventRecorder, registry *clusterstate.ClusterStateRegistry) errors.AutoscalerError {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "deleteNodeFromCloudProvider")
+	defer span.Finish()
+
 	nodeGroup, err := cloudProvider.NodeGroupForNode(ctx, node)
 	if err != nil {
 		return errors.NewAutoscalerError(

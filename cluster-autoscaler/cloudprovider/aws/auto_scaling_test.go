@@ -60,7 +60,7 @@ func TestMoreThen50Groups(t *testing.T) {
 		fn(testNamedDescribeAutoScalingGroupsOutput("asg-2", 1, "test-instance-id"), false)
 	}).Return(nil)
 
-	asgs, err := autoScalingWrapper.getAutoscalingGroupsByNames(names)
+	asgs, err := autoScalingWrapper.getAutoscalingGroupsByNames(ctx, names)
 	assert.Nil(t, err)
 	assert.Equal(t, len(asgs), 2)
 	assert.Equal(t, *asgs[0].AutoScalingGroupName, "asg-1")

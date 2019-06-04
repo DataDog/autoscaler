@@ -17,10 +17,12 @@ limitations under the License.
 package aws
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/opentracing/opentracing-go"
 )
 
 type ec2I interface {
@@ -31,7 +33,10 @@ type ec2Wrapper struct {
 	ec2I
 }
 
-func (m ec2Wrapper) getInstanceTypeByLT(name string, version string) (string, error) {
+func (m ec2Wrapper) getInstanceTypeByLT(ctx context.Context, name string, version string) (string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getInstanceTypeByLT")
+	defer span.Finish()
+
 	params := &ec2.DescribeLaunchTemplateVersionsInput{
 		LaunchTemplateName: aws.String(name),
 		Versions:           []*string{aws.String(version)},

@@ -152,6 +152,9 @@ func (m *azureRef) GetKey() string {
 
 // BuildAzure builds Azure cloud provider, manager etc.
 func BuildAzure(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "BuildAzure")
+	defer span.Finish()
+
 	var config io.ReadCloser
 	if opts.CloudConfig != "" {
 		klog.Infof("Creating Azure Manager using cloud-config file: %v", opts.CloudConfig)

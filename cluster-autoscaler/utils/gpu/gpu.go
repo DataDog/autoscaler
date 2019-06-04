@@ -19,7 +19,9 @@ package gpu
 import (
 	"context"
 
+	"github.com/opentracing/opentracing-go"
 	apiv1 "k8s.io/api/core/v1"
+
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 
@@ -98,6 +100,9 @@ func FilterOutNodesWithUnreadyGpus(allNodes, readyNodes []*apiv1.Node) ([]*apiv1
 // if the GPU type is unknown, "generic" is returned
 // NOTE: current implementation is GKE/GCE-specific
 func GetGpuTypeForMetrics(ctx context.Context, node *apiv1.Node, nodeGroup cloudprovider.NodeGroup) string {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "GetGpuTypeForMetrics")
+	defer span.Finish()
+
 	// we use the GKE label if there is one
 	gpuType, labelFound := node.Labels[GPULabel]
 	capacity, capacityFound := node.Status.Capacity[ResourceNvidiaGPU]
@@ -186,6 +191,9 @@ func PodRequestsGpu(pod *apiv1.Pod) bool {
 // GetNodeTargetGpus returns the number of gpus on a given node. This includes gpus which are not yet
 // ready to use and visible in kubernetes.
 func GetNodeTargetGpus(ctx context.Context, node *apiv1.Node, nodeGroup cloudprovider.NodeGroup) (gpuType string, gpuCount int64, error errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "GetNodeTargetGpus")
+	defer span.Finish()
+
 	gpuLabel, found := node.Labels[GPULabel]
 	if !found {
 		return "", 0, nil

@@ -97,13 +97,13 @@ func newTestAwsManagerWithService(service autoScaling, autoDiscoverySpecs []clou
 
 func newTestAwsManagerWithAsgs(t *testing.T, service autoScaling, specs []string) *AwsManager {
 	m := newTestAwsManagerWithService(service, nil)
-	m.asgCache.parseExplicitAsgs(specs)
+	m.asgCache.parseExplicitAsgs(ctx, specs)
 	return m
 }
 
 func newTestAwsManagerWithAutoAsgs(t *testing.T, service autoScaling, specs []string, autoDiscoverySpecs []cloudprovider.ASGAutoDiscoveryConfig) *AwsManager {
 	m := newTestAwsManagerWithService(service, autoDiscoverySpecs)
-	m.asgCache.parseExplicitAsgs(specs)
+	m.asgCache.parseExplicitAsgs(ctx, specs)
 	return m
 }
 
@@ -449,7 +449,7 @@ func TestDeleteNodesAfterMultipleRefreshes(t *testing.T) {
 
 	provider.Refresh(ctx)
 	// Call the manager directly as otherwise the call would be a noop as its within less then 60s
-	manager.forceRefresh()
+	manager.forceRefresh(ctx)
 
 	node := &apiv1.Node{
 		Spec: apiv1.NodeSpec{

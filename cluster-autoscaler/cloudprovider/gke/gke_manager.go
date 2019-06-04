@@ -166,6 +166,9 @@ type gkeManagerImpl struct {
 
 // CreateGkeManager constructs GkeManager object.
 func CreateGkeManager(ctx context.Context, configReader io.Reader, mode GcpCloudProviderMode, clusterName string, regional bool) (GkeManager, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "CreateGkeManager")
+	defer span.Finish()
+
 	// Create Google Compute Engine token.
 	var err error
 	tokenSource := google.ComputeTokenSource("")

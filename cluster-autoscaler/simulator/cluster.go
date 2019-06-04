@@ -17,11 +17,15 @@ limitations under the License.
 package simulator
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math"
 	"math/rand"
 	"time"
+
+	"github.com/opentracing/opentracing-go"
+	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 
 	"k8s.io/autoscaler/cluster-autoscaler/utils/drain"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
@@ -29,7 +33,6 @@ import (
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	scheduler_util "k8s.io/autoscaler/cluster-autoscaler/utils/scheduler"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/tpu"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 
 	apiv1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
@@ -68,11 +71,9 @@ type UtilizationInfo struct {
 
 // FindNodesToRemove finds nodes that can be removed. Returns also an information about good
 // rescheduling location for each of the pods.
-func FindNodesToRemove(candidates []*apiv1.Node, allNodes []*apiv1.Node, pods []*apiv1.Pod,
-	listers kube_util.ListerRegistry, predicateChecker *PredicateChecker, maxCount int,
-	fastCheck bool, oldHints map[string]string, usageTracker *UsageTracker,
-	timestamp time.Time,
-	podDisruptionBudgets []*policyv1.PodDisruptionBudget) (nodesToRemove []NodeToBeRemoved, unremovableNodes []*apiv1.Node, podReschedulingHints map[string]string, finalError errors.AutoscalerError) {
+func FindNodesToRemove(ctx context.Context, candidates []*apiv1.Node, allNodes []*apiv1.Node, pods []*apiv1.Pod, listers kube_util.ListerRegistry, predicateChecker *PredicateChecker, maxCount int, fastCheck bool, oldHints map[string]string, usageTracker *UsageTracker, timestamp time.Time, podDisruptionBudgets []*policyv1.PodDisruptionBudget) (nodesToRemove []NodeToBeRemoved, unremovableNodes []*apiv1.Node, podReschedulingHints map[string]string, finalError errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "FindNodesToRemove")
+	defer span.Finish()
 
 	nodeNameToNodeInfo := scheduler_util.CreateNodeNameToInfoMap(pods, allNodes)
 	result := make([]NodeToBeRemoved, 0)
@@ -109,8 +110,7 @@ candidateloop:
 			unremovable = append(unremovable, node)
 			continue candidateloop
 		}
-		findProblems := findPlaceFor(node.Name, podsToRemove, allNodes, nodeNameToNodeInfo, predicateChecker, oldHints, newHints,
-			usageTracker, timestamp)
+		findProblems := findPlaceFor(ctx, node.Name, podsToRemove, allNodes, nodeNameToNodeInfo, predicateChecker, oldHints, newHints, usageTracker, timestamp)
 
 		if findProblems == nil {
 			result = append(result, NodeToBeRemoved{
@@ -151,19 +151,25 @@ func FindEmptyNodesToRemove(candidates []*apiv1.Node, pods []*apiv1.Pod) []*apiv
 // CalculateUtilization calculates utilization of a node, defined as maximum of (cpu, memory) utilization.
 // Per resource utilization is the sum of requests for it divided by allocatable. It also returns the individual
 // cpu and memory utilization.
-func CalculateUtilization(node *apiv1.Node, nodeInfo *schedulernodeinfo.NodeInfo, skipDaemonSetPods, skipMirrorPods bool) (utilInfo UtilizationInfo, err error) {
-	cpu, err := calculateUtilizationOfResource(node, nodeInfo, apiv1.ResourceCPU, skipDaemonSetPods, skipMirrorPods)
+func CalculateUtilization(ctx context.Context, node *apiv1.Node, nodeInfo *schedulernodeinfo.NodeInfo, skipDaemonSetPods, skipMirrorPods bool) (utilInfo UtilizationInfo, err error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "CalculateUtilization")
+	defer span.Finish()
+
+	cpu, err := calculateUtilizationOfResource(ctx, node, nodeInfo, apiv1.ResourceCPU, skipDaemonSetPods, skipMirrorPods)
 	if err != nil {
 		return UtilizationInfo{}, err
 	}
-	mem, err := calculateUtilizationOfResource(node, nodeInfo, apiv1.ResourceMemory, skipDaemonSetPods, skipMirrorPods)
+	mem, err := calculateUtilizationOfResource(ctx, node, nodeInfo, apiv1.ResourceMemory, skipDaemonSetPods, skipMirrorPods)
 	if err != nil {
 		return UtilizationInfo{}, err
 	}
 	return UtilizationInfo{CpuUtil: cpu, MemUtil: mem, Utilization: math.Max(cpu, mem)}, nil
 }
 
-func calculateUtilizationOfResource(node *apiv1.Node, nodeInfo *schedulernodeinfo.NodeInfo, resourceName apiv1.ResourceName, skipDaemonSetPods, skipMirrorPods bool) (float64, error) {
+func calculateUtilizationOfResource(ctx context.Context, node *apiv1.Node, nodeInfo *schedulernodeinfo.NodeInfo, resourceName apiv1.ResourceName, skipDaemonSetPods, skipMirrorPods bool) (float64, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateUtilizationOfResource")
+	defer span.Finish()
+
 	nodeAllocatable, found := node.Status.Allocatable[resourceName]
 	if !found {
 		return 0, fmt.Errorf("failed to get %v from %s", resourceName, node.Name)
@@ -191,9 +197,9 @@ func calculateUtilizationOfResource(node *apiv1.Node, nodeInfo *schedulernodeinf
 }
 
 // TODO: We don't need to pass list of nodes here as they are already available in nodeInfos.
-func findPlaceFor(removedNode string, pods []*apiv1.Pod, nodes []*apiv1.Node, nodeInfos map[string]*schedulernodeinfo.NodeInfo,
-	predicateChecker *PredicateChecker, oldHints map[string]string, newHints map[string]string, usageTracker *UsageTracker,
-	timestamp time.Time) error {
+func findPlaceFor(ctx context.Context, removedNode string, pods []*apiv1.Pod, nodes []*apiv1.Node, nodeInfos map[string]*schedulernodeinfo.NodeInfo, predicateChecker *PredicateChecker, oldHints map[string]string, newHints map[string]string, usageTracker *UsageTracker, timestamp time.Time) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "findPlaceFor")
+	defer span.Finish()
 
 	newNodeInfos := make(map[string]*schedulernodeinfo.NodeInfo)
 	for k, v := range nodeInfos {
@@ -216,7 +222,7 @@ func findPlaceFor(removedNode string, pods []*apiv1.Pod, nodes []*apiv1.Node, no
 				klog.Warningf("No node in nodeInfo %s -> %v", nodename, nodeInfo)
 				return false
 			}
-			err := predicateChecker.CheckPredicates(pod, predicateMeta, nodeInfo)
+			err := predicateChecker.CheckPredicates(ctx, pod, predicateMeta, nodeInfo)
 			if err != nil {
 				glogx.V(4).UpTo(loggingQuota).Infof("Evaluation %s for %s/%s -> %v", nodename, pod.Namespace, pod.Name, err.VerboseError())
 			} else {

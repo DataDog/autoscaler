@@ -60,7 +60,7 @@ type asg struct {
 	Tags                    []*autoscaling.TagDescription
 }
 
-func newASGCache(service autoScalingWrapper, explicitSpecs []string, autoDiscoverySpecs []cloudprovider.ASGAutoDiscoveryConfig) (*asgCache, error) {
+func newASGCache(ctx context.Context, service autoScalingWrapper, explicitSpecs []string, autoDiscoverySpecs []cloudprovider.ASGAutoDiscoveryConfig) (*asgCache, error) {
 	registry := &asgCache{
 		registeredAsgs:        make([]*asg, 0),
 		service:               service,
@@ -71,7 +71,7 @@ func newASGCache(service autoScalingWrapper, explicitSpecs []string, autoDiscove
 		explicitlyConfigured:  make(map[AwsRef]bool),
 	}
 
-	if err := registry.parseExplicitAsgs(explicitSpecs); err != nil {
+	if err := registry.parseExplicitAsgs(ctx, explicitSpecs); err != nil {
 		return nil, err
 	}
 
@@ -80,21 +80,24 @@ func newASGCache(service autoScalingWrapper, explicitSpecs []string, autoDiscove
 
 // Fetch explicitly configured ASGs. These ASGs should never be unregistered
 // during refreshes, even if they no longer exist in AWS.
-func (m *asgCache) parseExplicitAsgs(specs []string) error {
+func (m *asgCache) parseExplicitAsgs(ctx context.Context, specs []string) error {
 	for _, spec := range specs {
 		asg, err := m.buildAsgFromSpec(spec)
 		if err != nil {
 			return fmt.Errorf("failed to parse node group spec: %v", err)
 		}
 		m.explicitlyConfigured[asg.AwsRef] = true
-		m.register(asg)
+		m.register(ctx, asg)
 	}
 
 	return nil
 }
 
 // Register ASG. Returns the registered ASG.
-func (m *asgCache) register(asg *asg) *asg {
+func (m *asgCache) register(ctx context.Context, asg *asg) *asg {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "register")
+	defer span.Finish()
+
 	for i := range m.registeredAsgs {
 		if existing := m.registeredAsgs[i]; existing.AwsRef == asg.AwsRef {
 			if reflect.DeepEqual(existing, asg) {
@@ -129,7 +132,10 @@ func (m *asgCache) register(asg *asg) *asg {
 }
 
 // Unregister ASG. Returns the unregistered ASG.
-func (m *asgCache) unregister(a *asg) *asg {
+func (m *asgCache) unregister(ctx context.Context, a *asg) *asg {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "unregister")
+	defer span.Finish()
+
 	updated := make([]*asg, 0, len(m.registeredAsgs))
 	var changed *asg
 	for _, existing := range m.registeredAsgs {
@@ -193,7 +199,10 @@ func (m *asgCache) InstancesByAsg(ref AwsRef) ([]AwsInstanceRef, error) {
 	return nil, fmt.Errorf("error while looking for instances of ASG: %s", ref)
 }
 
-func (m *asgCache) SetAsgSize(asg *asg, size int) error {
+func (m *asgCache) SetAsgSize(ctx context.Context, asg *asg, size int) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "SetAsgSize")
+	defer span.Finish()
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -215,7 +224,10 @@ func (m *asgCache) SetAsgSize(asg *asg, size int) error {
 }
 
 // DeleteInstances deletes the given instances. All instances must be controlled by the same ASG.
-func (m *asgCache) DeleteInstances(instances []*AwsInstanceRef) error {
+func (m *asgCache) DeleteInstances(ctx context.Context, instances []*AwsInstanceRef) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "DeleteInstances")
+	defer span.Finish()
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -261,11 +273,14 @@ func (m *asgCache) DeleteInstances(instances []*AwsInstanceRef) error {
 
 // Fetch automatically discovered ASGs. These ASGs should be unregistered if
 // they no longer exist in AWS.
-func (m *asgCache) fetchAutoAsgNames() ([]string, error) {
+func (m *asgCache) fetchAutoAsgNames(ctx context.Context) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "fetchAutoAsgNames")
+	defer span.Finish()
+
 	groupNames := make([]string, 0)
 
 	for _, spec := range m.asgAutoDiscoverySpecs {
-		names, err := m.service.getAutoscalingGroupNamesByTags(spec.Tags)
+		names, err := m.service.getAutoscalingGroupNamesByTags(ctx, spec.Tags)
 		if err != nil {
 			return nil, fmt.Errorf("cannot autodiscover ASGs: %s", err)
 		}
@@ -276,7 +291,10 @@ func (m *asgCache) fetchAutoAsgNames() ([]string, error) {
 	return groupNames, nil
 }
 
-func (m *asgCache) buildAsgNames() ([]string, error) {
+func (m *asgCache) buildAsgNames(ctx context.Context) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "buildAsgNames")
+	defer span.Finish()
+
 	// Collect explicitly specified names
 	refreshNames := make([]string, len(m.explicitlyConfigured))
 	i := 0
@@ -286,7 +304,7 @@ func (m *asgCache) buildAsgNames() ([]string, error) {
 	}
 
 	// Append auto-discovered names
-	autoDiscoveredNames, err := m.fetchAutoAsgNames()
+	autoDiscoveredNames, err := m.fetchAutoAsgNames(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +323,10 @@ func (m *asgCache) buildAsgNames() ([]string, error) {
 }
 
 // regenerate the cached view of explicitly configured and auto-discovered ASGs
-func (m *asgCache) regenerate() error {
+func (m *asgCache) regenerate(ctx context.Context) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "regenerate")
+	defer span.Finish()
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -313,14 +334,14 @@ func (m *asgCache) regenerate() error {
 	newAsgToInstancesCache := make(map[AwsRef][]AwsInstanceRef)
 
 	// Build list of knowns ASG names
-	refreshNames, err := m.buildAsgNames()
+	refreshNames, err := m.buildAsgNames(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Fetch details of all ASGs
 	klog.V(4).Infof("Regenerating instance to ASG map for ASGs: %v", refreshNames)
-	groups, err := m.service.getAutoscalingGroupsByNames(refreshNames)
+	groups, err := m.service.getAutoscalingGroupsByNames(ctx, refreshNames)
 	if err != nil {
 		return err
 	}
@@ -334,7 +355,7 @@ func (m *asgCache) regenerate() error {
 		}
 		exists[asg.AwsRef] = true
 
-		asg = m.register(asg)
+		asg = m.register(ctx, asg)
 
 		newAsgToInstancesCache[asg.AwsRef] = make([]AwsInstanceRef, len(group.Instances))
 
@@ -348,7 +369,7 @@ func (m *asgCache) regenerate() error {
 	// Unregister no longer existing auto-discovered ASGs
 	for _, asg := range m.registeredAsgs {
 		if !exists[asg.AwsRef] && !m.explicitlyConfigured[asg.AwsRef] {
-			m.unregister(asg)
+			m.unregister(ctx, asg)
 		}
 	}
 
@@ -381,7 +402,7 @@ func (m *asgCache) buildAsgFromAWS(g *autoscaling.Group) (*asg, error) {
 		LaunchConfigurationName: aws.StringValue(g.LaunchConfigurationName),
 		LaunchTemplateName:      launchTemplateName,
 		LaunchTemplateVersion:   launchTemplateVersion,
-		Tags: g.Tags,
+		Tags:                    g.Tags,
 	}
 
 	return asg, nil

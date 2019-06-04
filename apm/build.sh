@@ -8,7 +8,7 @@ docker build --compress -t "${IMAGE}" -f apm/Dockerfile .
 docker run --rm -v "${REPO}/cluster-autoscaler:/tmp/out" "${IMAGE}" sh -c "cp cluster-autoscaler /tmp/out/"
 ( cd "${REPO}/cluster-autoscaler" && make make-image )
 
-VERSION="apm2"
+VERSION="apm3"
 
 for CLOUD_IMAGE in \
     727006795293.dkr.ecr.us-east-1.amazonaws.com/cluster-autoscaler:v1.14.2-"${VERSION}" \

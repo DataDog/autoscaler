@@ -21,6 +21,8 @@ package builder
 import (
 	"context"
 
+	"github.com/opentracing/opentracing-go"
+
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/alicloud"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/aws"
@@ -45,13 +47,16 @@ var AvailableCloudProviders = []string{
 const DefaultCloudProvider = gce.ProviderNameGCE
 
 func buildCloudProvider(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "buildCloudProvider")
+	defer span.Finish()
+
 	switch opts.CloudProviderName {
 	case gce.ProviderNameGCE:
 		return gce.BuildGCE(ctx, opts, do, rl)
 	case gke.ProviderNameGKE:
 		return gke.BuildGKE(ctx, opts, do, rl)
 	case aws.ProviderName:
-		return aws.BuildAWS(opts, do, rl)
+		return aws.BuildAWS(ctx, opts, do, rl)
 	case azure.ProviderName:
 		return azure.BuildAzure(ctx, opts, do, rl)
 	case alicloud.ProviderName:

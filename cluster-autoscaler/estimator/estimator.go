@@ -17,6 +17,7 @@ limitations under the License.
 package estimator
 
 import (
+	"context"
 	"fmt"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -41,7 +42,7 @@ var AvailableEstimators = []string{BinpackingEstimatorName, deprecated(BasicEsti
 
 // Estimator calculates the number of nodes of given type needed to schedule pods.
 type Estimator interface {
-	Estimate([]*apiv1.Pod, *schedulernodeinfo.NodeInfo, []*schedulernodeinfo.NodeInfo) int
+	Estimate(context.Context, []*apiv1.Pod, *schedulernodeinfo.NodeInfo, []*schedulernodeinfo.NodeInfo) int
 }
 
 // EstimatorBuilder creates a new estimator object.

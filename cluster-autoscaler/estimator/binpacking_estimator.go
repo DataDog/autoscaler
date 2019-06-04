@@ -17,8 +17,10 @@ limitations under the License.
 package estimator
 
 import (
+	"context"
 	"sort"
 
+	"github.com/opentracing/opentracing-go"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
@@ -51,8 +53,9 @@ func NewBinpackingNodeEstimator(predicateChecker *simulator.PredicateChecker) *B
 // still be maintained.
 // It is assumed that all pods from the given list can fit to nodeTemplate.
 // Returns the number of nodes needed to accommodate all pods from the list.
-func (estimator *BinpackingNodeEstimator) Estimate(pods []*apiv1.Pod, nodeTemplate *schedulernodeinfo.NodeInfo,
-	upcomingNodes []*schedulernodeinfo.NodeInfo) int {
+func (estimator *BinpackingNodeEstimator) Estimate(ctx context.Context, pods []*apiv1.Pod, nodeTemplate *schedulernodeinfo.NodeInfo, upcomingNodes []*schedulernodeinfo.NodeInfo) int {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Estimate")
+	defer span.Finish()
 
 	podInfos := calculatePodScore(pods, nodeTemplate)
 	sort.Slice(podInfos, func(i, j int) bool { return podInfos[i].score > podInfos[j].score })
@@ -63,7 +66,7 @@ func (estimator *BinpackingNodeEstimator) Estimate(pods []*apiv1.Pod, nodeTempla
 	for _, podInfo := range podInfos {
 		found := false
 		for i, nodeInfo := range newNodes {
-			if err := estimator.predicateChecker.CheckPredicates(podInfo.pod, nil, nodeInfo); err == nil {
+			if err := estimator.predicateChecker.CheckPredicates(ctx, podInfo.pod, nil, nodeInfo); err == nil {
 				found = true
 				newNodes[i] = schedulerUtils.NodeWithPod(nodeInfo, podInfo.pod)
 				break

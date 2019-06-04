@@ -24,6 +24,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"k8s.io/kubernetes/pkg/scheduler/util"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -112,8 +113,10 @@ func (podMap podSchedulableMap) set(pod *apiv1.Pod, err *simulator.PredicateErro
 // filterOutSchedulableByPacking checks whether pods from <unschedulableCandidates> marked as unschedulable
 // can be scheduled on free capacity on existing nodes by trying to pack the pods. It tries to pack the higher priority
 // pods first. It takes into account pods that are bound to node and will be scheduled after lower priority pod preemption.
-func filterOutSchedulableByPacking(unschedulableCandidates []*apiv1.Pod, nodes []*apiv1.Node, allScheduled []*apiv1.Pod, podsWaitingForLowerPriorityPreemption []*apiv1.Pod,
-	predicateChecker *simulator.PredicateChecker, expendablePodsPriorityCutoff int) []*apiv1.Pod {
+func filterOutSchedulableByPacking(ctx context.Context, unschedulableCandidates []*apiv1.Pod, nodes []*apiv1.Node, allScheduled []*apiv1.Pod, podsWaitingForLowerPriorityPreemption []*apiv1.Pod, predicateChecker *simulator.PredicateChecker, expendablePodsPriorityCutoff int) []*apiv1.Pod {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "filterOutSchedulableByPacking")
+	defer span.Finish()
+
 	var unschedulablePods []*apiv1.Pod
 	nonExpendableScheduled := filterOutExpendablePods(allScheduled, expendablePodsPriorityCutoff)
 	nodeNameToNodeInfo := scheduler_util.CreateNodeNameToInfoMap(append(nonExpendableScheduled, podsWaitingForLowerPriorityPreemption...), nodes)
@@ -124,7 +127,7 @@ func filterOutSchedulableByPacking(unschedulableCandidates []*apiv1.Pod, nodes [
 	})
 
 	for _, pod := range unschedulableCandidates {
-		nodeName, err := predicateChecker.FitsAny(pod, nodeNameToNodeInfo)
+		nodeName, err := predicateChecker.FitsAny(ctx, pod, nodeNameToNodeInfo)
 		if err != nil {
 			unschedulablePods = append(unschedulablePods, pod)
 		} else {
@@ -140,7 +143,7 @@ func filterOutSchedulableByPacking(unschedulableCandidates []*apiv1.Pod, nodes [
 // filterOutSchedulableSimple checks whether pods from <unschedulableCandidates> marked as unschedulable
 // by Scheduler actually can't be scheduled on any node and filter out the ones that can.
 // It takes into account pods that are bound to node and will be scheduled after lower priority pod preemption.
-func filterOutSchedulableSimple(unschedulableCandidates []*apiv1.Pod, nodes []*apiv1.Node, allScheduled []*apiv1.Pod, podsWaitingForLowerPriorityPreemption []*apiv1.Pod,
+func filterOutSchedulableSimple(ctx context.Context, unschedulableCandidates []*apiv1.Pod, nodes []*apiv1.Node, allScheduled []*apiv1.Pod, podsWaitingForLowerPriorityPreemption []*apiv1.Pod,
 	predicateChecker *simulator.PredicateChecker, expendablePodsPriorityCutoff int) []*apiv1.Pod {
 	var unschedulablePods []*apiv1.Pod
 	nonExpendableScheduled := filterOutExpendablePods(allScheduled, expendablePodsPriorityCutoff)
@@ -161,7 +164,7 @@ func filterOutSchedulableSimple(unschedulableCandidates []*apiv1.Pod, nodes []*a
 		}
 
 		// Not found in cache, have to run the predicates.
-		nodeName, err := predicateChecker.FitsAny(pod, nodeNameToNodeInfo)
+		nodeName, err := predicateChecker.FitsAny(ctx, pod, nodeNameToNodeInfo)
 		// err returned from FitsAny isn't a PredicateError.
 		// Hello, ugly hack. I wish you weren't here.
 		var predicateError *simulator.PredicateError
@@ -181,7 +184,10 @@ func filterOutSchedulableSimple(unschedulableCandidates []*apiv1.Pod, nodes []*a
 // filterOutExpendableAndSplit filters out expendable pods and splits into:
 //   - waiting for lower priority pods preemption
 //   - other pods.
-func filterOutExpendableAndSplit(unschedulableCandidates []*apiv1.Pod, expendablePodsPriorityCutoff int) ([]*apiv1.Pod, []*apiv1.Pod) {
+func filterOutExpendableAndSplit(ctx context.Context, unschedulableCandidates []*apiv1.Pod, expendablePodsPriorityCutoff int) ([]*apiv1.Pod, []*apiv1.Pod) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "filterOutExpendableAndSplit")
+	defer span.Finish()
+
 	var unschedulableNonExpendable []*apiv1.Pod
 	var waitingForLowerPriorityPreemption []*apiv1.Pod
 	for _, pod := range unschedulableCandidates {
@@ -209,7 +215,10 @@ func filterOutExpendablePods(pods []*apiv1.Pod, expendablePodsPriorityCutoff int
 }
 
 // checkPodsSchedulableOnNode checks if pods can be scheduled on the given node.
-func checkPodsSchedulableOnNode(context *autoscalingcontext.AutoscalingContext, pods []*apiv1.Pod, nodeGroupId string, nodeInfo *schedulernodeinfo.NodeInfo) map[*apiv1.Pod]*simulator.PredicateError {
+func checkPodsSchedulableOnNode(ctx context.Context, context *autoscalingcontext.AutoscalingContext, pods []*apiv1.Pod, nodeGroupId string, nodeInfo *schedulernodeinfo.NodeInfo) map[*apiv1.Pod]*simulator.PredicateError {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "checkPodsSchedulableOnNode")
+	defer span.Finish()
+
 	schedulingErrors := map[*apiv1.Pod]*simulator.PredicateError{}
 	loggingQuota := glogx.PodsLoggingQuota()
 	podSchedulable := make(podSchedulableMap)
@@ -230,7 +239,7 @@ func checkPodsSchedulableOnNode(context *autoscalingcontext.AutoscalingContext, 
 		}
 		// Not found in cache, have to run the predicates.
 		if !found {
-			err = context.PredicateChecker.CheckPredicates(pod, nil, nodeInfo)
+			err = context.PredicateChecker.CheckPredicates(ctx, pod, nil, nodeInfo)
 			podSchedulable.set(pod, err)
 			schedulingErrors[pod] = err
 			if err != nil {
@@ -249,11 +258,17 @@ func checkPodsSchedulableOnNode(context *autoscalingcontext.AutoscalingContext, 
 //
 // TODO(mwielgus): Review error policy - sometimes we may continue with partial errors.
 func getNodeInfosForGroups(ctx context.Context, nodes []*apiv1.Node, nodeInfoCache map[string]*schedulernodeinfo.NodeInfo, cloudProvider cloudprovider.CloudProvider, listers kube_util.ListerRegistry, daemonsets []*appsv1.DaemonSet, predicateChecker *simulator.PredicateChecker) (map[string]*schedulernodeinfo.NodeInfo, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfosForGroups")
+	defer span.Finish()
+
 	result := make(map[string]*schedulernodeinfo.NodeInfo)
 	seenGroups := make(map[string]bool)
 
 	// processNode returns information whether the nodeTemplate was generated and if there was an error.
 	processNode := func(node *apiv1.Node) (bool, string, errors.AutoscalerError) {
+		span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfosForGroups.processNode")
+		defer span.Finish()
+
 		nodeGroup, err := cloudProvider.NodeGroupForNode(ctx, node)
 		if err != nil {
 			return false, "", errors.ToAutoscalerError(errors.CloudProviderError, err)
@@ -355,13 +370,16 @@ func getNodeInfosForGroups(ctx context.Context, nodes []*apiv1.Node, nodeInfoCac
 
 // getNodeInfoFromTemplate returns NodeInfo object built base on TemplateNodeInfo returned by NodeGroup.TemplateNodeInfo().
 func getNodeInfoFromTemplate(ctx context.Context, nodeGroup cloudprovider.NodeGroup, daemonsets []*appsv1.DaemonSet, predicateChecker *simulator.PredicateChecker) (*schedulernodeinfo.NodeInfo, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfoFromTemplate")
+	defer span.Finish()
+
 	id := nodeGroup.Id()
 	baseNodeInfo, err := nodeGroup.TemplateNodeInfo(ctx)
 	if err != nil {
 		return nil, errors.ToAutoscalerError(errors.CloudProviderError, err)
 	}
 
-	pods := daemonset.GetDaemonSetPodsForNode(baseNodeInfo, daemonsets, predicateChecker)
+	pods := daemonset.GetDaemonSetPodsForNode(ctx, baseNodeInfo, daemonsets, predicateChecker)
 	pods = append(pods, baseNodeInfo.Pods()...)
 	fullNodeInfo := schedulernodeinfo.NewNodeInfo(pods...)
 	fullNodeInfo.SetNode(baseNodeInfo.Node())
@@ -375,6 +393,9 @@ func getNodeInfoFromTemplate(ctx context.Context, nodeGroup cloudprovider.NodeGr
 // filterOutNodesFromNotAutoscaledGroups return subset of input nodes for which cloud provider does not
 // return autoscaled node group.
 func filterOutNodesFromNotAutoscaledGroups(ctx context.Context, nodes []*apiv1.Node, cloudProvider cloudprovider.CloudProvider) ([]*apiv1.Node, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "filterOutNodesFromNotAutoscaledGroups")
+	defer span.Finish()
+
 	result := make([]*apiv1.Node, 0)
 
 	for _, node := range nodes {
@@ -460,6 +481,9 @@ func sanitizeTemplateNode(node *apiv1.Node, nodeGroup string) (*apiv1.Node, erro
 
 // Removes unregistered nodes if needed. Returns true if anything was removed and error if such occurred.
 func removeOldUnregisteredNodes(ctx context.Context, unregisteredNodes []clusterstate.UnregisteredNode, context *autoscalingcontext.AutoscalingContext, currentTime time.Time, logRecorder *utils.LogEventRecorder) (bool, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "removeOldUnregisteredNodes")
+	defer span.Finish()
+
 	removedAny := false
 	for _, unregisteredNode := range unregisteredNodes {
 		if unregisteredNode.UnregisteredSince.Add(context.MaxNodeProvisionTime).Before(currentTime) {
@@ -501,6 +525,9 @@ func removeOldUnregisteredNodes(ctx context.Context, unregisteredNodes []cluster
 // if the difference was constant for a prolonged time. Returns true if managed
 // to fix something.
 func fixNodeGroupSize(ctx context.Context, context *autoscalingcontext.AutoscalingContext, clusterStateRegistry *clusterstate.ClusterStateRegistry, currentTime time.Time) (bool, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "fixNodeGroupSize")
+	defer span.Finish()
+
 	fixed := false
 	for _, nodeGroup := range context.CloudProvider.NodeGroups(ctx) {
 		incorrectSize := clusterStateRegistry.GetIncorrectNodeGroupSize(nodeGroup.Id())
@@ -528,6 +555,9 @@ func fixNodeGroupSize(ctx context.Context, context *autoscalingcontext.Autoscali
 // - managed by the cluster autoscaler
 // - in groups with size > min size
 func getPotentiallyUnneededNodes(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodes []*apiv1.Node) []*apiv1.Node {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getPotentiallyUnneededNodes")
+	defer span.Finish()
+
 	result := make([]*apiv1.Node, 0, len(nodes))
 
 	nodeGroupSize := getNodeGroupSizeMap(ctx, context.CloudProvider)
@@ -616,6 +646,9 @@ func getNodeResource(node *apiv1.Node, resource apiv1.ResourceName) int64 {
 }
 
 func getNodeGroupSizeMap(ctx context.Context, cloudProvider cloudprovider.CloudProvider) map[string]int {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getNodeGroupSizeMap")
+	defer span.Finish()
+
 	nodeGroupSize := make(map[string]int)
 	for _, nodeGroup := range cloudProvider.NodeGroups(ctx) {
 		size, err := nodeGroup.TargetSize(ctx)

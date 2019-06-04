@@ -248,7 +248,7 @@ func (ng *AwsNodeGroup) IncreaseSize(ctx context.Context, delta int) error {
 	if size+delta > ng.asg.maxSize {
 		return fmt.Errorf("size increase too large - desired:%d max:%d", size+delta, ng.asg.maxSize)
 	}
-	return ng.awsManager.SetAsgSize(ng.asg, size+delta)
+	return ng.awsManager.SetAsgSize(ctx, ng.asg, size+delta)
 }
 
 // DecreaseTargetSize decreases the target size of the node group. This function
@@ -273,7 +273,7 @@ func (ng *AwsNodeGroup) DecreaseTargetSize(ctx context.Context, delta int) error
 		return fmt.Errorf("attempt to delete existing nodes targetSize:%d delta:%d existingNodes: %d",
 			size, delta, len(nodes))
 	}
-	return ng.awsManager.SetAsgSize(ng.asg, size+delta)
+	return ng.awsManager.SetAsgSize(ctx, ng.asg, size+delta)
 }
 
 // Belongs returns true if the given node belongs to the NodeGroup.
@@ -316,7 +316,7 @@ func (ng *AwsNodeGroup) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) er
 		}
 		refs = append(refs, awsref)
 	}
-	return ng.awsManager.DeleteInstances(refs)
+	return ng.awsManager.DeleteInstances(ctx, refs)
 }
 
 // Id returns asg id.
@@ -352,7 +352,7 @@ func (ng *AwsNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinf
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.TemplateNodeInfo")
 	defer span.Finish()
 
-	template, err := ng.awsManager.getAsgTemplate(ng.asg)
+	template, err := ng.awsManager.getAsgTemplate(ctx, ng.asg)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,10 @@ func (ng *AwsNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinf
 }
 
 // BuildAWS builds AWS cloud provider, manager etc.
-func BuildAWS(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+func BuildAWS(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "BuildAWS")
+	defer span.Finish()
+
 	var config io.ReadCloser
 	if opts.CloudConfig != "" {
 		var err error
@@ -379,7 +382,7 @@ func BuildAWS(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscover
 		defer config.Close()
 	}
 
-	manager, err := CreateAwsManager(config, do)
+	manager, err := CreateAwsManager(ctx, config, do)
 	if err != nil {
 		klog.Fatalf("Failed to create AWS Manager: %v", err)
 	}

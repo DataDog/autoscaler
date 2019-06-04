@@ -23,6 +23,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -49,6 +50,9 @@ type scaleUpResourcesDelta map[string]int64
 const scaleUpLimitUnknown = math.MaxInt64
 
 func computeScaleUpResourcesLeftLimits(ctx context.Context, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo, nodesFromNotAutoscaledGroups []*apiv1.Node, resourceLimiter *cloudprovider.ResourceLimiter) (scaleUpResourcesLimits, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleUpResourcesLeftLimits")
+	defer span.Finish()
+
 	totalCores, totalMem, errCoresMem := calculateScaleUpCoresMemoryTotal(ctx, nodeGroups, nodeInfos, nodesFromNotAutoscaledGroups)
 
 	var totalGpus map[string]int64
@@ -99,6 +103,9 @@ func computeScaleUpResourcesLeftLimits(ctx context.Context, nodeGroups []cloudpr
 }
 
 func calculateScaleUpCoresMemoryTotal(ctx context.Context, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo, nodesFromNotAutoscaledGroups []*apiv1.Node) (int64, int64, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateScaleUpCoresMemoryTotal")
+	defer span.Finish()
+
 	var coresTotal int64
 	var memoryTotal int64
 
@@ -128,6 +135,8 @@ func calculateScaleUpCoresMemoryTotal(ctx context.Context, nodeGroups []cloudpro
 }
 
 func calculateScaleUpGpusTotal(ctx context.Context, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo, nodesFromNotAutoscaledGroups []*apiv1.Node) (map[string]int64, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateScaleUpGpusTotal")
+	defer span.Finish()
 
 	result := make(map[string]int64)
 	for _, nodeGroup := range nodeGroups {
@@ -170,6 +179,9 @@ func computeBelowMax(total int64, max int64) int64 {
 }
 
 func computeScaleUpResourcesDelta(ctx context.Context, nodeInfo *schedulernodeinfo.NodeInfo, nodeGroup cloudprovider.NodeGroup, resourceLimiter *cloudprovider.ResourceLimiter) (scaleUpResourcesDelta, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleUpResourcesDelta")
+	defer span.Finish()
+
 	resultScaleUpDelta := make(scaleUpResourcesDelta)
 
 	nodeCPU, nodeMemory := getNodeInfoCoresAndMemory(nodeInfo)
@@ -235,6 +247,9 @@ var (
 // false if it didn't and error if an error occurred. Assumes that all nodes in the cluster are
 // ready and in sync with instance groups.
 func ScaleUp(ctx context.Context, context *autoscalingcontext.AutoscalingContext, processors *ca_processors.AutoscalingProcessors, clusterStateRegistry *clusterstate.ClusterStateRegistry, unschedulablePods []*apiv1.Pod, nodes []*apiv1.Node, daemonSets []*appsv1.DaemonSet, nodeInfos map[string]*schedulernodeinfo.NodeInfo) (*status.ScaleUpStatus, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleUp")
+	defer span.Finish()
+
 	// From now on we only care about unschedulable pods that were marked after the newest
 	// node became available for the scheduler.
 	if len(unschedulablePods) == 0 {
@@ -298,7 +313,7 @@ func ScaleUp(ctx context.Context, context *autoscalingcontext.AutoscalingContext
 		}
 	}
 
-	podsPredicatePassingCheckFunctions := getPodsPredicatePassingCheckFunctions(context, unschedulablePods, nodeInfos)
+	podsPredicatePassingCheckFunctions := getPodsPredicatePassingCheckFunctions(ctx, context, unschedulablePods, nodeInfos)
 	getPodsPassingPredicates := podsPredicatePassingCheckFunctions.getPodsPassingPredicates
 	getPodsNotPassingPredicates := podsPredicatePassingCheckFunctions.getPodsNotPassingPredicates
 
@@ -390,7 +405,7 @@ func ScaleUp(ctx context.Context, context *autoscalingcontext.AutoscalingContext
 
 		if len(option.Pods) > 0 {
 			estimator := context.EstimatorBuilder(context.PredicateChecker)
-			option.NodeCount = estimator.Estimate(option.Pods, nodeInfo, upcomingNodes)
+			option.NodeCount = estimator.Estimate(ctx, option.Pods, nodeInfo, upcomingNodes)
 			if option.NodeCount > 0 {
 				expansionOptions = append(expansionOptions, option)
 			} else {
@@ -541,10 +556,7 @@ type podsPredicatePassingCheckFunctions struct {
 	getPodsNotPassingPredicates func(nodeGroupId string) (map[*apiv1.Pod]status.Reasons, error)
 }
 
-func getPodsPredicatePassingCheckFunctions(
-	context *autoscalingcontext.AutoscalingContext,
-	unschedulablePods []*apiv1.Pod,
-	nodeInfos map[string]*schedulernodeinfo.NodeInfo) podsPredicatePassingCheckFunctions {
+func getPodsPredicatePassingCheckFunctions(ctx context.Context, context *autoscalingcontext.AutoscalingContext, unschedulablePods []*apiv1.Pod, nodeInfos map[string]*schedulernodeinfo.NodeInfo) podsPredicatePassingCheckFunctions {
 
 	podsPassingPredicatesCache := make(map[string][]*apiv1.Pod)
 	podsNotPassingPredicatesCache := make(map[string]map[*apiv1.Pod]status.Reasons)
@@ -559,7 +571,7 @@ func getPodsPredicatePassingCheckFunctions(
 
 		podsPassing := make([]*apiv1.Pod, 0)
 		podsNotPassing := make(map[*apiv1.Pod]status.Reasons)
-		schedulableOnNode := checkPodsSchedulableOnNode(context, unschedulablePods, nodeGroupId, nodeInfo)
+		schedulableOnNode := checkPodsSchedulableOnNode(ctx, context, unschedulablePods, nodeGroupId, nodeInfo)
 		for pod, err := range schedulableOnNode {
 			if err == nil {
 				podsPassing = append(podsPassing, pod)
@@ -672,6 +684,9 @@ groupsloop:
 }
 
 func executeScaleUp(ctx context.Context, context *autoscalingcontext.AutoscalingContext, clusterStateRegistry *clusterstate.ClusterStateRegistry, info nodegroupset.ScaleUpInfo, gpuType string, now time.Time) errors.AutoscalerError {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "executeScaleUp")
+	defer span.Finish()
+
 	klog.V(0).Infof("Scale-up: setting group %s size to %d", info.Group.Id(), info.NewSize)
 	context.LogRecorder.Eventf(apiv1.EventTypeNormal, "ScaledUpGroup",
 		"Scale-up: setting group %s size to %d", info.Group.Id(), info.NewSize)
@@ -693,6 +708,8 @@ func executeScaleUp(ctx context.Context, context *autoscalingcontext.Autoscaling
 }
 
 func applyScaleUpResourcesLimits(ctx context.Context, newNodes int, scaleUpResourcesLeft scaleUpResourcesLimits, nodeInfo *schedulernodeinfo.NodeInfo, nodeGroup cloudprovider.NodeGroup, resourceLimiter *cloudprovider.ResourceLimiter) (int, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "applyScaleUpResourcesLimits")
+	defer span.Finish()
 
 	delta, err := computeScaleUpResourcesDelta(ctx, nodeInfo, nodeGroup, resourceLimiter)
 	if err != nil {

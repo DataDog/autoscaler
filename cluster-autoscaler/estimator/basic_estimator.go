@@ -18,9 +18,11 @@ package estimator
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 
+	"github.com/opentracing/opentracing-go"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
@@ -98,7 +100,10 @@ func (basicEstimator *BasicNodeEstimator) GetDebug() string {
 }
 
 // Estimate estimates the number needed of nodes of the given shape.
-func (basicEstimator *BasicNodeEstimator) Estimate(pods []*apiv1.Pod, nodeInfo *schedulernodeinfo.NodeInfo, upcomingNodes []*schedulernodeinfo.NodeInfo) int {
+func (basicEstimator *BasicNodeEstimator) Estimate(ctx context.Context, pods []*apiv1.Pod, nodeInfo *schedulernodeinfo.NodeInfo, upcomingNodes []*schedulernodeinfo.NodeInfo) int {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Estimate")
+	defer span.Finish()
+
 	for _, pod := range pods {
 		basicEstimator.Add(pod)
 	}

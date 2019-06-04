@@ -27,8 +27,9 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/klog"
+
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 )
 
 var virtualMachineRE = regexp.MustCompile(`^azure://(?:.*)/providers/Microsoft.Compute/virtualMachines/(.+)$`)
@@ -42,6 +43,9 @@ type asgCache struct {
 }
 
 func newAsgCache(ctx context.Context) (*asgCache, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "newAsgCache")
+	defer span.Finish()
+
 	cache := &asgCache{
 		registeredAsgs:     make([]cloudprovider.NodeGroup, 0),
 		instanceToAsg:      make(map[azureRef]cloudprovider.NodeGroup),

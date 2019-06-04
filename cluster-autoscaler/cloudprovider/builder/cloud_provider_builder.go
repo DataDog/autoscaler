@@ -19,6 +19,8 @@ package builder
 import (
 	"context"
 
+	"github.com/opentracing/opentracing-go"
+
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	autoscalingcontext "k8s.io/autoscaler/cluster-autoscaler/context"
@@ -28,6 +30,9 @@ import (
 
 // NewCloudProvider builds a cloud provider from provided parameters.
 func NewCloudProvider(ctx context.Context, opts config.AutoscalingOptions) cloudprovider.CloudProvider {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "NewCloudProvider")
+	defer span.Finish()
+
 	klog.V(1).Infof("Building %s cloud provider.", opts.CloudProviderName)
 
 	do := cloudprovider.NodeGroupDiscoveryOptions{

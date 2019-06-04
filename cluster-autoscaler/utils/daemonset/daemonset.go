@@ -17,8 +17,11 @@ limitations under the License.
 package daemonset
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
+
+	"github.com/opentracing/opentracing-go"
 
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 
@@ -28,11 +31,14 @@ import (
 )
 
 // GetDaemonSetPodsForNode returns daemonset nodes for the given pod.
-func GetDaemonSetPodsForNode(nodeInfo *schedulernodeinfo.NodeInfo, daemonsets []*appsv1.DaemonSet, predicateChecker *simulator.PredicateChecker) []*apiv1.Pod {
+func GetDaemonSetPodsForNode(ctx context.Context, nodeInfo *schedulernodeinfo.NodeInfo, daemonsets []*appsv1.DaemonSet, predicateChecker *simulator.PredicateChecker) []*apiv1.Pod {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "GetDaemonSetPodsForNode")
+	defer span.Finish()
+
 	result := make([]*apiv1.Pod, 0)
 	for _, ds := range daemonsets {
 		pod := newPod(ds, nodeInfo.Node().Name)
-		if err := predicateChecker.CheckPredicates(pod, nil, nodeInfo); err == nil {
+		if err := predicateChecker.CheckPredicates(ctx, pod, nil, nodeInfo); err == nil {
 			result = append(result, pod)
 		}
 	}

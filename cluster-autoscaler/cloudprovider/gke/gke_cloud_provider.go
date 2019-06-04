@@ -474,6 +474,9 @@ func (mig *GkeMig) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.Nod
 
 // BuildGKE builds a new GKE cloud provider, manager etc.
 func BuildGKE(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "BuildGKE")
+	defer span.Finish()
+
 	if do.DiscoverySpecified() {
 		klog.Fatal("GKE gets nodegroup specification via API, command line specs are not allowed")
 	}

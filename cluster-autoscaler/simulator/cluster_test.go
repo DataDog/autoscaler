@@ -38,25 +38,25 @@ func TestUtilization(t *testing.T) {
 	node := BuildTestNode("node1", 2000, 2000000)
 	SetNodeReadyState(node, true, time.Time{})
 
-	utilInfo, err := CalculateUtilization(node, nodeInfo, false, false)
+	utilInfo, err := CalculateUtilization(ctx, node, nodeInfo, false, false)
 	assert.NoError(t, err)
 	assert.InEpsilon(t, 2.0/10, utilInfo.Utilization, 0.01)
 
 	node2 := BuildTestNode("node1", 2000, -1)
 
-	_, err = CalculateUtilization(node2, nodeInfo, false, false)
+	_, err = CalculateUtilization(ctx, node2, nodeInfo, false, false)
 	assert.Error(t, err)
 
 	daemonSetPod3 := BuildTestPod("p3", 100, 200000)
 	daemonSetPod3.OwnerReferences = GenerateOwnerReferences("ds", "DaemonSet", "apps/v1", "")
 
 	nodeInfo = schedulernodeinfo.NewNodeInfo(pod, pod, pod2, daemonSetPod3)
-	utilInfo, err = CalculateUtilization(node, nodeInfo, true, false)
+	utilInfo, err = CalculateUtilization(ctx, node, nodeInfo, true, false)
 	assert.NoError(t, err)
 	assert.InEpsilon(t, 2.0/10, utilInfo.Utilization, 0.01)
 
 	nodeInfo = schedulernodeinfo.NewNodeInfo(pod, pod2, daemonSetPod3)
-	utilInfo, err = CalculateUtilization(node, nodeInfo, false, false)
+	utilInfo, err = CalculateUtilization(ctx, node, nodeInfo, false, false)
 	assert.NoError(t, err)
 	assert.InEpsilon(t, 2.0/10, utilInfo.Utilization, 0.01)
 
@@ -66,12 +66,12 @@ func TestUtilization(t *testing.T) {
 	}
 
 	nodeInfo = schedulernodeinfo.NewNodeInfo(pod, pod, pod2, mirrorPod4)
-	utilInfo, err = CalculateUtilization(node, nodeInfo, false, true)
+	utilInfo, err = CalculateUtilization(ctx, node, nodeInfo, false, true)
 	assert.NoError(t, err)
 	assert.InEpsilon(t, 2.0/10, utilInfo.Utilization, 0.01)
 
 	nodeInfo = schedulernodeinfo.NewNodeInfo(pod, pod2, mirrorPod4)
-	utilInfo, err = CalculateUtilization(node, nodeInfo, false, false)
+	utilInfo, err = CalculateUtilization(ctx, node, nodeInfo, false, false)
 	assert.NoError(t, err)
 	assert.InEpsilon(t, 2.0/10, utilInfo.Utilization, 0.01)
 }
@@ -96,12 +96,7 @@ func TestFindPlaceAllOk(t *testing.T) {
 	newHints := make(map[string]string)
 	tracker := NewUsageTracker()
 
-	err := findPlaceFor(
-		"x",
-		[]*apiv1.Pod{new1, new2},
-		[]*apiv1.Node{node1, node2},
-		nodeInfos, NewTestPredicateChecker(),
-		oldHints, newHints, tracker, time.Now())
+	err := findPlaceFor(ctx, "x", []*apiv1.Pod{new1, new2}, []*apiv1.Node{node1, node2}, nodeInfos, NewTestPredicateChecker(), oldHints, newHints, tracker, time.Now())
 
 	assert.Len(t, newHints, 2)
 	assert.Contains(t, newHints, new1.Namespace+"/"+new1.Name)
@@ -135,12 +130,7 @@ func TestFindPlaceAllBas(t *testing.T) {
 	newHints := make(map[string]string)
 	tracker := NewUsageTracker()
 
-	err := findPlaceFor(
-		"nbad",
-		[]*apiv1.Pod{new1, new2, new3},
-		[]*apiv1.Node{nodebad, node1, node2},
-		nodeInfos, NewTestPredicateChecker(),
-		oldHints, newHints, tracker, time.Now())
+	err := findPlaceFor(ctx, "nbad", []*apiv1.Pod{new1, new2, new3}, []*apiv1.Node{nodebad, node1, node2}, nodeInfos, NewTestPredicateChecker(), oldHints, newHints, tracker, time.Now())
 
 	assert.Error(t, err)
 	assert.True(t, len(newHints) == 2)
@@ -164,15 +154,7 @@ func TestFindNone(t *testing.T) {
 	nodeInfos["n1"].SetNode(node1)
 	nodeInfos["n2"].SetNode(node2)
 
-	err := findPlaceFor(
-		"x",
-		[]*apiv1.Pod{},
-		[]*apiv1.Node{node1, node2},
-		nodeInfos, NewTestPredicateChecker(),
-		make(map[string]string),
-		make(map[string]string),
-		NewUsageTracker(),
-		time.Now())
+	err := findPlaceFor(ctx, "x", []*apiv1.Pod{}, []*apiv1.Node{node1, node2}, nodeInfos, NewTestPredicateChecker(), make(map[string]string), make(map[string]string), NewUsageTracker(), time.Now())
 	assert.NoError(t, err)
 }
 
@@ -310,10 +292,7 @@ func TestFindNodesToRemove(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		toRemove, unremovable, _, err := FindNodesToRemove(
-			test.candidates, test.allNodes, pods, nil,
-			predicateChecker, len(test.allNodes), true, map[string]string{},
-			tracker, time.Now(), []*policyv1.PodDisruptionBudget{})
+		toRemove, unremovable, _, err := FindNodesToRemove(ctx, test.candidates, test.allNodes, pods, nil, predicateChecker, len(test.allNodes), true, map[string]string{}, tracker, time.Now(), []*policyv1.PodDisruptionBudget{})
 		assert.NoError(t, err)
 		fmt.Printf("Test scenario: %s, found len(toRemove)=%v, expected len(test.toRemove)=%v\n", test.name, len(toRemove), len(test.toRemove))
 		assert.Equal(t, toRemove, test.toRemove)

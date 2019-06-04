@@ -295,16 +295,15 @@ func (a *StaticAutoscaler) RunOnce(ctx context.Context, currentTime time.Time) e
 
 	// Some unschedulable pods can be waiting for lower priority pods preemption so they have nominated node to run.
 	// Such pods don't require scale up but should be considered during scale down.
-	unschedulablePods, unschedulableWaitingForLowerPriorityPreemption := filterOutExpendableAndSplit(unschedulablePodsWithoutTPUs, a.ExpendablePodsPriorityCutoff)
+	unschedulablePods, unschedulableWaitingForLowerPriorityPreemption := filterOutExpendableAndSplit(ctx, unschedulablePodsWithoutTPUs, a.ExpendablePodsPriorityCutoff)
 
 	klog.V(4).Infof("Filtering out schedulables")
 	filterOutSchedulableStart := time.Now()
 	var unschedulablePodsToHelp []*apiv1.Pod
 	if a.FilterOutSchedulablePodsUsesPacking {
-		unschedulablePodsToHelp = filterOutSchedulableByPacking(unschedulablePods, readyNodes, allScheduled,
-			unschedulableWaitingForLowerPriorityPreemption, a.PredicateChecker, a.ExpendablePodsPriorityCutoff)
+		unschedulablePodsToHelp = filterOutSchedulableByPacking(ctx, unschedulablePods, readyNodes, allScheduled, unschedulableWaitingForLowerPriorityPreemption, a.PredicateChecker, a.ExpendablePodsPriorityCutoff)
 	} else {
-		unschedulablePodsToHelp = filterOutSchedulableSimple(unschedulablePods, readyNodes, allScheduled,
+		unschedulablePodsToHelp = filterOutSchedulableSimple(ctx, unschedulablePods, readyNodes, allScheduled,
 			unschedulableWaitingForLowerPriorityPreemption, a.PredicateChecker, a.ExpendablePodsPriorityCutoff)
 	}
 

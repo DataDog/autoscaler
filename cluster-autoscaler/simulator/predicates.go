@@ -17,9 +17,11 @@ limitations under the License.
 package simulator
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	"github.com/opentracing/opentracing-go"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -231,13 +233,16 @@ func (p *PredicateChecker) GetPredicateMetadata(pod *apiv1.Pod, nodeInfos map[st
 }
 
 // FitsAny checks if the given pod can be place on any of the given nodes.
-func (p *PredicateChecker) FitsAny(pod *apiv1.Pod, nodeInfos map[string]*schedulernodeinfo.NodeInfo) (string, error) {
+func (p *PredicateChecker) FitsAny(ctx context.Context, pod *apiv1.Pod, nodeInfos map[string]*schedulernodeinfo.NodeInfo) (string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "FitsAny")
+	defer span.Finish()
+
 	for name, nodeInfo := range nodeInfos {
 		// Be sure that the node is schedulable.
 		if nodeInfo.Node().Spec.Unschedulable {
 			continue
 		}
-		if err := p.CheckPredicates(pod, nil, nodeInfo); err == nil {
+		if err := p.CheckPredicates(ctx, pod, nil, nodeInfo); err == nil {
 			return name, nil
 		}
 	}
@@ -318,7 +323,10 @@ func (pe *PredicateError) PredicateName() string {
 // it was calculated using NodeInfo map representing different cluster state and the
 // performance gains of CheckPredicates won't always offset the cost of GetPredicateMetadata.
 // Alternatively you can pass nil as predicateMetadata.
-func (p *PredicateChecker) CheckPredicates(pod *apiv1.Pod, predicateMetadata predicates.PredicateMetadata, nodeInfo *schedulernodeinfo.NodeInfo) *PredicateError {
+func (p *PredicateChecker) CheckPredicates(ctx context.Context, pod *apiv1.Pod, predicateMetadata predicates.PredicateMetadata, nodeInfo *schedulernodeinfo.NodeInfo) *PredicateError {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfosForGroups")
+	defer span.Finish()
+
 	for _, predInfo := range p.predicates {
 		// Skip affinity predicate if it has been disabled.
 		if !p.enableAffinityPredicate && predInfo.name == affinityPredicateName {

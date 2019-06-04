@@ -28,9 +28,10 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/opentracing/opentracing-go"
 	"gopkg.in/gcfg.v1"
+	"k8s.io/klog"
+
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
-	"k8s.io/klog"
 )
 
 const (
@@ -101,6 +102,9 @@ func (c *Config) TrimSpace() {
 
 // CreateAzureManager creates Azure Manager object to work with Azure.
 func CreateAzureManager(ctx context.Context, configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions) (*AzureManager, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "CreateAzureManager")
+	defer span.Finish()
+
 	var err error
 	var cfg Config
 

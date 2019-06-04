@@ -55,7 +55,7 @@ func TestBinpackingEstimate(t *testing.T) {
 
 	nodeInfo := schedulernodeinfo.NewNodeInfo()
 	nodeInfo.SetNode(node)
-	estimate := estimator.Estimate(pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
+	estimate := estimator.Estimate(ctx, pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
 	assert.Equal(t, 5, estimate)
 }
 
@@ -84,7 +84,7 @@ func TestBinpackingEstimateComingNodes(t *testing.T) {
 
 	nodeInfo := schedulernodeinfo.NewNodeInfo()
 	nodeInfo.SetNode(node)
-	estimate := estimator.Estimate(pods, nodeInfo, []*schedulernodeinfo.NodeInfo{nodeInfo, nodeInfo})
+	estimate := estimator.Estimate(ctx, pods, nodeInfo, []*schedulernodeinfo.NodeInfo{nodeInfo, nodeInfo})
 	// 5 - 2 nodes that are coming.
 	assert.Equal(t, 3, estimate)
 }
@@ -118,6 +118,6 @@ func TestBinpackingEstimateWithPorts(t *testing.T) {
 
 	nodeInfo := schedulernodeinfo.NewNodeInfo()
 	nodeInfo.SetNode(node)
-	estimate := estimator.Estimate(pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
+	estimate := estimator.Estimate(ctx, pods, nodeInfo, []*schedulernodeinfo.NodeInfo{})
 	assert.Equal(t, 8, estimate)
 }

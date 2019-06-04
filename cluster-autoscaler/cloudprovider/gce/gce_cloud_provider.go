@@ -370,6 +370,9 @@ func (mig *gceMig) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.Nod
 
 // BuildGCE builds GCE cloud provider, manager etc.
 func BuildGCE(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "BuildGCE")
+	defer span.Finish()
+
 	var config io.ReadCloser
 	if opts.CloudConfig != "" {
 		var err error

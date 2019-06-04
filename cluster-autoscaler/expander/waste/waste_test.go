@@ -51,6 +51,9 @@ func (f *FakeNodeGroup) DeleteNodes(context.Context, []*apiv1.Node) error { retu
 func (f *FakeNodeGroup) Id() string    { return f.id }
 func (f *FakeNodeGroup) Debug() string { return f.id }
 func (f *FakeNodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Nodes")
+	defer span.Finish()
+
 	return []cloudprovider.Instance{}, nil
 }
 func (f *FakeNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {

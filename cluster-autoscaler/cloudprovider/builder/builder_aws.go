@@ -32,10 +32,13 @@ var AvailableCloudProviders = []string{
 // DefaultCloudProvider for AWS-only build is AWS.
 const DefaultCloudProvider = aws.ProviderName
 
-func buildCloudProvider(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+func buildCloudProvider(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "buildCloudProvider")
+	defer span.Finish()
+
 	switch opts.CloudProviderName {
 	case aws.ProviderName:
-		return aws.BuildAWS(opts, do, rl)
+		return aws.BuildAWS(ctx, opts, do, rl)
 	}
 
 	return nil

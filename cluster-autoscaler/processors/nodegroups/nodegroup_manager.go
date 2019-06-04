@@ -19,6 +19,8 @@ package nodegroups
 import (
 	"context"
 
+	"github.com/opentracing/opentracing-go"
+
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	autoscalingcontext "k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
@@ -50,11 +52,17 @@ type CreateNodeGroupResult struct {
 
 // CreateNodeGroup always returns internal error. It must not be called on NoOpNodeGroupManager.
 func (*NoOpNodeGroupManager) CreateNodeGroup(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodeGroup cloudprovider.NodeGroup) (CreateNodeGroupResult, errors.AutoscalerError) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "CreateNodeGroup")
+	defer span.Finish()
+
 	return CreateNodeGroupResult{}, errors.NewAutoscalerError(errors.InternalError, "not implemented")
 }
 
 // RemoveUnneededNodeGroups does nothing in NoOpNodeGroupManager
 func (*NoOpNodeGroupManager) RemoveUnneededNodeGroups(ctx context.Context, context *autoscalingcontext.AutoscalingContext) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "RemoveUnneededNodeGroups")
+	defer span.Finish()
+
 	return nil
 }
 

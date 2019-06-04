@@ -17,10 +17,12 @@ limitations under the License.
 package aws
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/opentracing/opentracing-go"
 	"k8s.io/klog"
 )
 
@@ -39,7 +41,10 @@ type autoScalingWrapper struct {
 	launchConfigurationInstanceTypeCache map[string]string
 }
 
-func (m autoScalingWrapper) getInstanceTypeByLCName(name string) (string, error) {
+func (m autoScalingWrapper) getInstanceTypeByLCName(ctx context.Context, name string) (string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getInstanceTypeByLCName")
+	defer span.Finish()
+
 	if instanceType, found := m.launchConfigurationInstanceTypeCache[name]; found {
 		return instanceType, nil
 	}
@@ -62,7 +67,10 @@ func (m autoScalingWrapper) getInstanceTypeByLCName(name string) (string, error)
 	return instanceType, nil
 }
 
-func (m *autoScalingWrapper) getAutoscalingGroupsByNames(names []string) ([]*autoscaling.Group, error) {
+func (m *autoScalingWrapper) getAutoscalingGroupsByNames(ctx context.Context, names []string) ([]*autoscaling.Group, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getAutoscalingGroupsByNames")
+	defer span.Finish()
+
 	if len(names) == 0 {
 		return nil, nil
 	}
@@ -94,7 +102,10 @@ func (m *autoScalingWrapper) getAutoscalingGroupsByNames(names []string) ([]*aut
 	return asgs, nil
 }
 
-func (m *autoScalingWrapper) getAutoscalingGroupNamesByTags(kvs map[string]string) ([]string, error) {
+func (m *autoScalingWrapper) getAutoscalingGroupNamesByTags(ctx context.Context, kvs map[string]string) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "getAutoscalingGroupNamesByTags")
+	defer span.Finish()
+
 	// DescribeTags does an OR query when multiple filters on different tags are
 	// specified. In other words, DescribeTags returns [asg1, asg1] for keys
 	// [t1, t2] when there's only one asg tagged both t1 and t2.
