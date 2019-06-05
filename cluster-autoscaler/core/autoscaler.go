@@ -20,6 +20,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	cloudBuilder "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/builder"
 	"k8s.io/autoscaler/cluster-autoscaler/clusterstate"
@@ -32,7 +34,6 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/backoff"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
-	"github.com/opentracing/opentracing-go"
 	kube_client "k8s.io/client-go/kubernetes"
 )
 
@@ -62,6 +63,7 @@ type Autoscaler interface {
 // NewAutoscaler creates an autoscaler of an appropriate type according to the parameters
 func NewAutoscaler(ctx context.Context, opts AutoscalerOptions) (Autoscaler, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NewAutoscaler")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	err := initializeDefaultOptions(ctx, &opts)
@@ -81,6 +83,7 @@ func NewAutoscaler(ctx context.Context, opts AutoscalerOptions) (Autoscaler, err
 // Initialize default options if not provided.
 func initializeDefaultOptions(ctx context.Context, opts *AutoscalerOptions) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "initializeDefaultOptions")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if opts.Processors == nil {

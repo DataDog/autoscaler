@@ -21,6 +21,7 @@ import (
 	"sort"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -40,6 +41,7 @@ type BalancingNodeGroupSetProcessor struct {
 func (b *BalancingNodeGroupSetProcessor) FindSimilarNodeGroups(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodeGroup cloudprovider.NodeGroup,
 	nodeInfosForGroups map[string]*schedulernodeinfo.NodeInfo) ([]cloudprovider.NodeGroup, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "BalancingNodeGroupSetProcessor.FindSimilarNodeGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := []cloudprovider.NodeGroup{}
@@ -83,6 +85,7 @@ func (b *BalancingNodeGroupSetProcessor) FindSimilarNodeGroups(ctx context.Conte
 // group already have MaxSize, empty list will be returned.
 func (b *BalancingNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(ctx context.Context, context *autoscalingcontext.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int) ([]ScaleUpInfo, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "BalancingNodeGroupSetProcessor.BalanceScaleUpBetweenGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(groups) == 0 {

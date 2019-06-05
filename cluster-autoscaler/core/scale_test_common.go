@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/clusterstate/utils"
@@ -106,6 +107,7 @@ type mockAutoprovisioningNodeGroupManager struct {
 
 func (p *mockAutoprovisioningNodeGroupManager) CreateNodeGroup(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodeGroup cloudprovider.NodeGroup) (nodegroups.CreateNodeGroupResult, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mockAutoprovisioningNodeGroupManager.CreateNodeGroup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	newNodeGroup, err := nodeGroup.Create(ctx)
@@ -119,6 +121,7 @@ func (p *mockAutoprovisioningNodeGroupManager) CreateNodeGroup(ctx context.Conte
 
 func (p *mockAutoprovisioningNodeGroupManager) RemoveUnneededNodeGroups(ctx context.Context, context *autoscalingcontext.AutoscalingContext) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mockAutoprovisioningNodeGroupManager.RemoveUnneededNodeGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if !context.AutoscalingOptions.NodeAutoprovisioningEnabled {
@@ -147,6 +150,7 @@ func (p *mockAutoprovisioningNodeGroupManager) RemoveUnneededNodeGroups(ctx cont
 
 func (p *mockAutoprovisioningNodeGroupManager) CleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mockAutoprovisioningNodeGroupManager.CleanUp")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 }
 
@@ -156,6 +160,7 @@ type mockAutoprovisioningNodeGroupListProcessor struct {
 
 func (p *mockAutoprovisioningNodeGroupListProcessor) Process(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo, unschedulablePods []*apiv1.Pod) ([]cloudprovider.NodeGroup, map[string]*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mockAutoprovisioningNodeGroupListProcessor.Process")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	machines, err := context.CloudProvider.GetAvailableMachineTypes(ctx)
@@ -175,6 +180,7 @@ func (p *mockAutoprovisioningNodeGroupListProcessor) Process(ctx context.Context
 
 func (p *mockAutoprovisioningNodeGroupListProcessor) CleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mockAutoprovisioningNodeGroupListProcessor.CleanUp")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 }
 

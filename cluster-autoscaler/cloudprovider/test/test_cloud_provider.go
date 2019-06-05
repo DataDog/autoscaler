@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -87,6 +88,7 @@ func NewTestAutoprovisioningCloudProvider(onScaleUp OnScaleUpFunc, onScaleDown O
 // Name returns name of the cloud provider.
 func (tcp *TestCloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.Name")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return "TestCloudProvider"
@@ -95,6 +97,7 @@ func (tcp *TestCloudProvider) Name(ctx context.Context) string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (tcp *TestCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.NodeGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	tcp.Lock()
@@ -119,6 +122,7 @@ func (tcp *TestCloudProvider) GetNodeGroup(name string) cloudprovider.NodeGroup 
 // occurred.
 func (tcp *TestCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.NodeGroupForNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	tcp.Lock()
@@ -138,6 +142,7 @@ func (tcp *TestCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (tcp *TestCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.Pricing")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -146,6 +151,7 @@ func (tcp *TestCloudProvider) Pricing(ctx context.Context) (cloudprovider.Pricin
 // GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
 func (tcp *TestCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.GetAvailableMachineTypes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return tcp.machineTypes, nil
@@ -156,6 +162,7 @@ func (tcp *TestCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]s
 func (tcp *TestCloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string,
 	taints []apiv1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.NewNodeGroup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return &TestNodeGroup{
@@ -226,6 +233,7 @@ func (tcp *TestCloudProvider) AddNode(nodeGroupId string, node *apiv1.Node) {
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (tcp *TestCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return tcp.resourceLimiter, nil
@@ -239,6 +247,7 @@ func (tcp *TestCloudProvider) SetResourceLimiter(resourceLimiter *cloudprovider.
 // Cleanup this is a function to close resources associated with the cloud provider
 func (tcp *TestCloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil
@@ -248,6 +257,7 @@ func (tcp *TestCloudProvider) Cleanup(ctx context.Context) error {
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (tcp *TestCloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestCloudProvider.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil
@@ -290,6 +300,7 @@ func (tng *TestNodeGroup) MinSize() int {
 // removed nodes are deleted completely)
 func (tng *TestNodeGroup) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.TargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	tng.Lock()
@@ -310,6 +321,7 @@ func (tng *TestNodeGroup) SetTargetSize(size int) {
 // node group size is updated.
 func (tng *TestNodeGroup) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.IncreaseSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	tng.Lock()
@@ -330,6 +342,7 @@ func (tng *TestNodeGroup) Exist() bool {
 // Create creates the node group on the cloud provider side.
 func (tng *TestNodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.Create")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if tng.Exist() {
@@ -343,6 +356,7 @@ func (tng *TestNodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup, 
 // This will be executed only for autoprovisioned node groups, once their size drops to 0.
 func (tng *TestNodeGroup) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	err := tng.cloudProvider.onNodeGroupDelete(tng.id)
@@ -357,6 +371,7 @@ func (tng *TestNodeGroup) Delete(ctx context.Context) error {
 // request for new nodes that have not been yet fulfilled. Delta should be negative.
 func (tng *TestNodeGroup) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.DecreaseTargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	tng.Lock()
@@ -371,6 +386,7 @@ func (tng *TestNodeGroup) DecreaseTargetSize(ctx context.Context, delta int) err
 // should wait until node group size is updated.
 func (tng *TestNodeGroup) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.DeleteNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	tng.Lock()
@@ -405,6 +421,7 @@ func (tng *TestNodeGroup) Debug() string {
 // Nodes returns a list of all nodes that belong to this node group.
 func (tng *TestNodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.Nodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	tng.Lock()
@@ -427,6 +444,7 @@ func (tng *TestNodeGroup) Autoprovisioned() bool {
 // TemplateNodeInfo returns a node template for this node group.
 func (tng *TestNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "TestNodeGroup.TemplateNodeInfo")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if tng.cloudProvider.machineTemplates == nil {

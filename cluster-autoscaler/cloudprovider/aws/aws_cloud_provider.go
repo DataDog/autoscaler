@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
@@ -59,6 +60,7 @@ func BuildAwsCloudProvider(awsManager *AwsManager, resourceLimiter *cloudprovide
 // Cleanup stops the go routine that is handling the current view of the ASGs in the form of a cache
 func (aws *awsCloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	aws.awsManager.Cleanup(ctx)
@@ -68,6 +70,7 @@ func (aws *awsCloudProvider) Cleanup(ctx context.Context) error {
 // Name returns name of the cloud provider.
 func (aws *awsCloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.Name")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return ProviderName
@@ -76,6 +79,7 @@ func (aws *awsCloudProvider) Name(ctx context.Context) string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (aws *awsCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.NodeGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	asgs := aws.awsManager.getAsgs()
@@ -93,6 +97,7 @@ func (aws *awsCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.Nod
 // NodeGroupForNode returns the node group for the given node.
 func (aws *awsCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.NodeGroupForNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(node.Spec.ProviderID) == 0 {
@@ -118,6 +123,7 @@ func (aws *awsCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.N
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (aws *awsCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.Pricing")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -126,6 +132,7 @@ func (aws *awsCloudProvider) Pricing(ctx context.Context) (cloudprovider.Pricing
 // GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
 func (aws *awsCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.GetAvailableMachineTypes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []string{}, nil
@@ -135,6 +142,7 @@ func (aws *awsCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]st
 // created on the cloud provider side. The node group is not returned by NodeGroups() until it is created.
 func (aws *awsCloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string, taints []apiv1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.NewNodeGroup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -143,6 +151,7 @@ func (aws *awsCloudProvider) NewNodeGroup(ctx context.Context, machineType strin
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (aws *awsCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return aws.resourceLimiter, nil
@@ -152,6 +161,7 @@ func (aws *awsCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprov
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (aws *awsCloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "awsCloudProvider.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return aws.awsManager.Refresh(ctx)
@@ -203,6 +213,7 @@ func (ng *AwsNodeGroup) MinSize() int {
 // number is different from the number of nodes registered in Kubernetes.
 func (ng *AwsNodeGroup) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.TargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return ng.asg.curSize, nil
@@ -217,6 +228,7 @@ func (ng *AwsNodeGroup) Exist() bool {
 // Create creates the node group on the cloud provider side.
 func (ng *AwsNodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.Create")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrAlreadyExist
@@ -231,6 +243,7 @@ func (ng *AwsNodeGroup) Autoprovisioned() bool {
 // This will be executed only for autoprovisioned node groups, once their size drops to 0.
 func (ng *AwsNodeGroup) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented
@@ -239,6 +252,7 @@ func (ng *AwsNodeGroup) Delete(ctx context.Context) error {
 // IncreaseSize increases Asg size
 func (ng *AwsNodeGroup) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.IncreaseSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta <= 0 {
@@ -258,6 +272,7 @@ func (ng *AwsNodeGroup) IncreaseSize(ctx context.Context, delta int) error {
 // when there is an option to just decrease the target.
 func (ng *AwsNodeGroup) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.DecreaseTargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta >= 0 {
@@ -295,6 +310,7 @@ func (ng *AwsNodeGroup) Belongs(node *apiv1.Node) (bool, error) {
 // DeleteNodes deletes the nodes from the group.
 func (ng *AwsNodeGroup) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.DeleteNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size := ng.asg.curSize
@@ -332,6 +348,7 @@ func (ng *AwsNodeGroup) Debug() string {
 // Nodes returns a list of all nodes that belong to this node group.
 func (ng *AwsNodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.Nodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	asgNodes, err := ng.awsManager.GetAsgNodes(ng.asg.AwsRef)
@@ -350,6 +367,7 @@ func (ng *AwsNodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, er
 // TemplateNodeInfo returns a node template for this node group.
 func (ng *AwsNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsNodeGroup.TemplateNodeInfo")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	template, err := ng.awsManager.getAsgTemplate(ctx, ng.asg)
@@ -370,6 +388,7 @@ func (ng *AwsNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinf
 // BuildAWS builds AWS cloud provider, manager etc.
 func BuildAWS(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "BuildAWS")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	var config io.ReadCloser

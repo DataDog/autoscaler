@@ -39,6 +39,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	gce "google.golang.org/api/compute/v1"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	gcfg "gopkg.in/gcfg.v1"
 	"k8s.io/klog"
 )
@@ -104,6 +105,7 @@ type gceManagerImpl struct {
 // CreateGceManager constructs GceManager object.
 func CreateGceManager(ctx context.Context, configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, regional bool) (GceManager, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CreateGceManager")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	// Create Google Compute Engine token.
@@ -193,6 +195,7 @@ func CreateGceManager(ctx context.Context, configReader io.Reader, discoveryOpts
 // Cleanup closes the channel to stop the goroutine refreshing cache.
 func (m *gceManagerImpl) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	close(m.interrupt)
@@ -202,6 +205,7 @@ func (m *gceManagerImpl) Cleanup(ctx context.Context) error {
 // registerMig registers mig in GceManager. Returns true if the node group didn't exist before or its config has changed.
 func (m *gceManagerImpl) registerMig(ctx context.Context, mig Mig) bool {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.registerMig")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	changed := m.cache.RegisterMig(mig)
@@ -219,6 +223,7 @@ func (m *gceManagerImpl) registerMig(ctx context.Context, mig Mig) bool {
 // GetMigSize gets MIG size.
 func (m *gceManagerImpl) GetMigSize(ctx context.Context, mig Mig) (int64, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.GetMigSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if migSize, found := m.cache.GetMigTargetSize(mig.GceRef()); found {
@@ -235,6 +240,7 @@ func (m *gceManagerImpl) GetMigSize(ctx context.Context, mig Mig) (int64, error)
 // SetMigSize sets MIG size.
 func (m *gceManagerImpl) SetMigSize(ctx context.Context, mig Mig, size int64) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.SetMigSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(0).Infof("Setting mig size %s to %d", mig.Id(), size)
@@ -245,6 +251,7 @@ func (m *gceManagerImpl) SetMigSize(ctx context.Context, mig Mig, size int64) er
 // DeleteInstances deletes the given instances. All instances must be controlled by the same MIG.
 func (m *gceManagerImpl) DeleteInstances(ctx context.Context, instances []*GceRef) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.DeleteInstances")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(instances) == 0 {
@@ -270,6 +277,7 @@ func (m *gceManagerImpl) DeleteInstances(ctx context.Context, instances []*GceRe
 // GetMigs returns list of registered MIGs.
 func (m *gceManagerImpl) GetMigs(ctx context.Context) []*MigInformation {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.GetMigs")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return m.cache.GetMigs(ctx)
@@ -278,6 +286,7 @@ func (m *gceManagerImpl) GetMigs(ctx context.Context) []*MigInformation {
 // GetMigForInstance returns MIG to which the given instance belongs.
 func (m *gceManagerImpl) GetMigForInstance(ctx context.Context, instance *GceRef) (Mig, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.GetMigForInstance")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return m.cache.GetMigForInstance(ctx, instance)
@@ -286,6 +295,7 @@ func (m *gceManagerImpl) GetMigForInstance(ctx context.Context, instance *GceRef
 // GetMigNodes returns mig nodes.
 func (m *gceManagerImpl) GetMigNodes(ctx context.Context, mig Mig) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.GetMigNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return m.GceService.FetchMigInstances(ctx, mig.GceRef())
@@ -294,6 +304,7 @@ func (m *gceManagerImpl) GetMigNodes(ctx context.Context, mig Mig) ([]cloudprovi
 // Refresh triggers refresh of cached resources.
 func (m *gceManagerImpl) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.cache.InvalidateTargetSizeCache()
@@ -305,6 +316,7 @@ func (m *gceManagerImpl) Refresh(ctx context.Context) error {
 
 func (m *gceManagerImpl) forceRefresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.forceRefresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.clearMachinesCache(ctx)
@@ -321,6 +333,7 @@ func (m *gceManagerImpl) forceRefresh(ctx context.Context) error {
 // during refreshes, even if they no longer exist in GCE.
 func (m *gceManagerImpl) fetchExplicitMigs(ctx context.Context, specs []string) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.fetchExplicitMigs")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	changed := false
@@ -343,6 +356,7 @@ func (m *gceManagerImpl) fetchExplicitMigs(ctx context.Context, specs []string) 
 
 func (m *gceManagerImpl) buildMigFromFlag(ctx context.Context, flag string) (Mig, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.buildMigFromFlag")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	s, err := dynamic.SpecFromString(flag, scaleToZeroSupported)
@@ -354,6 +368,7 @@ func (m *gceManagerImpl) buildMigFromFlag(ctx context.Context, flag string) (Mig
 
 func (m *gceManagerImpl) buildMigFromAutoCfg(ctx context.Context, link string, cfg cloudprovider.MIGAutoDiscoveryConfig) (Mig, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.buildMigFromAutoCfg")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	s := &dynamic.NodeGroupSpec{
@@ -367,6 +382,7 @@ func (m *gceManagerImpl) buildMigFromAutoCfg(ctx context.Context, link string, c
 
 func (m *gceManagerImpl) buildMigFromSpec(ctx context.Context, s *dynamic.NodeGroupSpec) (Mig, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.buildMigFromSpec")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if err := s.Validate(); err != nil {
@@ -393,6 +409,7 @@ func (m *gceManagerImpl) buildMigFromSpec(ctx context.Context, s *dynamic.NodeGr
 // they no longer exist in GCE.
 func (m *gceManagerImpl) fetchAutoMigs(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.fetchAutoMigs")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	exists := make(map[GceRef]bool)
@@ -439,6 +456,7 @@ func (m *gceManagerImpl) fetchAutoMigs(ctx context.Context) error {
 // GetResourceLimiter returns resource limiter from cache.
 func (m *gceManagerImpl) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return m.cache.GetResourceLimiter(ctx)
@@ -446,6 +464,7 @@ func (m *gceManagerImpl) GetResourceLimiter(ctx context.Context) (*cloudprovider
 
 func (m *gceManagerImpl) clearMachinesCache(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.clearMachinesCache")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if m.machinesCacheLastRefresh.Add(machinesRefreshInterval).After(time.Now()) {
@@ -485,6 +504,7 @@ func getProjectAndLocation(regional bool) (string, string, error) {
 
 func (m *gceManagerImpl) findMigsNamed(ctx context.Context, name *regexp.Regexp) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.findMigsNamed")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if m.regional {
@@ -495,6 +515,7 @@ func (m *gceManagerImpl) findMigsNamed(ctx context.Context, name *regexp.Regexp)
 
 func (m *gceManagerImpl) getZones(ctx context.Context, region string) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.getZones")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	zones, err := m.GceService.FetchZones(ctx, region)
@@ -506,6 +527,7 @@ func (m *gceManagerImpl) getZones(ctx context.Context, region string) ([]string,
 
 func (m *gceManagerImpl) findMigsInRegion(ctx context.Context, region string, name *regexp.Regexp) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.findMigsInRegion")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	links := make([]string, 0)
@@ -529,6 +551,7 @@ func (m *gceManagerImpl) findMigsInRegion(ctx context.Context, region string, na
 // GetMigTemplateNode constructs a node from GCE instance template of the given MIG.
 func (m *gceManagerImpl) GetMigTemplateNode(ctx context.Context, mig Mig) (*apiv1.Node, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.GetMigTemplateNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	template, err := m.GceService.FetchMigTemplate(ctx, mig.GceRef())
@@ -544,6 +567,7 @@ func (m *gceManagerImpl) GetMigTemplateNode(ctx context.Context, mig Mig) (*apiv
 
 func (m *gceManagerImpl) getCpuAndMemoryForMachineType(ctx context.Context, machineType string, zone string) (cpu int64, mem int64, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerImpl.getCpuAndMemoryForMachineType")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if strings.HasPrefix(machineType, "custom-") {

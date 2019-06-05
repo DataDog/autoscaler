@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/clusterstate"
 	autoscalingcontext "k8s.io/autoscaler/cluster-autoscaler/context"
@@ -119,6 +120,7 @@ const scaleDownLimitUnknown = math.MinInt64
 
 func computeScaleDownResourcesLeftLimits(ctx context.Context, nodes []*apiv1.Node, resourceLimiter *cloudprovider.ResourceLimiter, cp cloudprovider.CloudProvider, timestamp time.Time) scaleDownResourcesLimits {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleDownResourcesLeftLimits")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	totalCores, totalMem := calculateScaleDownCoresMemoryTotal(nodes, timestamp)
@@ -180,6 +182,7 @@ func calculateScaleDownCoresMemoryTotal(nodes []*apiv1.Node, timestamp time.Time
 
 func calculateScaleDownGpusTotal(ctx context.Context, nodes []*apiv1.Node, cp cloudprovider.CloudProvider, timestamp time.Time) (map[string]int64, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateScaleDownGpusTotal")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	type gpuInfo struct {
@@ -254,6 +257,7 @@ func copyScaleDownResourcesLimits(source scaleDownResourcesLimits) scaleDownReso
 
 func computeScaleDownResourcesDelta(ctx context.Context, node *apiv1.Node, nodeGroup cloudprovider.NodeGroup, resourcesWithLimits []string) (scaleDownResourcesDelta, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleDownResourcesDelta")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	resultScaleDownDelta := make(scaleDownResourcesDelta)
@@ -343,6 +347,7 @@ func NewScaleDown(context *autoscalingcontext.AutoscalingContext, clusterStateRe
 // CleanUp cleans up the internal ScaleDown state.
 func (sd *ScaleDown) CleanUp(ctx context.Context, timestamp time.Time) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleDown.CleanUp")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	sd.usageTracker.CleanUp(ctx, timestamp.Add(-sd.context.ScaleDownUnneededTime))
@@ -365,6 +370,7 @@ func (sd *ScaleDown) CleanUpUnneededNodes() {
 // managed by CA.
 func (sd *ScaleDown) UpdateUnneededNodes(ctx context.Context, nodes []*apiv1.Node, nodesToCheck []*apiv1.Node, pods []*apiv1.Pod, timestamp time.Time, pdbs []*policyv1.PodDisruptionBudget) errors.AutoscalerError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleDown.UpdateUnneededNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	currentlyUnneededNodes := make([]*apiv1.Node, 0)
@@ -540,6 +546,7 @@ func (sd *ScaleDown) updateUnremovableNodes(nodes []*apiv1.Node) {
 // down state and returning an appropriate error.
 func (sd *ScaleDown) markSimulationError(ctx context.Context, simulatorErr errors.AutoscalerError, timestamp time.Time) errors.AutoscalerError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleDown.markSimulationError")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.Errorf("Error while simulating node drains: %v", simulatorErr)
@@ -632,6 +639,7 @@ func (sd *ScaleDown) SoftTaintUnneededNodes(allNodes []*apiv1.Node) (errors []er
 // removed and error if such occurred.
 func (sd *ScaleDown) TryToScaleDown(ctx context.Context, allNodes []*apiv1.Node, pods []*apiv1.Pod, pdbs []*policyv1.PodDisruptionBudget, currentTime time.Time) (*status.ScaleDownStatus, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleDown.TryToScaleDown")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	scaleDownStatus := &status.ScaleDownStatus{NodeDeleteResults: sd.nodeDeleteStatus.DrainNodeDeleteResults()}
@@ -809,6 +817,7 @@ func updateScaleDownMetrics(scaleDownStart time.Time, findNodesToRemoveDuration 
 
 func getEmptyNodesNoResourceLimits(ctx context.Context, candidates []*apiv1.Node, pods []*apiv1.Pod, maxEmptyBulkDelete int, cloudProvider cloudprovider.CloudProvider) []*apiv1.Node {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getEmptyNodesNoResourceLimits")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return getEmptyNodes(ctx, candidates, pods, maxEmptyBulkDelete, noScaleDownLimitsOnResources(), cloudProvider)
@@ -818,6 +827,7 @@ func getEmptyNodesNoResourceLimits(ctx context.Context, candidates []*apiv1.Node
 // that can be deleted at the same time.
 func getEmptyNodes(ctx context.Context, candidates []*apiv1.Node, pods []*apiv1.Pod, maxEmptyBulkDelete int, resourcesLimits scaleDownResourcesLimits, cloudProvider cloudprovider.CloudProvider) []*apiv1.Node {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getEmptyNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	emptyNodes := simulator.FindEmptyNodesToRemove(candidates, pods)
@@ -874,6 +884,7 @@ func getEmptyNodes(ctx context.Context, candidates []*apiv1.Node, pods []*apiv1.
 
 func (sd *ScaleDown) scheduleDeleteEmptyNodes(ctx context.Context, emptyNodes []*apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder, readinessMap map[string]bool, candidateNodeGroups map[string]cloudprovider.NodeGroup, confirmation chan errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleDown.scheduleDeleteEmptyNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	for _, node := range emptyNodes {
@@ -938,6 +949,7 @@ func (sd *ScaleDown) waitForEmptyNodesDeleted(emptyNodes []*apiv1.Node, confirma
 
 func (sd *ScaleDown) deleteNode(ctx context.Context, node *apiv1.Node, pods []*apiv1.Pod) errors.AutoscalerError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleDown.deleteNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	deleteSuccessful := false
@@ -1078,6 +1090,7 @@ func drainNode(node *apiv1.Node, pods []*apiv1.Pod, client kube_client.Interface
 // the Kubernetes side.
 func deleteNodeFromCloudProvider(ctx context.Context, node *apiv1.Node, cloudProvider cloudprovider.CloudProvider, recorder kube_record.EventRecorder, registry *clusterstate.ClusterStateRegistry) errors.AutoscalerError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "deleteNodeFromCloudProvider")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodeGroup, err := cloudProvider.NodeGroupForNode(ctx, node)

@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -62,6 +63,7 @@ type NoOpNodeGroupSetProcessor struct {
 func (n *NoOpNodeGroupSetProcessor) FindSimilarNodeGroups(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodeGroup cloudprovider.NodeGroup,
 	nodeInfosForGroups map[string]*schedulernodeinfo.NodeInfo) ([]cloudprovider.NodeGroup, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpNodeGroupSetProcessor.FindSimilarNodeGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []cloudprovider.NodeGroup{}, nil
@@ -70,6 +72,7 @@ func (n *NoOpNodeGroupSetProcessor) FindSimilarNodeGroups(ctx context.Context, c
 // BalanceScaleUpBetweenGroups splits a scale-up between provided NodeGroups.
 func (n *NoOpNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(ctx context.Context, context *autoscalingcontext.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int) ([]ScaleUpInfo, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpNodeGroupSetProcessor.BalanceScaleUpBetweenGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []ScaleUpInfo{}, nil

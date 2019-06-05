@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
@@ -85,6 +86,7 @@ func BuildGkeCloudProvider(gkeManager GkeManager, resourceLimiter *cloudprovider
 // Cleanup cleans up all resources before the cloud provider is removed
 func (gke *GkeCloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gke.gkeManager.Cleanup(ctx)
@@ -94,6 +96,7 @@ func (gke *GkeCloudProvider) Cleanup(ctx context.Context) error {
 // Name returns name of the cloud provider.
 func (gke *GkeCloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.Name")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return ProviderNameGKE
@@ -102,6 +105,7 @@ func (gke *GkeCloudProvider) Name(ctx context.Context) string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (gke *GkeCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.NodeGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	migs := gke.gkeManager.GetMigs(ctx)
@@ -115,6 +119,7 @@ func (gke *GkeCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.Nod
 // NodeGroupForNode returns the node group for the given node.
 func (gke *GkeCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.NodeGroupForNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ref, err := gce.GceRefFromProviderId(node.Spec.ProviderID)
@@ -128,6 +133,7 @@ func (gke *GkeCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.N
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (gke *GkeCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.Pricing")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return &gce.GcePriceModel{}, nil
@@ -136,6 +142,7 @@ func (gke *GkeCloudProvider) Pricing(ctx context.Context) (cloudprovider.Pricing
 // GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
 func (gke *GkeCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.GetAvailableMachineTypes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return autoprovisionedMachineTypes, nil
@@ -146,6 +153,7 @@ func (gke *GkeCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]st
 func (gke *GkeCloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string,
 	taints []apiv1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.NewNodeGroup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodePoolName := fmt.Sprintf("%s-%s-%d", nodeAutoprovisioningPrefix, machineType, time.Now().Unix())
@@ -212,6 +220,7 @@ func (gke *GkeCloudProvider) NewNodeGroup(ctx context.Context, machineType strin
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (gke *GkeCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	resourceLimiter, err := gke.gkeManager.GetResourceLimiter(ctx)
@@ -228,6 +237,7 @@ func (gke *GkeCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprov
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (gke *GkeCloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeCloudProvider.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return gke.gkeManager.Refresh(ctx)
@@ -293,6 +303,7 @@ func (mig *GkeMig) MinSize() int {
 // number is different from the number of nodes registered in Kubernetes.
 func (mig *GkeMig) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.TargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if !mig.exist {
@@ -305,6 +316,7 @@ func (mig *GkeMig) TargetSize(ctx context.Context) (int, error) {
 // IncreaseSize increases Mig size
 func (mig *GkeMig) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.IncreaseSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta <= 0 {
@@ -325,6 +337,7 @@ func (mig *GkeMig) IncreaseSize(ctx context.Context, delta int) error {
 // request for new nodes that have not been yet fulfilled. Delta should be negative.
 func (mig *GkeMig) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.DecreaseTargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta >= 0 {
@@ -348,6 +361,7 @@ func (mig *GkeMig) DecreaseTargetSize(ctx context.Context, delta int) error {
 // Belongs returns true if the given node belongs to the NodeGroup.
 func (mig *GkeMig) Belongs(ctx context.Context, node *apiv1.Node) (bool, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.Belongs")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ref, err := gce.GceRefFromProviderId(node.Spec.ProviderID)
@@ -370,6 +384,7 @@ func (mig *GkeMig) Belongs(ctx context.Context, node *apiv1.Node) (bool, error) 
 // DeleteNodes deletes the nodes from the group.
 func (mig *GkeMig) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.DeleteNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := mig.gkeManager.GetMigSize(ctx, mig)
@@ -411,6 +426,7 @@ func (mig *GkeMig) Debug() string {
 // Nodes returns a list of all nodes that belong to this node group.
 func (mig *GkeMig) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.Nodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	instanceNames, err := mig.gkeManager.GetMigNodes(ctx, mig)
@@ -433,6 +449,7 @@ func (mig *GkeMig) Exist() bool {
 // Create creates the node group on the cloud provider side.
 func (mig *GkeMig) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.Create")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if !mig.exist && mig.autoprovisioned {
@@ -445,6 +462,7 @@ func (mig *GkeMig) Create(ctx context.Context) (cloudprovider.NodeGroup, error) 
 // This will be executed only for autoprovisioned node groups, once their size drops to 0.
 func (mig *GkeMig) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if mig.exist && mig.autoprovisioned {
@@ -461,6 +479,7 @@ func (mig *GkeMig) Autoprovisioned() bool {
 // TemplateNodeInfo returns a node template for this node group.
 func (mig *GkeMig) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GkeMig.TemplateNodeInfo")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	node, err := mig.gkeManager.GetMigTemplateNode(ctx, mig)
@@ -475,6 +494,7 @@ func (mig *GkeMig) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.Nod
 // BuildGKE builds a new GKE cloud provider, manager etc.
 func BuildGKE(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "BuildGKE")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if do.DiscoverySpecified() {

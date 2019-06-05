@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	autoscalingcontext "k8s.io/autoscaler/cluster-autoscaler/context"
 )
@@ -35,6 +36,7 @@ type EventingScaleUpStatusProcessor struct{}
 // relevant events for pods depending on their post scale-up status.
 func (p *EventingScaleUpStatusProcessor) Process(ctx context.Context, context *autoscalingcontext.AutoscalingContext, status *ScaleUpStatus) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "EventingScaleUpStatusProcessor.Process")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	for _, noScaleUpInfo := range status.PodsRemainUnschedulable {
@@ -52,6 +54,7 @@ func (p *EventingScaleUpStatusProcessor) Process(ctx context.Context, context *a
 // CleanUp cleans up the processor's internal structures.
 func (p *EventingScaleUpStatusProcessor) CleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "EventingScaleUpStatusProcessor.CleanUp")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/klog"
 )
 
@@ -43,6 +44,7 @@ type autoScalingWrapper struct {
 
 func (m autoScalingWrapper) getInstanceTypeByLCName(ctx context.Context, name string) (string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getInstanceTypeByLCName")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if instanceType, found := m.launchConfigurationInstanceTypeCache[name]; found {
@@ -69,6 +71,7 @@ func (m autoScalingWrapper) getInstanceTypeByLCName(ctx context.Context, name st
 
 func (m *autoScalingWrapper) getAutoscalingGroupsByNames(ctx context.Context, names []string) ([]*autoscaling.Group, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getAutoscalingGroupsByNames")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(names) == 0 {
@@ -104,6 +107,7 @@ func (m *autoScalingWrapper) getAutoscalingGroupsByNames(ctx context.Context, na
 
 func (m *autoScalingWrapper) getAutoscalingGroupNamesByTags(ctx context.Context, kvs map[string]string) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getAutoscalingGroupNamesByTags")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	// DescribeTags does an OR query when multiple filters on different tags are

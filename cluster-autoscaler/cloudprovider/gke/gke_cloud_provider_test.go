@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/gce"
@@ -47,6 +48,7 @@ type gkeManagerMock struct {
 
 func (m *gkeManagerMock) GetMigSize(ctx context.Context, mig gce.Mig) (int64, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.GetMigSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(mig)
@@ -55,6 +57,7 @@ func (m *gkeManagerMock) GetMigSize(ctx context.Context, mig gce.Mig) (int64, er
 
 func (m *gkeManagerMock) SetMigSize(ctx context.Context, mig gce.Mig, size int64) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.SetMigSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(mig, size)
@@ -63,6 +66,7 @@ func (m *gkeManagerMock) SetMigSize(ctx context.Context, mig gce.Mig, size int64
 
 func (m *gkeManagerMock) DeleteInstances(ctx context.Context, instances []*gce.GceRef) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.DeleteInstances")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(instances)
@@ -71,6 +75,7 @@ func (m *gkeManagerMock) DeleteInstances(ctx context.Context, instances []*gce.G
 
 func (m *gkeManagerMock) GetMigForInstance(ctx context.Context, instance *gce.GceRef) (gce.Mig, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.GetMigForInstance")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(instance)
@@ -79,6 +84,7 @@ func (m *gkeManagerMock) GetMigForInstance(ctx context.Context, instance *gce.Gc
 
 func (m *gkeManagerMock) GetMigNodes(ctx context.Context, mig gce.Mig) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.GetMigNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(mig)
@@ -87,6 +93,7 @@ func (m *gkeManagerMock) GetMigNodes(ctx context.Context, mig gce.Mig) ([]string
 
 func (m *gkeManagerMock) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called()
@@ -95,6 +102,7 @@ func (m *gkeManagerMock) Refresh(ctx context.Context) error {
 
 func (m *gkeManagerMock) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called()
@@ -108,6 +116,7 @@ func (m *gkeManagerMock) GetMigs(context.Context) []*gce.MigInformation {
 
 func (m *gkeManagerMock) CreateNodePool(ctx context.Context, mig *GkeMig) (*GkeMig, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.CreateNodePool")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(mig)
@@ -116,6 +125,7 @@ func (m *gkeManagerMock) CreateNodePool(ctx context.Context, mig *GkeMig) (*GkeM
 
 func (m *gkeManagerMock) DeleteNodePool(ctx context.Context, toBeRemoved *GkeMig) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.DeleteNodePool")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(toBeRemoved)
@@ -144,6 +154,7 @@ func (m *gkeManagerMock) getMode() GcpCloudProviderMode {
 
 func (m *gkeManagerMock) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called()
@@ -157,6 +168,7 @@ func (m *gkeManagerMock) findMigsNamed(name *regexp.Regexp) ([]string, error) {
 
 func (m *gkeManagerMock) GetMigTemplateNode(ctx context.Context, mig *GkeMig) (*apiv1.Node, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gkeManagerMock.GetMigTemplateNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(mig)

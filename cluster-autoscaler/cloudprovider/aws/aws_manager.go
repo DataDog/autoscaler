@@ -36,6 +36,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"gopkg.in/gcfg.v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -166,6 +167,7 @@ func getRegion(cfg ...*aws.Config) string {
 //	os.Setenv("AWS_REGION", "fanghorn")
 func createAWSManagerInternal(ctx context.Context, configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, autoScalingService *autoScalingWrapper, ec2Service *ec2Wrapper) (*AwsManager, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "createAWSManagerInternal")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	cfg, err := readAWSCloudConfig(configReader)
@@ -234,6 +236,7 @@ func readAWSCloudConfig(config io.Reader) (*provider_aws.CloudConfig, error) {
 // CreateAwsManager constructs awsManager object.
 func CreateAwsManager(ctx context.Context, configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions) (*AwsManager, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CreateAwsManager")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return createAWSManagerInternal(ctx, configReader, discoveryOpts, nil, nil)
@@ -243,6 +246,7 @@ func CreateAwsManager(ctx context.Context, configReader io.Reader, discoveryOpts
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (m *AwsManager) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsManager.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if m.lastRefresh.Add(refreshInterval).After(time.Now()) {
@@ -253,6 +257,7 @@ func (m *AwsManager) Refresh(ctx context.Context) error {
 
 func (m *AwsManager) forceRefresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "forceRefresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if err := m.asgCache.regenerate(ctx); err != nil {
@@ -272,6 +277,7 @@ func (m *AwsManager) GetAsgForInstance(instance AwsInstanceRef) *asg {
 // Cleanup the ASG cache.
 func (m *AwsManager) Cleanup(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AwsManager.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.asgCache.Cleanup(ctx)
@@ -284,6 +290,7 @@ func (m *AwsManager) getAsgs() []*asg {
 // SetAsgSize sets ASG size.
 func (m *AwsManager) SetAsgSize(ctx context.Context, asg *asg, size int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SetAsgSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return m.asgCache.SetAsgSize(ctx, asg, size)
@@ -292,6 +299,7 @@ func (m *AwsManager) SetAsgSize(ctx context.Context, asg *asg, size int) error {
 // DeleteInstances deletes the given instances. All instances must be controlled by the same ASG.
 func (m *AwsManager) DeleteInstances(ctx context.Context, instances []*AwsInstanceRef) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "DeleteInstances")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return m.asgCache.DeleteInstances(ctx, instances)
@@ -304,6 +312,7 @@ func (m *AwsManager) GetAsgNodes(ref AwsRef) ([]AwsInstanceRef, error) {
 
 func (m *AwsManager) getAsgTemplate(ctx context.Context, asg *asg) (*asgTemplate, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getAsgTemplate")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(asg.AvailabilityZones) < 1 {
@@ -335,6 +344,7 @@ func (m *AwsManager) getAsgTemplate(ctx context.Context, asg *asg) (*asgTemplate
 
 func (m *AwsManager) buildInstanceType(ctx context.Context, asg *asg) (string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "buildInstanceType")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if asg.LaunchConfigurationName != "" {

@@ -23,6 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 )
 
 type ec2I interface {
@@ -35,6 +36,7 @@ type ec2Wrapper struct {
 
 func (m ec2Wrapper) getInstanceTypeByLT(ctx context.Context, name string, version string) (string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getInstanceTypeByLT")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	params := &ec2.DescribeLaunchTemplateVersionsInput{

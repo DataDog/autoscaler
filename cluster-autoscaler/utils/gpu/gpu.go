@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -101,6 +102,7 @@ func FilterOutNodesWithUnreadyGpus(allNodes, readyNodes []*apiv1.Node) ([]*apiv1
 // NOTE: current implementation is GKE/GCE-specific
 func GetGpuTypeForMetrics(ctx context.Context, node *apiv1.Node, nodeGroup cloudprovider.NodeGroup) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GetGpuTypeForMetrics")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	// we use the GKE label if there is one
@@ -192,6 +194,7 @@ func PodRequestsGpu(pod *apiv1.Pod) bool {
 // ready to use and visible in kubernetes.
 func GetNodeTargetGpus(ctx context.Context, node *apiv1.Node, nodeGroup cloudprovider.NodeGroup) (gpuType string, gpuCount int64, error errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GetNodeTargetGpus")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gpuLabel, found := node.Labels[GPULabel]

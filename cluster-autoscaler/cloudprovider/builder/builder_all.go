@@ -22,6 +22,7 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/alicloud"
@@ -48,6 +49,7 @@ const DefaultCloudProvider = gce.ProviderNameGCE
 
 func buildCloudProvider(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "buildCloudProvider")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	switch opts.CloudProviderName {

@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroups"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/pods"
@@ -75,6 +76,7 @@ func TestProcessors() *AutoscalingProcessors {
 // CleanUp cleans up the processors' internal structures.
 func (ap *AutoscalingProcessors) CleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AutoscalingProcessors.CleanUp")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ap.PodListProcessor.CleanUp(ctx)

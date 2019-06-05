@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 
 	gce "google.golang.org/api/compute/v1"
@@ -107,6 +108,7 @@ func NewCustomAutoscalingGceClientV1(client *http.Client, projectId, serverUrl s
 
 func (client *autoscalingGceClientV1) FetchMachineType(ctx context.Context, zone, machineType string) (*gce.MachineType, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchMachineType")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	registerRequest("machine_types", "get")
@@ -115,6 +117,7 @@ func (client *autoscalingGceClientV1) FetchMachineType(ctx context.Context, zone
 
 func (client *autoscalingGceClientV1) FetchMachineTypes(ctx context.Context, zone string) ([]*gce.MachineType, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchMachineTypes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	registerRequest("machine_types", "list")
@@ -127,6 +130,7 @@ func (client *autoscalingGceClientV1) FetchMachineTypes(ctx context.Context, zon
 
 func (client *autoscalingGceClientV1) FetchMigTargetSize(ctx context.Context, migRef GceRef) (int64, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchMigTargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	registerRequest("instance_group_managers", "get")
@@ -139,6 +143,7 @@ func (client *autoscalingGceClientV1) FetchMigTargetSize(ctx context.Context, mi
 
 func (client *autoscalingGceClientV1) FetchMigBasename(ctx context.Context, migRef GceRef) (string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchMigBasename")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	registerRequest("instance_group_managers", "get")
@@ -151,6 +156,7 @@ func (client *autoscalingGceClientV1) FetchMigBasename(ctx context.Context, migR
 
 func (client *autoscalingGceClientV1) ResizeMig(ctx context.Context, migRef GceRef, size int64) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.ResizeMig")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	registerRequest("instance_group_managers", "resize")
@@ -163,6 +169,7 @@ func (client *autoscalingGceClientV1) ResizeMig(ctx context.Context, migRef GceR
 
 func (client *autoscalingGceClientV1) waitForOp(ctx context.Context, operation *gce.Operation, project, zone string) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.waitForOp")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	for start := time.Now(); time.Since(start) < client.operationWaitTimeout; time.Sleep(client.operationPollInterval) {
@@ -182,6 +189,7 @@ func (client *autoscalingGceClientV1) waitForOp(ctx context.Context, operation *
 
 func (client *autoscalingGceClientV1) DeleteInstances(ctx context.Context, migRef GceRef, instances []*GceRef) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.DeleteInstances")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	req := gce.InstanceGroupManagersDeleteInstancesRequest{
@@ -200,6 +208,7 @@ func (client *autoscalingGceClientV1) DeleteInstances(ctx context.Context, migRe
 
 func (client *autoscalingGceClientV1) FetchMigInstances(ctx context.Context, migRef GceRef) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchMigInstances")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gceInstances, err := client.gceService.InstanceGroupManagers.ListManagedInstances(migRef.Project, migRef.Zone, migRef.Name).Do()
@@ -276,6 +285,7 @@ func isQuotaExceededErrorCoce(errorCode string) bool {
 
 func (client *autoscalingGceClientV1) FetchZones(ctx context.Context, region string) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchZones")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	registerRequest("regions", "get")
@@ -292,6 +302,7 @@ func (client *autoscalingGceClientV1) FetchZones(ctx context.Context, region str
 
 func (client *autoscalingGceClientV1) FetchMigTemplate(ctx context.Context, migRef GceRef) (*gce.InstanceTemplate, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchMigTemplate")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	registerRequest("instance_group_managers", "get")
@@ -310,6 +321,7 @@ func (client *autoscalingGceClientV1) FetchMigTemplate(ctx context.Context, migR
 
 func (client *autoscalingGceClientV1) FetchMigsWithName(ctx context.Context, zone string, name *regexp.Regexp) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "autoscalingGceClientV1.FetchMigsWithName")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	filter := fmt.Sprintf("name eq %s", name)

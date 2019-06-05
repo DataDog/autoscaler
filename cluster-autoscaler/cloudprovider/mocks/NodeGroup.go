@@ -19,6 +19,7 @@ package mocks
 import (
 	"context"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	cache "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	cloudprovider "k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -51,6 +52,7 @@ func (_m *NodeGroup) Autoprovisioned() bool {
 // Create provides a mock function with given fields:
 func (_m *NodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Create")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -91,6 +93,7 @@ func (_m *NodeGroup) Debug() string {
 // DecreaseTargetSize provides a mock function with given fields: delta
 func (_m *NodeGroup) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.DecreaseTargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called(delta)
@@ -108,6 +111,7 @@ func (_m *NodeGroup) DecreaseTargetSize(ctx context.Context, delta int) error {
 // Delete provides a mock function with given fields:
 func (_m *NodeGroup) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -125,6 +129,7 @@ func (_m *NodeGroup) Delete(ctx context.Context) error {
 // DeleteNodes provides a mock function with given fields: _a0
 func (_m *NodeGroup) DeleteNodes(ctx context.Context, _a0 []*v1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.DeleteNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called(_a0)
@@ -170,6 +175,7 @@ func (_m *NodeGroup) Id() string {
 // IncreaseSize provides a mock function with given fields: delta
 func (_m *NodeGroup) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.IncreaseSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called(delta)
@@ -215,6 +221,7 @@ func (_m *NodeGroup) MinSize() int {
 // Nodes provides a mock function with given fields:
 func (_m *NodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Nodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -241,6 +248,7 @@ func (_m *NodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error
 // TargetSize provides a mock function with given fields:
 func (_m *NodeGroup) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -265,6 +273,7 @@ func (_m *NodeGroup) TargetSize(ctx context.Context) (int, error) {
 // TemplateNodeInfo provides a mock function with given fields:
 func (_m *NodeGroup) TemplateNodeInfo(ctx context.Context) (*cache.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TemplateNodeInfo")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()

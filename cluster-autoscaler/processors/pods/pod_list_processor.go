@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	autoscalingcontext "k8s.io/autoscaler/cluster-autoscaler/context"
 )
@@ -42,6 +43,7 @@ func NewDefaultPodListProcessor() PodListProcessor {
 // Process processes lists of unschedulable and scheduled pods before scaling of the cluster.
 func (p *NoOpPodListProcessor) Process(ctx context.Context, context *autoscalingcontext.AutoscalingContext, unschedulablePods []*apiv1.Pod, allScheduled []*apiv1.Pod, nodes []*apiv1.Node) ([]*apiv1.Pod, []*apiv1.Pod, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpPodListProcessor.Process")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return unschedulablePods, allScheduled, nil
@@ -50,5 +52,6 @@ func (p *NoOpPodListProcessor) Process(ctx context.Context, context *autoscaling
 // CleanUp cleans up the processor's internal structures.
 func (p *NoOpPodListProcessor) CleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpPodListProcessor.CleanUp")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 }

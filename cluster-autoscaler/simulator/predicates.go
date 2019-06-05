@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -235,6 +236,7 @@ func (p *PredicateChecker) GetPredicateMetadata(pod *apiv1.Pod, nodeInfos map[st
 // FitsAny checks if the given pod can be place on any of the given nodes.
 func (p *PredicateChecker) FitsAny(ctx context.Context, pod *apiv1.Pod, nodeInfos map[string]*schedulernodeinfo.NodeInfo) (string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "FitsAny")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	for name, nodeInfo := range nodeInfos {
@@ -325,6 +327,8 @@ func (pe *PredicateError) PredicateName() string {
 // Alternatively you can pass nil as predicateMetadata.
 func (p *PredicateChecker) CheckPredicates(ctx context.Context, pod *apiv1.Pod, predicateMetadata predicates.PredicateMetadata, nodeInfo *schedulernodeinfo.NodeInfo) *PredicateError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfosForGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	for _, predInfo := range p.predicates {

@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
 
@@ -96,6 +97,7 @@ func (m *asgCache) parseExplicitAsgs(ctx context.Context, specs []string) error 
 // Register ASG. Returns the registered ASG.
 func (m *asgCache) register(ctx context.Context, asg *asg) *asg {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "register")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	for i := range m.registeredAsgs {
@@ -134,6 +136,7 @@ func (m *asgCache) register(ctx context.Context, asg *asg) *asg {
 // Unregister ASG. Returns the unregistered ASG.
 func (m *asgCache) unregister(ctx context.Context, a *asg) *asg {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "unregister")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	updated := make([]*asg, 0, len(m.registeredAsgs))
@@ -201,6 +204,7 @@ func (m *asgCache) InstancesByAsg(ref AwsRef) ([]AwsInstanceRef, error) {
 
 func (m *asgCache) SetAsgSize(ctx context.Context, asg *asg, size int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SetAsgSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -226,6 +230,7 @@ func (m *asgCache) SetAsgSize(ctx context.Context, asg *asg, size int) error {
 // DeleteInstances deletes the given instances. All instances must be controlled by the same ASG.
 func (m *asgCache) DeleteInstances(ctx context.Context, instances []*AwsInstanceRef) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "DeleteInstances")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -275,6 +280,7 @@ func (m *asgCache) DeleteInstances(ctx context.Context, instances []*AwsInstance
 // they no longer exist in AWS.
 func (m *asgCache) fetchAutoAsgNames(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "fetchAutoAsgNames")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	groupNames := make([]string, 0)
@@ -293,6 +299,7 @@ func (m *asgCache) fetchAutoAsgNames(ctx context.Context) ([]string, error) {
 
 func (m *asgCache) buildAsgNames(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "buildAsgNames")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	// Collect explicitly specified names
@@ -325,6 +332,7 @@ func (m *asgCache) buildAsgNames(ctx context.Context) ([]string, error) {
 // regenerate the cached view of explicitly configured and auto-discovered ASGs
 func (m *asgCache) regenerate(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "regenerate")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -402,7 +410,7 @@ func (m *asgCache) buildAsgFromAWS(g *autoscaling.Group) (*asg, error) {
 		LaunchConfigurationName: aws.StringValue(g.LaunchConfigurationName),
 		LaunchTemplateName:      launchTemplateName,
 		LaunchTemplateVersion:   launchTemplateVersion,
-		Tags:                    g.Tags,
+		Tags: g.Tags,
 	}
 
 	return asg, nil
@@ -427,6 +435,7 @@ func (m *asgCache) buildInstanceRefFromAWS(instance *autoscaling.Instance) AwsIn
 // Cleanup closes the channel to signal the go routine to stop that is handling the cache
 func (m *asgCache) Cleanup(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "asgCache.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	close(m.interrupt)

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
@@ -52,12 +53,14 @@ func (f *FakeNodeGroup) Id() string    { return f.id }
 func (f *FakeNodeGroup) Debug() string { return f.id }
 func (f *FakeNodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Nodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []cloudprovider.Instance{}, nil
 }
 func (f *FakeNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "FakeNodeGroup.TemplateNodeInfo")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -65,6 +68,7 @@ func (f *FakeNodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinf
 func (f *FakeNodeGroup) Exist() bool { return true }
 func (f *FakeNodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "FakeNodeGroup.Create")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrAlreadyExist

@@ -28,6 +28,7 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/mock"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 )
 
 const (
@@ -44,6 +45,7 @@ type VirtualMachineScaleSetsClientMock struct {
 // Get gets the VirtualMachineScaleSet by vmScaleSetName.
 func (client *VirtualMachineScaleSetsClientMock) Get(ctx context.Context, resourceGroupName string, vmScaleSetName string) (result compute.VirtualMachineScaleSet, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachineScaleSetsClientMock.Get")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	capacity := int64(2)
@@ -60,6 +62,7 @@ func (client *VirtualMachineScaleSetsClientMock) Get(ctx context.Context, resour
 // CreateOrUpdate creates or updates the VirtualMachineScaleSet.
 func (client *VirtualMachineScaleSetsClientMock) CreateOrUpdate(ctx context.Context, resourceGroupName string, VMScaleSetName string, parameters compute.VirtualMachineScaleSet) (resp *http.Response, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachineScaleSetsClientMock.CreateOrUpdate")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	client.mutex.Lock()
@@ -78,6 +81,7 @@ func (client *VirtualMachineScaleSetsClientMock) CreateOrUpdate(ctx context.Cont
 // DeleteInstances deletes a set of instances for specified VirtualMachineScaleSet.
 func (client *VirtualMachineScaleSetsClientMock) DeleteInstances(ctx context.Context, resourceGroupName string, vmScaleSetName string, vmInstanceIDs compute.VirtualMachineScaleSetVMInstanceRequiredIDs) (resp *http.Response, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachineScaleSetsClientMock.DeleteInstances")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := client.Called(resourceGroupName, vmScaleSetName, vmInstanceIDs)
@@ -87,6 +91,7 @@ func (client *VirtualMachineScaleSetsClientMock) DeleteInstances(ctx context.Con
 // List gets a list of VirtualMachineScaleSets.
 func (client *VirtualMachineScaleSetsClientMock) List(ctx context.Context, resourceGroupName string) (result []compute.VirtualMachineScaleSet, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachineScaleSetsClientMock.List")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	client.mutex.Lock()
@@ -110,6 +115,7 @@ type VirtualMachineScaleSetVMsClientMock struct {
 // Get gets a VirtualMachineScaleSetVM by VMScaleSetName and instanceID.
 func (m *VirtualMachineScaleSetVMsClientMock) Get(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string) (result compute.VirtualMachineScaleSetVM, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachineScaleSetVMsClientMock.Get")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ID := fakeVirtualMachineScaleSetVMID
@@ -127,6 +133,7 @@ func (m *VirtualMachineScaleSetVMsClientMock) Get(ctx context.Context, resourceG
 // List gets a list of VirtualMachineScaleSetVMs.
 func (m *VirtualMachineScaleSetVMsClientMock) List(ctx context.Context, resourceGroupName string, virtualMachineScaleSetName string, filter string, selectParameter string, expand string) (result []compute.VirtualMachineScaleSetVM, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachineScaleSetVMsClientMock.List")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ID := fakeVirtualMachineScaleSetVMID
@@ -155,6 +162,7 @@ type VirtualMachinesClientMock struct {
 // Get gets the VirtualMachine by VMName.
 func (m *VirtualMachinesClientMock) Get(ctx context.Context, resourceGroupName string, VMName string, expand compute.InstanceViewTypes) (result compute.VirtualMachine, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachinesClientMock.Get")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -173,6 +181,7 @@ func (m *VirtualMachinesClientMock) Get(ctx context.Context, resourceGroupName s
 // List gets a lit of VirtualMachine inside the resource group.
 func (m *VirtualMachinesClientMock) List(ctx context.Context, resourceGroupName string) (result []compute.VirtualMachine, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachinesClientMock.List")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -190,6 +199,7 @@ func (m *VirtualMachinesClientMock) List(ctx context.Context, resourceGroupName 
 // Delete deletes the VirtualMachine by VMName.
 func (m *VirtualMachinesClientMock) Delete(ctx context.Context, resourceGroupName string, VMName string) (resp *http.Response, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "VirtualMachinesClientMock.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(resourceGroupName, VMName)
@@ -204,6 +214,7 @@ type InterfacesClientMock struct {
 // Delete deletes the interface by networkInterfaceName.
 func (m *InterfacesClientMock) Delete(ctx context.Context, resourceGroupName string, networkInterfaceName string) (resp *http.Response, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "InterfacesClientMock.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(resourceGroupName, networkInterfaceName)
@@ -218,6 +229,7 @@ type DisksClientMock struct {
 // Delete deletes the disk by diskName.
 func (m *DisksClientMock) Delete(ctx context.Context, resourceGroupName string, diskName string) (resp *http.Response, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "DisksClientMock.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(resourceGroupName, diskName)
@@ -232,6 +244,7 @@ type AccountsClientMock struct {
 // ListKeys get a list of keys by accountName.
 func (m *AccountsClientMock) ListKeys(ctx context.Context, resourceGroupName string, accountName string) (result storage.AccountListKeysResult, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AccountsClientMock.ListKeys")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called(resourceGroupName, accountName)
@@ -249,6 +262,7 @@ type DeploymentsClientMock struct {
 // Get gets the DeploymentExtended by deploymentName.
 func (m *DeploymentsClientMock) Get(ctx context.Context, resourceGroupName string, deploymentName string) (result resources.DeploymentExtended, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "DeploymentsClientMock.Get")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -265,6 +279,7 @@ func (m *DeploymentsClientMock) Get(ctx context.Context, resourceGroupName strin
 // ExportTemplate exports the deployment's template.
 func (m *DeploymentsClientMock) ExportTemplate(ctx context.Context, resourceGroupName string, deploymentName string) (result resources.DeploymentExportResult, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "DeploymentsClientMock.ExportTemplate")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -283,6 +298,7 @@ func (m *DeploymentsClientMock) ExportTemplate(ctx context.Context, resourceGrou
 // CreateOrUpdate creates or updates the Deployment.
 func (m *DeploymentsClientMock) CreateOrUpdate(ctx context.Context, resourceGroupName string, deploymentName string, parameters resources.Deployment) (resp *http.Response, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "DeploymentsClientMock.CreateOrUpdate")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()

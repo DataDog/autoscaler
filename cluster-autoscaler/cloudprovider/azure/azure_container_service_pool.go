@@ -25,6 +25,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2018-03-31/containerservice"
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/klog"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -317,6 +318,7 @@ func (agentPool *ContainerServiceAgentPool) MinSize() int {
 //querying the underlying service.
 func (agentPool *ContainerServiceAgentPool) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.TargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	agentPool.mutex.Lock()
@@ -375,6 +377,7 @@ func (agentPool *ContainerServiceAgentPool) setSizeInternal(targetSize int) (err
 //parameter
 func (agentPool *ContainerServiceAgentPool) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.IncreaseSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta <= 0 {
@@ -419,6 +422,7 @@ func (agentPool *ContainerServiceAgentPool) deleteNodesInternal(providerIDs []st
 //delete method.
 func (agentPool *ContainerServiceAgentPool) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.DeleteNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	agentPool.mutex.Lock()
@@ -486,6 +490,7 @@ func (agentPool *ContainerServiceAgentPool) GetNodes() ([]string, error) {
 //DecreaseTargetSize requests the underlying service to decrease the node count.
 func (agentPool *ContainerServiceAgentPool) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.DecreaseTargetSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta >= 0 {
@@ -528,6 +533,7 @@ func (agentPool *ContainerServiceAgentPool) Debug() string {
 //Nodes returns the list of nodes in the agentPool.
 func (agentPool *ContainerServiceAgentPool) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.Nodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	instanceNames, err := agentPool.GetNodes()
@@ -544,6 +550,7 @@ func (agentPool *ContainerServiceAgentPool) Nodes(ctx context.Context) ([]cloudp
 //TemplateNodeInfo is not implemented.
 func (agentPool *ContainerServiceAgentPool) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.TemplateNodeInfo")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -558,6 +565,7 @@ func (agentPool *ContainerServiceAgentPool) Exist() bool {
 //agent pool creation.
 func (agentPool *ContainerServiceAgentPool) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.Create")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrAlreadyExist
@@ -567,6 +575,7 @@ func (agentPool *ContainerServiceAgentPool) Create(ctx context.Context) (cloudpr
 //deletion.
 func (agentPool *ContainerServiceAgentPool) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ContainerServiceAgentPool.Delete")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented

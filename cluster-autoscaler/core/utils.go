@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/kubernetes/pkg/scheduler/util"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -115,6 +116,7 @@ func (podMap podSchedulableMap) set(pod *apiv1.Pod, err *simulator.PredicateErro
 // pods first. It takes into account pods that are bound to node and will be scheduled after lower priority pod preemption.
 func filterOutSchedulableByPacking(ctx context.Context, unschedulableCandidates []*apiv1.Pod, nodes []*apiv1.Node, allScheduled []*apiv1.Pod, podsWaitingForLowerPriorityPreemption []*apiv1.Pod, predicateChecker *simulator.PredicateChecker, expendablePodsPriorityCutoff int) []*apiv1.Pod {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "filterOutSchedulableByPacking")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	var unschedulablePods []*apiv1.Pod
@@ -186,6 +188,7 @@ func filterOutSchedulableSimple(ctx context.Context, unschedulableCandidates []*
 //   - other pods.
 func filterOutExpendableAndSplit(ctx context.Context, unschedulableCandidates []*apiv1.Pod, expendablePodsPriorityCutoff int) ([]*apiv1.Pod, []*apiv1.Pod) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "filterOutExpendableAndSplit")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	var unschedulableNonExpendable []*apiv1.Pod
@@ -217,6 +220,7 @@ func filterOutExpendablePods(pods []*apiv1.Pod, expendablePodsPriorityCutoff int
 // checkPodsSchedulableOnNode checks if pods can be scheduled on the given node.
 func checkPodsSchedulableOnNode(ctx context.Context, context *autoscalingcontext.AutoscalingContext, pods []*apiv1.Pod, nodeGroupId string, nodeInfo *schedulernodeinfo.NodeInfo) map[*apiv1.Pod]*simulator.PredicateError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "checkPodsSchedulableOnNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	schedulingErrors := map[*apiv1.Pod]*simulator.PredicateError{}
@@ -259,6 +263,7 @@ func checkPodsSchedulableOnNode(ctx context.Context, context *autoscalingcontext
 // TODO(mwielgus): Review error policy - sometimes we may continue with partial errors.
 func getNodeInfosForGroups(ctx context.Context, nodes []*apiv1.Node, nodeInfoCache map[string]*schedulernodeinfo.NodeInfo, cloudProvider cloudprovider.CloudProvider, listers kube_util.ListerRegistry, daemonsets []*appsv1.DaemonSet, predicateChecker *simulator.PredicateChecker) (map[string]*schedulernodeinfo.NodeInfo, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfosForGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make(map[string]*schedulernodeinfo.NodeInfo)
@@ -267,6 +272,7 @@ func getNodeInfosForGroups(ctx context.Context, nodes []*apiv1.Node, nodeInfoCac
 	// processNode returns information whether the nodeTemplate was generated and if there was an error.
 	processNode := func(node *apiv1.Node) (bool, string, errors.AutoscalerError) {
 		span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfosForGroups.processNode")
+		span.SetTag(ext.AnalyticsEvent, true)
 		defer span.Finish()
 
 		nodeGroup, err := cloudProvider.NodeGroupForNode(ctx, node)
@@ -371,6 +377,7 @@ func getNodeInfosForGroups(ctx context.Context, nodes []*apiv1.Node, nodeInfoCac
 // getNodeInfoFromTemplate returns NodeInfo object built base on TemplateNodeInfo returned by NodeGroup.TemplateNodeInfo().
 func getNodeInfoFromTemplate(ctx context.Context, nodeGroup cloudprovider.NodeGroup, daemonsets []*appsv1.DaemonSet, predicateChecker *simulator.PredicateChecker) (*schedulernodeinfo.NodeInfo, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "core.getNodeInfoFromTemplate")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	id := nodeGroup.Id()
@@ -394,6 +401,7 @@ func getNodeInfoFromTemplate(ctx context.Context, nodeGroup cloudprovider.NodeGr
 // return autoscaled node group.
 func filterOutNodesFromNotAutoscaledGroups(ctx context.Context, nodes []*apiv1.Node, cloudProvider cloudprovider.CloudProvider) ([]*apiv1.Node, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "filterOutNodesFromNotAutoscaledGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make([]*apiv1.Node, 0)
@@ -482,6 +490,7 @@ func sanitizeTemplateNode(node *apiv1.Node, nodeGroup string) (*apiv1.Node, erro
 // Removes unregistered nodes if needed. Returns true if anything was removed and error if such occurred.
 func removeOldUnregisteredNodes(ctx context.Context, unregisteredNodes []clusterstate.UnregisteredNode, context *autoscalingcontext.AutoscalingContext, currentTime time.Time, logRecorder *utils.LogEventRecorder) (bool, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "removeOldUnregisteredNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	removedAny := false
@@ -526,6 +535,7 @@ func removeOldUnregisteredNodes(ctx context.Context, unregisteredNodes []cluster
 // to fix something.
 func fixNodeGroupSize(ctx context.Context, context *autoscalingcontext.AutoscalingContext, clusterStateRegistry *clusterstate.ClusterStateRegistry, currentTime time.Time) (bool, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "fixNodeGroupSize")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	fixed := false
@@ -556,6 +566,7 @@ func fixNodeGroupSize(ctx context.Context, context *autoscalingcontext.Autoscali
 // - in groups with size > min size
 func getPotentiallyUnneededNodes(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodes []*apiv1.Node) []*apiv1.Node {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getPotentiallyUnneededNodes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make([]*apiv1.Node, 0, len(nodes))
@@ -647,6 +658,7 @@ func getNodeResource(node *apiv1.Node, resource apiv1.ResourceName) int64 {
 
 func getNodeGroupSizeMap(ctx context.Context, cloudProvider cloudprovider.CloudProvider) map[string]int {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getNodeGroupSizeMap")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodeGroupSize := make(map[string]int)

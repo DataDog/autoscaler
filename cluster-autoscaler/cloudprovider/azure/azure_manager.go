@@ -27,6 +27,7 @@ import (
 
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"gopkg.in/gcfg.v1"
 	"k8s.io/klog"
 
@@ -103,6 +104,7 @@ func (c *Config) TrimSpace() {
 // CreateAzureManager creates Azure Manager object to work with Azure.
 func CreateAzureManager(ctx context.Context, configReader io.Reader, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions) (*AzureManager, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CreateAzureManager")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	var err error
@@ -206,6 +208,7 @@ func CreateAzureManager(ctx context.Context, configReader io.Reader, discoveryOp
 
 func (m *AzureManager) fetchExplicitAsgs(ctx context.Context, specs []string) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureManager.fetchExplicitAsgs")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	changed := false
@@ -256,6 +259,7 @@ func (m *AzureManager) buildAsgFromSpec(spec string) (cloudprovider.NodeGroup, e
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (m *AzureManager) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureManager.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if m.lastRefresh.Add(refreshInterval).After(time.Now()) {
@@ -266,6 +270,7 @@ func (m *AzureManager) Refresh(ctx context.Context) error {
 
 func (m *AzureManager) forceRefresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureManager.forceRefresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if err := m.fetchAutoAsgs(ctx); err != nil {
@@ -281,6 +286,7 @@ func (m *AzureManager) forceRefresh(ctx context.Context) error {
 // they no longer exist in Azure.
 func (m *AzureManager) fetchAutoAsgs(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureManager.fetchAutoAsgs")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	groups, err := m.getFilteredAutoscalingGroups(m.asgAutoDiscoverySpecs)
@@ -340,6 +346,7 @@ func (m *AzureManager) UnregisterAsg(asg cloudprovider.NodeGroup) bool {
 // GetAsgForInstance returns AsgConfig of the given Instance
 func (m *AzureManager) GetAsgForInstance(ctx context.Context, instance *azureRef) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureManager.GetAsgForInstance")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return m.asgCache.FindForInstance(ctx, instance, m.config.VMType)
@@ -347,6 +354,7 @@ func (m *AzureManager) GetAsgForInstance(ctx context.Context, instance *azureRef
 
 func (m *AzureManager) regenerateCache(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureManager.regenerateCache")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.asgCache.mutex.Lock()
@@ -357,6 +365,7 @@ func (m *AzureManager) regenerateCache(ctx context.Context) error {
 // Cleanup the ASG cache.
 func (m *AzureManager) Cleanup(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureManager.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.asgCache.Cleanup(ctx)

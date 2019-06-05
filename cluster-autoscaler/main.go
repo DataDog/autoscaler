@@ -57,6 +57,7 @@ import (
 
 	"cloud.google.com/go/profiler"
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/opentracer"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
@@ -265,6 +266,7 @@ func createKubeClient(kubeConfig *rest.Config) kube_client.Interface {
 
 func registerSignalHandlers(ctx context.Context, autoscaler core.Autoscaler) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "registerSignalHandlers")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	sigs := make(chan os.Signal, 1)
@@ -283,6 +285,7 @@ func registerSignalHandlers(ctx context.Context, autoscaler core.Autoscaler) {
 
 func buildAutoscaler(ctx context.Context) (core.Autoscaler, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "buildAutoscaler")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	// Create basic config from flags.
@@ -311,6 +314,7 @@ func buildAutoscaler(ctx context.Context) (core.Autoscaler, error) {
 
 func run(ctx context.Context, healthCheck *metrics.HealthCheck) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "run")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	metrics.RegisterAll()
@@ -419,6 +423,7 @@ func main() {
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(ctx context.Context) {
 					span, ctx := opentracing.StartSpanFromContext(ctx, "func")
+					span.SetTag(ext.AnalyticsEvent, true)
 					defer span.Finish()
 
 					// Since we are committing a suicide after losing

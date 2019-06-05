@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/klog"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -56,6 +57,7 @@ func BuildAzureCloudProvider(azureManager *AzureManager, resourceLimiter *cloudp
 // Cleanup stops the go routine that is handling the current view of the ASGs in the form of a cache
 func (azure *AzureCloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	azure.azureManager.Cleanup(ctx)
@@ -65,6 +67,7 @@ func (azure *AzureCloudProvider) Cleanup(ctx context.Context) error {
 // Name returns name of the cloud provider.
 func (azure *AzureCloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.Name")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return "azure"
@@ -73,6 +76,7 @@ func (azure *AzureCloudProvider) Name(ctx context.Context) string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (azure *AzureCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.NodeGroups")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	asgs := azure.azureManager.getAsgs()
@@ -87,6 +91,7 @@ func (azure *AzureCloudProvider) NodeGroups(ctx context.Context) []cloudprovider
 // NodeGroupForNode returns the node group for the given node.
 func (azure *AzureCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.NodeGroupForNode")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(6).Infof("Searching for node group for the node: %s\n", node.Spec.ProviderID)
@@ -100,6 +105,7 @@ func (azure *AzureCloudProvider) NodeGroupForNode(ctx context.Context, node *api
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (azure *AzureCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.Pricing")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -108,6 +114,7 @@ func (azure *AzureCloudProvider) Pricing(ctx context.Context) (cloudprovider.Pri
 // GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
 func (azure *AzureCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.GetAvailableMachineTypes")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []string{}, nil
@@ -118,6 +125,7 @@ func (azure *AzureCloudProvider) GetAvailableMachineTypes(ctx context.Context) (
 func (azure *AzureCloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string,
 	taints []apiv1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.NewNodeGroup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -126,6 +134,7 @@ func (azure *AzureCloudProvider) NewNodeGroup(ctx context.Context, machineType s
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (azure *AzureCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return azure.resourceLimiter, nil
@@ -135,6 +144,7 @@ func (azure *AzureCloudProvider) GetResourceLimiter(ctx context.Context) (*cloud
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (azure *AzureCloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AzureCloudProvider.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return azure.azureManager.Refresh(ctx)
@@ -153,6 +163,7 @@ func (m *azureRef) GetKey() string {
 // BuildAzure builds Azure cloud provider, manager etc.
 func BuildAzure(ctx context.Context, opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "BuildAzure")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	var config io.ReadCloser

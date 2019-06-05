@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"testing"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
 
@@ -66,6 +67,7 @@ func (m *gceManagerMock) GetMigNodes(mig Mig) ([]cloudprovider.Instance, error) 
 
 func (m *gceManagerMock) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerMock.Refresh")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called()
@@ -74,6 +76,7 @@ func (m *gceManagerMock) Refresh(ctx context.Context) error {
 
 func (m *gceManagerMock) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerMock.Cleanup")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called()
@@ -87,6 +90,7 @@ func (m *gceManagerMock) GetMigs() []*MigInformation {
 
 func (m *gceManagerMock) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "gceManagerMock.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	args := m.Called()

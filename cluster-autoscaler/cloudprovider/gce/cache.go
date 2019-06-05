@@ -24,6 +24,7 @@ import (
 	"sync"
 
 	"github.com/opentracing/opentracing-go"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 
@@ -139,6 +140,7 @@ func (gc *GceCache) UnregisterMig(toBeRemoved Mig) bool {
 // GetMigs returns a copy of migs list.
 func (gc *GceCache) GetMigs(ctx context.Context) []*MigInformation {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GceCache.GetMigs")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gc.migsMutex.Lock()
@@ -173,6 +175,7 @@ func (gc *GceCache) updateMigBasename(ref GceRef, basename string) {
 // matching prefix, but instance doesn't belong to it.
 func (gc *GceCache) GetMigForInstance(ctx context.Context, instance *GceRef) (Mig, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GceCache.GetMigForInstance")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gc.cacheMutex.Lock()
@@ -202,6 +205,7 @@ func (gc *GceCache) GetMigForInstance(ctx context.Context, instance *GceRef) (Mi
 // RegenerateInstancesCache triggers instances cache regeneration under lock.
 func (gc *GceCache) RegenerateInstancesCache(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GceCache.RegenerateInstancesCache")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gc.cacheMutex.Lock()
@@ -213,6 +217,7 @@ func (gc *GceCache) RegenerateInstancesCache(ctx context.Context) error {
 // internal method - should only be called after locking on cacheMutex.
 func (gc *GceCache) regenerateCache(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GceCache.regenerateCache")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	newInstancesCache := make(map[GceRef]Mig)
@@ -256,6 +261,7 @@ func (gc *GceCache) SetResourceLimiter(resourceLimiter *cloudprovider.ResourceLi
 // GetResourceLimiter returns resource limiter.
 func (gc *GceCache) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GceCache.GetResourceLimiter")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gc.cacheMutex.Lock()
@@ -323,6 +329,7 @@ func (gc *GceCache) AddMachineToCache(machineType string, zone string, machine *
 // SetMachinesCache sets the machines cache under lock.
 func (gc *GceCache) SetMachinesCache(ctx context.Context, machinesCache map[MachineTypeKey]*gce.MachineType) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GceCache.SetMachinesCache")
+	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	gc.cacheMutex.Lock()
