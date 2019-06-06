@@ -328,7 +328,7 @@ func (client *autoscalingGceClientV1) FetchMigsWithName(ctx context.Context, zon
 	links := make([]string, 0)
 	registerRequest("instance_groups", "list")
 	req := client.gceService.InstanceGroups.List(client.projectId, zone).Filter(filter)
-	if err := req.Pages(context.TODO(), func(page *gce.InstanceGroupList) error {
+	if err := req.Pages(ctx, func(page *gce.InstanceGroupList) error {
 		for _, ig := range page.Items {
 			links = append(links, ig.SelfLink)
 			klog.V(3).Infof("found managed instance group %s matching regexp %s", ig.Name, name)

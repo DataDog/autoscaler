@@ -415,14 +415,14 @@ func main() {
 			klog.Fatalf("Unable to create leader election lock: %v", err)
 		}
 
-		leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
+		leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 			Lock:          lock,
 			LeaseDuration: leaderElection.LeaseDuration.Duration,
 			RenewDeadline: leaderElection.RenewDeadline.Duration,
 			RetryPeriod:   leaderElection.RetryPeriod.Duration,
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(ctx context.Context) {
-					span, ctx := opentracing.StartSpanFromContext(ctx, "func")
+					span, ctx := opentracing.StartSpanFromContext(ctx, "leaderelection.RunOrDie")
 					span.SetTag(ext.AnalyticsEvent, true)
 					defer span.Finish()
 
