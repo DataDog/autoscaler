@@ -24,7 +24,6 @@ import (
 	"os"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -92,7 +91,6 @@ func (ali *aliCloudProvider) addAsg(asg *Asg) {
 
 func (ali *aliCloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.Name")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return ProviderName
@@ -100,7 +98,6 @@ func (ali *aliCloudProvider) Name(ctx context.Context) string {
 
 func (ali *aliCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.NodeGroups")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make([]cloudprovider.NodeGroup, 0, len(ali.asgs))
@@ -113,7 +110,6 @@ func (ali *aliCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.Nod
 // NodeGroupForNode returns the node group for the given node.
 func (ali *aliCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.NodeGroupForNode")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	instanceId, err := ecsInstanceIdFromProviderId(node.Spec.ProviderID)
@@ -127,7 +123,6 @@ func (ali *aliCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.N
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (ali *aliCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.Pricing")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -136,7 +131,6 @@ func (ali *aliCloudProvider) Pricing(ctx context.Context) (cloudprovider.Pricing
 // GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
 func (ali *aliCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.GetAvailableMachineTypes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []string{}, nil
@@ -146,7 +140,6 @@ func (ali *aliCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]st
 // created on the cloud provider side. The node group is not returned by NodeGroups(ctx) until it is created.
 func (ali *aliCloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string, taints []apiv1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.NewNodeGroup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -155,7 +148,6 @@ func (ali *aliCloudProvider) NewNodeGroup(ctx context.Context, machineType strin
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (ali *aliCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.GetResourceLimiter")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return ali.resourceLimiter, nil
@@ -165,7 +157,6 @@ func (ali *aliCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprov
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (ali *aliCloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.Refresh")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil
@@ -174,7 +165,6 @@ func (ali *aliCloudProvider) Refresh(ctx context.Context) error {
 // Cleanup stops the go routine that is handling the current view of the ASGs in the form of a cache
 func (ali *aliCloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "aliCloudProvider.Cleanup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil

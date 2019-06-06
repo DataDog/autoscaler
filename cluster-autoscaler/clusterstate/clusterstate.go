@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/clusterstate/api"
 	"k8s.io/autoscaler/cluster-autoscaler/clusterstate/utils"
@@ -275,7 +274,6 @@ func (csr *ClusterStateRegistry) registerFailedScaleUpNoLock(nodeGroup cloudprov
 // UpdateNodes updates the state of the nodes in the ClusterStateRegistry and recalculates the stats
 func (csr *ClusterStateRegistry) UpdateNodes(ctx context.Context, nodes []*apiv1.Node, nodeInfosForGroups map[string]*schedulernodeinfo.NodeInfo, currentTime time.Time) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.UpdateNodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	csr.updateNodeGroupMetrics(ctx)
@@ -315,7 +313,6 @@ func (csr *ClusterStateRegistry) UpdateNodes(ctx context.Context, nodes []*apiv1
 // Recalculate cluster state after scale-ups or scale-downs were registered.
 func (csr *ClusterStateRegistry) Recalculate(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.Recalculate")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	targetSizes, err := getTargetSizes(ctx, csr.cloudProvider)
@@ -331,7 +328,6 @@ func (csr *ClusterStateRegistry) Recalculate(ctx context.Context) {
 // getTargetSizes gets target sizes of node groups.
 func getTargetSizes(ctx context.Context, cp cloudprovider.CloudProvider) (map[string]int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getTargetSizes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make(map[string]int)
@@ -397,7 +393,6 @@ func (csr *ClusterStateRegistry) IsNodeGroupHealthy(nodeGroupName string) bool {
 // updateNodeGroupMetrics looks at NodeGroups provided by cloudprovider and updates corresponding metrics
 func (csr *ClusterStateRegistry) updateNodeGroupMetrics(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.updateNodeGroupMetrics")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	autoscaled := 0
@@ -487,7 +482,6 @@ type AcceptableRange struct {
 // the expected number of ready nodes is between targetSize and targetSize + 3.
 func (csr *ClusterStateRegistry) updateAcceptableRanges(ctx context.Context, targetSize map[string]int) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.updateAcceptableRanges")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make(map[string]AcceptableRange)
@@ -538,7 +532,6 @@ type Readiness struct {
 
 func (csr *ClusterStateRegistry) updateReadinessStats(ctx context.Context, currentTime time.Time) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.updateReadinessStats")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	perNodeGroup := make(map[string]Readiness)
@@ -606,7 +599,6 @@ func (csr *ClusterStateRegistry) updateReadinessStats(ctx context.Context, curre
 // Calculates which node groups have incorrect size.
 func (csr *ClusterStateRegistry) updateIncorrectNodeGroupSizes(ctx context.Context, currentTime time.Time) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.updateIncorrectNodeGroupSizes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make(map[string]IncorrectNodeGroupSize)
@@ -671,7 +663,6 @@ func (csr *ClusterStateRegistry) GetUnregisteredNodes() []UnregisteredNode {
 // UpdateScaleDownCandidates updates scale down candidates
 func (csr *ClusterStateRegistry) UpdateScaleDownCandidates(ctx context.Context, nodes []*apiv1.Node, now time.Time) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.UpdateScaleDownCandidates")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make(map[string][]string)
@@ -693,7 +684,6 @@ func (csr *ClusterStateRegistry) UpdateScaleDownCandidates(ctx context.Context, 
 // GetStatus returns ClusterAutoscalerStatus with the current cluster autoscaler status.
 func (csr *ClusterStateRegistry) GetStatus(ctx context.Context, now time.Time) *api.ClusterAutoscalerStatus {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.GetStatus")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := &api.ClusterAutoscalerStatus{
@@ -936,7 +926,6 @@ func (csr *ClusterStateRegistry) GetIncorrectNodeGroupSize(nodeGroupName string)
 // The function may overestimate the number of nodes.
 func (csr *ClusterStateRegistry) GetUpcomingNodes(ctx context.Context) map[string]int {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.GetUpcomingNodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	csr.Lock()
@@ -962,7 +951,6 @@ func (csr *ClusterStateRegistry) GetUpcomingNodes(ctx context.Context) map[strin
 // as returned by NodeGroup.Nodes().
 func getCloudProviderNodeInstances(ctx context.Context, cloudProvider cloudprovider.CloudProvider) (map[string][]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "getCloudProviderNodeInstances")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	allInstances := make(map[string][]cloudprovider.Instance)
@@ -1011,7 +999,6 @@ func (csr *ClusterStateRegistry) GetClusterSize() (currentSize, targetSize int) 
 
 func (csr *ClusterStateRegistry) handleOutOfResourcesErrors(ctx context.Context, currentTime time.Time) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ClusterStateRegistry.handleOutOfResourcesErrors")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodeGroups := csr.cloudProvider.NodeGroups(ctx)

@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/klog"
@@ -51,7 +50,6 @@ func (asg *Asg) MinSize() int {
 // number is different from the number of nodes registered in Kubernetes.
 func (asg *Asg) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.TargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := asg.manager.GetAsgSize(asg)
@@ -61,7 +59,6 @@ func (asg *Asg) TargetSize(ctx context.Context) (int, error) {
 // IncreaseSize increases Asg size
 func (asg *Asg) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.IncreaseSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.Infof("increase ASG:%s with %d nodes", asg.Id(), delta)
@@ -86,7 +83,6 @@ func (asg *Asg) IncreaseSize(ctx context.Context, delta int) error {
 // when there is an option to just decrease the target.
 func (asg *Asg) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.DecreaseTargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(4).Infof("Aliyun: DecreaseTargetSize() with args: %v", delta)
@@ -132,7 +128,6 @@ func (asg *Asg) Belongs(node *apiv1.Node) (bool, error) {
 // DeleteNodes deletes the nodes from the group.
 func (asg *Asg) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.DeleteNodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := asg.manager.GetAsgSize(asg)
@@ -181,7 +176,6 @@ func (asg *Asg) Debug() string {
 // Nodes returns a list of all nodes that belong to this node group.
 func (asg *Asg) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.Nodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	instanceNames, err := asg.manager.GetAsgNodes(asg)
@@ -198,7 +192,6 @@ func (asg *Asg) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 // TemplateNodeInfo returns a node template for this node group.
 func (asg *Asg) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.TemplateNodeInfo")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	template, err := asg.manager.getAsgTemplate(asg.id)
@@ -226,7 +219,6 @@ func (asg *Asg) Exist() bool {
 // Create creates the node group on the cloud provider side.
 func (asg *Asg) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.Create")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -241,7 +233,6 @@ func (asg *Asg) Autoprovisioned() bool {
 // This will be executed only for autoprovisioned node groups, once their size drops to 0.
 func (asg *Asg) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.Delete")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented

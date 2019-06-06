@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -52,7 +51,6 @@ const scaleUpLimitUnknown = math.MaxInt64
 
 func computeScaleUpResourcesLeftLimits(ctx context.Context, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo, nodesFromNotAutoscaledGroups []*apiv1.Node, resourceLimiter *cloudprovider.ResourceLimiter) (scaleUpResourcesLimits, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleUpResourcesLeftLimits")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	totalCores, totalMem, errCoresMem := calculateScaleUpCoresMemoryTotal(ctx, nodeGroups, nodeInfos, nodesFromNotAutoscaledGroups)
@@ -106,7 +104,6 @@ func computeScaleUpResourcesLeftLimits(ctx context.Context, nodeGroups []cloudpr
 
 func calculateScaleUpCoresMemoryTotal(ctx context.Context, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo, nodesFromNotAutoscaledGroups []*apiv1.Node) (int64, int64, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateScaleUpCoresMemoryTotal")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	var coresTotal int64
@@ -139,7 +136,6 @@ func calculateScaleUpCoresMemoryTotal(ctx context.Context, nodeGroups []cloudpro
 
 func calculateScaleUpGpusTotal(ctx context.Context, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo, nodesFromNotAutoscaledGroups []*apiv1.Node) (map[string]int64, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateScaleUpGpusTotal")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make(map[string]int64)
@@ -184,7 +180,6 @@ func computeBelowMax(total int64, max int64) int64 {
 
 func computeScaleUpResourcesDelta(ctx context.Context, nodeInfo *schedulernodeinfo.NodeInfo, nodeGroup cloudprovider.NodeGroup, resourceLimiter *cloudprovider.ResourceLimiter) (scaleUpResourcesDelta, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "computeScaleUpResourcesDelta")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	resultScaleUpDelta := make(scaleUpResourcesDelta)
@@ -253,7 +248,6 @@ var (
 // ready and in sync with instance groups.
 func ScaleUp(ctx context.Context, context *autoscalingcontext.AutoscalingContext, processors *ca_processors.AutoscalingProcessors, clusterStateRegistry *clusterstate.ClusterStateRegistry, unschedulablePods []*apiv1.Pod, nodes []*apiv1.Node, daemonSets []*appsv1.DaemonSet, nodeInfos map[string]*schedulernodeinfo.NodeInfo) (*status.ScaleUpStatus, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleUp")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	// From now on we only care about unschedulable pods that were marked after the newest
@@ -691,7 +685,6 @@ groupsloop:
 
 func executeScaleUp(ctx context.Context, context *autoscalingcontext.AutoscalingContext, clusterStateRegistry *clusterstate.ClusterStateRegistry, info nodegroupset.ScaleUpInfo, gpuType string, now time.Time) errors.AutoscalerError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "executeScaleUp")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(0).Infof("Scale-up: setting group %s size to %d", info.Group.Id(), info.NewSize)
@@ -716,7 +709,6 @@ func executeScaleUp(ctx context.Context, context *autoscalingcontext.Autoscaling
 
 func applyScaleUpResourcesLimits(ctx context.Context, newNodes int, scaleUpResourcesLeft scaleUpResourcesLimits, nodeInfo *schedulernodeinfo.NodeInfo, nodeGroup cloudprovider.NodeGroup, resourceLimiter *cloudprovider.ResourceLimiter) (int, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "applyScaleUpResourcesLimits")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	delta, err := computeScaleUpResourcesDelta(ctx, nodeInfo, nodeGroup, resourceLimiter)

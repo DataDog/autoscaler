@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 
 	"k8s.io/autoscaler/cluster-autoscaler/utils/drain"
@@ -74,7 +73,6 @@ type UtilizationInfo struct {
 // rescheduling location for each of the pods.
 func FindNodesToRemove(ctx context.Context, candidates []*apiv1.Node, allNodes []*apiv1.Node, pods []*apiv1.Pod, listers kube_util.ListerRegistry, predicateChecker *PredicateChecker, maxCount int, fastCheck bool, oldHints map[string]string, usageTracker *UsageTracker, timestamp time.Time, podDisruptionBudgets []*policyv1.PodDisruptionBudget) (nodesToRemove []NodeToBeRemoved, unremovableNodes []*apiv1.Node, podReschedulingHints map[string]string, finalError errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "FindNodesToRemove")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodeNameToNodeInfo := scheduler_util.CreateNodeNameToInfoMap(pods, allNodes)
@@ -155,7 +153,6 @@ func FindEmptyNodesToRemove(candidates []*apiv1.Node, pods []*apiv1.Pod) []*apiv
 // cpu and memory utilization.
 func CalculateUtilization(ctx context.Context, node *apiv1.Node, nodeInfo *schedulernodeinfo.NodeInfo, skipDaemonSetPods, skipMirrorPods bool) (utilInfo UtilizationInfo, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CalculateUtilization")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	cpu, err := calculateUtilizationOfResource(ctx, node, nodeInfo, apiv1.ResourceCPU, skipDaemonSetPods, skipMirrorPods)
@@ -171,7 +168,6 @@ func CalculateUtilization(ctx context.Context, node *apiv1.Node, nodeInfo *sched
 
 func calculateUtilizationOfResource(ctx context.Context, node *apiv1.Node, nodeInfo *schedulernodeinfo.NodeInfo, resourceName apiv1.ResourceName, skipDaemonSetPods, skipMirrorPods bool) (float64, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "calculateUtilizationOfResource")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodeAllocatable, found := node.Status.Allocatable[resourceName]
@@ -203,7 +199,6 @@ func calculateUtilizationOfResource(ctx context.Context, node *apiv1.Node, nodeI
 // TODO: We don't need to pass list of nodes here as they are already available in nodeInfos.
 func findPlaceFor(ctx context.Context, removedNode string, pods []*apiv1.Pod, nodes []*apiv1.Node, nodeInfos map[string]*schedulernodeinfo.NodeInfo, predicateChecker *PredicateChecker, oldHints map[string]string, newHints map[string]string, usageTracker *UsageTracker, timestamp time.Time) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "findPlaceFor")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	newNodeInfos := make(map[string]*schedulernodeinfo.NodeInfo)

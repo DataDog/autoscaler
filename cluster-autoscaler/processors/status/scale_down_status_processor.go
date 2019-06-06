@@ -20,7 +20,6 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	autoscalingcontext "k8s.io/autoscaler/cluster-autoscaler/context"
@@ -82,13 +81,11 @@ type NoOpScaleDownStatusProcessor struct{}
 // Process processes the status of the cluster after a scale-down.
 func (p *NoOpScaleDownStatusProcessor) Process(ctx context.Context, context *autoscalingcontext.AutoscalingContext, status *ScaleDownStatus) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpScaleDownStatusProcessor.Process")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 }
 
 // CleanUp cleans up the processor's internal structures.
 func (p *NoOpScaleDownStatusProcessor) CleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpScaleDownStatusProcessor.CleanUp")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 }

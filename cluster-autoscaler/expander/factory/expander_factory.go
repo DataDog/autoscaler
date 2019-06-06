@@ -20,7 +20,6 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/expander"
@@ -36,7 +35,6 @@ import (
 // ExpanderStrategyFromString creates an expander.Strategy according to its name
 func ExpanderStrategyFromString(ctx context.Context, expanderFlag string, cloudProvider cloudprovider.CloudProvider, nodeLister kube_util.NodeLister) (expander.Strategy, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ExpanderStrategyFromString")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	switch expanderFlag {

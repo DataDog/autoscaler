@@ -30,7 +30,6 @@ import (
 	azStorage "github.com/Azure/azure-sdk-for-go/storage"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/klog"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -102,7 +101,6 @@ func (as *AgentPool) Exist() bool {
 // Create creates the node group on the cloud provider side.
 func (as *AgentPool) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.Create")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrAlreadyExist
@@ -112,7 +110,6 @@ func (as *AgentPool) Create(ctx context.Context) (cloudprovider.NodeGroup, error
 // This will be executed only for autoprovisioned node groups, once their size drops to 0.
 func (as *AgentPool) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.Delete")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented
@@ -180,7 +177,6 @@ func (as *AgentPool) getCurSize() (int64, error) {
 // number is different from the number of nodes registered in Kubernetes.
 func (as *AgentPool) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.TargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := as.getCurSize()
@@ -194,7 +190,6 @@ func (as *AgentPool) TargetSize(ctx context.Context) (int, error) {
 // IncreaseSize increases agent pool size
 func (as *AgentPool) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.IncreaseSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	as.mutex.Lock()
@@ -283,7 +278,6 @@ func (as *AgentPool) GetVirtualMachines() (instances []compute.VirtualMachine, e
 // when there is an option to just decrease the target.
 func (as *AgentPool) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.DecreaseTargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	as.mutex.Lock()
@@ -308,7 +302,6 @@ func (as *AgentPool) DecreaseTargetSize(ctx context.Context, delta int) error {
 // Belongs returns true if the given node belongs to the NodeGroup.
 func (as *AgentPool) Belongs(ctx context.Context, node *apiv1.Node) (bool, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.Belongs")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(6).Infof("Check if node belongs to this agent pool: AgentPool:%v, node:%v\n", as, node)
@@ -333,7 +326,6 @@ func (as *AgentPool) Belongs(ctx context.Context, node *apiv1.Node) (bool, error
 // DeleteInstances deletes the given instances. All instances must be controlled by the same ASG.
 func (as *AgentPool) DeleteInstances(ctx context.Context, instances []*azureRef) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.DeleteInstances")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(instances) == 0 {
@@ -376,7 +368,6 @@ func (as *AgentPool) DeleteInstances(ctx context.Context, instances []*azureRef)
 // DeleteNodes deletes the nodes from the group.
 func (as *AgentPool) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.DeleteNodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(8).Infof("Delete nodes requested: %v\n", nodes)
@@ -422,7 +413,6 @@ func (as *AgentPool) Debug() string {
 // TemplateNodeInfo returns a node template for this agent pool.
 func (as *AgentPool) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.TemplateNodeInfo")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -431,7 +421,6 @@ func (as *AgentPool) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.N
 // Nodes returns a list of all nodes that belong to this node group.
 func (as *AgentPool) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AgentPool.Nodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	instances, err := as.GetVirtualMachines()

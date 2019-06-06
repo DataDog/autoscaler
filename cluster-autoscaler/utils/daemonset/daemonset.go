@@ -22,7 +22,6 @@ import (
 	"math/rand"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 
@@ -34,7 +33,6 @@ import (
 // GetDaemonSetPodsForNode returns daemonset nodes for the given pod.
 func GetDaemonSetPodsForNode(ctx context.Context, nodeInfo *schedulernodeinfo.NodeInfo, daemonsets []*appsv1.DaemonSet, predicateChecker *simulator.PredicateChecker) []*apiv1.Pod {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "GetDaemonSetPodsForNode")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make([]*apiv1.Pod, 0)

@@ -21,7 +21,6 @@ import (
 	"sort"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
@@ -56,7 +55,6 @@ func NewBinpackingNodeEstimator(predicateChecker *simulator.PredicateChecker) *B
 // Returns the number of nodes needed to accommodate all pods from the list.
 func (estimator *BinpackingNodeEstimator) Estimate(ctx context.Context, pods []*apiv1.Pod, nodeTemplate *schedulernodeinfo.NodeInfo, upcomingNodes []*schedulernodeinfo.NodeInfo) int {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Estimate")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	podInfos := calculatePodScore(pods, nodeTemplate)

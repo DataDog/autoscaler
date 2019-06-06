@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,7 +81,6 @@ func (scaleSet *ScaleSet) Exist() bool {
 // Create creates the node group on the cloud provider side.
 func (scaleSet *ScaleSet) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.Create")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrAlreadyExist
@@ -92,7 +90,6 @@ func (scaleSet *ScaleSet) Create(ctx context.Context) (cloudprovider.NodeGroup, 
 // This will be executed only for autoprovisioned node groups, once their size drops to 0.
 func (scaleSet *ScaleSet) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.Delete")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented
@@ -180,7 +177,6 @@ func (scaleSet *ScaleSet) SetScaleSetSize(size int64) error {
 // number is different from the number of nodes registered in Kubernetes.
 func (scaleSet *ScaleSet) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.TargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := scaleSet.GetScaleSetSize()
@@ -190,7 +186,6 @@ func (scaleSet *ScaleSet) TargetSize(ctx context.Context) (int, error) {
 // IncreaseSize increases Scale Set size
 func (scaleSet *ScaleSet) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.IncreaseSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta <= 0 {
@@ -250,7 +245,6 @@ func (scaleSet *ScaleSet) GetScaleSetVms() ([]string, error) {
 // when there is an option to just decrease the target.
 func (scaleSet *ScaleSet) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.DecreaseTargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta >= 0 {
@@ -278,7 +272,6 @@ func (scaleSet *ScaleSet) DecreaseTargetSize(ctx context.Context, delta int) err
 // Belongs returns true if the given node belongs to the NodeGroup.
 func (scaleSet *ScaleSet) Belongs(ctx context.Context, node *apiv1.Node) (bool, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.Belongs")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(6).Infof("Check if node belongs to this scale set: scaleset:%v, node:%v\n", scaleSet, node)
@@ -303,7 +296,6 @@ func (scaleSet *ScaleSet) Belongs(ctx context.Context, node *apiv1.Node) (bool, 
 // DeleteInstances deletes the given instances. All instances must be controlled by the same ASG.
 func (scaleSet *ScaleSet) DeleteInstances(ctx context.Context, instances []*azureRef) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.DeleteInstances")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(instances) == 0 {
@@ -350,7 +342,6 @@ func (scaleSet *ScaleSet) DeleteInstances(ctx context.Context, instances []*azur
 // DeleteNodes deletes the nodes from the group.
 func (scaleSet *ScaleSet) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.DeleteNodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.V(8).Infof("Delete nodes requested: %q\n", nodes)
@@ -472,7 +463,6 @@ func (scaleSet *ScaleSet) buildNodeFromTemplate(template compute.VirtualMachineS
 // TemplateNodeInfo returns a node template for this scale set.
 func (scaleSet *ScaleSet) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.TemplateNodeInfo")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	template, err := scaleSet.getVMSSInfo()
@@ -493,7 +483,6 @@ func (scaleSet *ScaleSet) TemplateNodeInfo(ctx context.Context) (*schedulernodei
 // Nodes returns a list of all nodes that belong to this node group.
 func (scaleSet *ScaleSet) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "ScaleSet.Nodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	scaleSet.mutex.Lock()

@@ -25,8 +25,6 @@ import (
 	"context"
 	"fmt"
 
-	opentracing "github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/informers"
@@ -36,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubemark"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
+	opentracing "github.com/opentracing/opentracing-go"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
@@ -85,7 +84,6 @@ func (kubemark *KubemarkCloudProvider) addNodeGroup(spec string) error {
 // Name returns name of the cloud provider.
 func (kubemark *KubemarkCloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Name")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return ProviderName
@@ -94,7 +92,6 @@ func (kubemark *KubemarkCloudProvider) Name(ctx context.Context) string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (kubemark *KubemarkCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NodeGroups")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make([]cloudprovider.NodeGroup, 0, len(kubemark.nodeGroups))
@@ -107,7 +104,6 @@ func (kubemark *KubemarkCloudProvider) NodeGroups(ctx context.Context) []cloudpr
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (kubemark *KubemarkCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Pricing")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -116,7 +112,6 @@ func (kubemark *KubemarkCloudProvider) Pricing(ctx context.Context) (cloudprovid
 // NodeGroupForNode returns the node group for the given node.
 func (kubemark *KubemarkCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NodeGroupForNode")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodeGroupName, err := kubemark.kubemarkController.GetNodeGroupForNode(node.ObjectMeta.Name)
@@ -135,7 +130,6 @@ func (kubemark *KubemarkCloudProvider) NodeGroupForNode(ctx context.Context, nod
 // Implementation optional.
 func (kubemark *KubemarkCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.GetAvailableMachineTypes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []string{}, cloudprovider.ErrNotImplemented
@@ -146,7 +140,6 @@ func (kubemark *KubemarkCloudProvider) NewNodeGroup(ctx context.Context, machine
 	taints []apiv1.Taint,
 	extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.NewNodeGroup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -155,7 +148,6 @@ func (kubemark *KubemarkCloudProvider) NewNodeGroup(ctx context.Context, machine
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (kubemark *KubemarkCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.GetResourceLimiter")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return kubemark.resourceLimiter, nil
@@ -165,7 +157,6 @@ func (kubemark *KubemarkCloudProvider) GetResourceLimiter(ctx context.Context) (
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (kubemark *KubemarkCloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Refresh")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil
@@ -174,7 +165,6 @@ func (kubemark *KubemarkCloudProvider) Refresh(ctx context.Context) error {
 // Cleanup cleans up all resources before the cloud provider is removed
 func (kubemark *KubemarkCloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "KubemarkCloudProvider.Cleanup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil
@@ -211,7 +201,6 @@ func (nodeGroup *NodeGroup) Debug() string {
 // Nodes returns a list of all nodes that belong to this node group.
 func (nodeGroup *NodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Nodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	instances := make([]cloudprovider.Instance, 0)
@@ -228,7 +217,6 @@ func (nodeGroup *NodeGroup) Nodes(ctx context.Context) ([]cloudprovider.Instance
 // DeleteNodes deletes the specified nodes from the node group.
 func (nodeGroup *NodeGroup) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.DeleteNodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := nodeGroup.kubemarkController.GetNodeGroupTargetSize(nodeGroup.Name)
@@ -249,7 +237,6 @@ func (nodeGroup *NodeGroup) DeleteNodes(ctx context.Context, nodes []*apiv1.Node
 // IncreaseSize increases NodeGroup size.
 func (nodeGroup *NodeGroup) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.IncreaseSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta <= 0 {
@@ -270,7 +257,6 @@ func (nodeGroup *NodeGroup) IncreaseSize(ctx context.Context, delta int) error {
 // number is different from the number of nodes registered in Kubernetes.
 func (nodeGroup *NodeGroup) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := nodeGroup.kubemarkController.GetNodeGroupTargetSize(nodeGroup.Name)
@@ -303,7 +289,6 @@ func (nodeGroup *NodeGroup) DecreaseTargetSize(delta int) error {
 // TemplateNodeInfo returns a node template for this node group.
 func (nodeGroup *NodeGroup) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.TemplateNodeInfo")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -317,7 +302,6 @@ func (nodeGroup *NodeGroup) Exist() bool {
 // Create creates the node group on the cloud provider side.
 func (nodeGroup *NodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Create")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -326,7 +310,6 @@ func (nodeGroup *NodeGroup) Create(ctx context.Context) (cloudprovider.NodeGroup
 // Delete deletes the node group on the cloud provider side.
 func (nodeGroup *NodeGroup) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NodeGroup.Delete")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented

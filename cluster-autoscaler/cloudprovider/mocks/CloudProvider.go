@@ -19,7 +19,6 @@ package mocks
 import (
 	"context"
 
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	cloudprovider "k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	errors "k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 
@@ -39,7 +38,6 @@ type CloudProvider struct {
 // Cleanup provides a mock function with given fields:
 func (_m *CloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.Cleanup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -57,7 +55,6 @@ func (_m *CloudProvider) Cleanup(ctx context.Context) error {
 // GetAvailableMachineTypes provides a mock function with given fields:
 func (_m *CloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.GetAvailableMachineTypes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -84,7 +81,6 @@ func (_m *CloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string
 // GetResourceLimiter provides a mock function with given fields:
 func (_m *CloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.GetResourceLimiter")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -111,7 +107,6 @@ func (_m *CloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider
 // Name provides a mock function with given fields:
 func (_m *CloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.Name")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -129,7 +124,6 @@ func (_m *CloudProvider) Name(ctx context.Context) string {
 // NewNodeGroup provides a mock function with given fields: machineType, labels, systemLabels, taints, extraResources
 func (_m *CloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string, taints []v1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.NewNodeGroup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called(machineType, labels, systemLabels, taints, extraResources)
@@ -156,7 +150,6 @@ func (_m *CloudProvider) NewNodeGroup(ctx context.Context, machineType string, l
 // NodeGroupForNode provides a mock function with given fields: _a0
 func (_m *CloudProvider) NodeGroupForNode(ctx context.Context, _a0 *v1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.NodeGroupForNode")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called(_a0)
@@ -183,7 +176,6 @@ func (_m *CloudProvider) NodeGroupForNode(ctx context.Context, _a0 *v1.Node) (cl
 // NodeGroups provides a mock function with given fields:
 func (_m *CloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.NodeGroups")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -203,7 +195,6 @@ func (_m *CloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGro
 // Pricing provides a mock function with given fields:
 func (_m *CloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.Pricing")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()
@@ -232,7 +223,6 @@ func (_m *CloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingMode
 // Refresh provides a mock function with given fields:
 func (_m *CloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "CloudProvider.Refresh")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	ret := _m.Called()

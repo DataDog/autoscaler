@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 )
 
 const (
@@ -119,7 +118,6 @@ func filterOutOld(timestampMap map[string]time.Time, cutoff time.Time) {
 // CleanUp removes all relations updated before the cutoff time.
 func (tracker *UsageTracker) CleanUp(ctx context.Context, cutoff time.Time) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "UsageTracker.CleanUp")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	toDelete := make([]string, 0)

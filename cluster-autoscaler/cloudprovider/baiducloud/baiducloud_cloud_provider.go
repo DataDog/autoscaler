@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -140,7 +139,6 @@ func (baiducloud *baiducloudCloudProvider) addAsg(asg *Asg) {
 // Name returns name of the cloud provider.
 func (baiducloud *baiducloudCloudProvider) Name(ctx context.Context) string {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.Name")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return ProviderName
@@ -149,7 +147,6 @@ func (baiducloud *baiducloudCloudProvider) Name(ctx context.Context) string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (baiducloud *baiducloudCloudProvider) NodeGroups(ctx context.Context) []cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.NodeGroups")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	result := make([]cloudprovider.NodeGroup, 0, len(baiducloud.asgs))
@@ -164,7 +161,6 @@ func (baiducloud *baiducloudCloudProvider) NodeGroups(ctx context.Context) []clo
 // occurred. Must be implemented.
 func (baiducloud *baiducloudCloudProvider) NodeGroupForNode(ctx context.Context, node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.NodeGroupForNode")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	splitted := strings.Split(node.Spec.ProviderID, "//")
@@ -179,7 +175,6 @@ func (baiducloud *baiducloudCloudProvider) NodeGroupForNode(ctx context.Context,
 // Implementation optional.
 func (baiducloud *baiducloudCloudProvider) Pricing(ctx context.Context) (cloudprovider.PricingModel, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.Pricing")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -189,7 +184,6 @@ func (baiducloud *baiducloudCloudProvider) Pricing(ctx context.Context) (cloudpr
 // Implementation optional.
 func (baiducloud *baiducloudCloudProvider) GetAvailableMachineTypes(ctx context.Context) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.GetAvailableMachineTypes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return []string{}, cloudprovider.ErrNotImplemented
@@ -201,7 +195,6 @@ func (baiducloud *baiducloudCloudProvider) GetAvailableMachineTypes(ctx context.
 func (baiducloud *baiducloudCloudProvider) NewNodeGroup(ctx context.Context, machineType string, labels map[string]string, systemLabels map[string]string,
 	taints []apiv1.Taint, extraResources map[string]resource.Quantity) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.NewNodeGroup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrNotImplemented
@@ -210,7 +203,6 @@ func (baiducloud *baiducloudCloudProvider) NewNodeGroup(ctx context.Context, mac
 // GetResourceLimiter returns struct containing limits (max, min) for resources (cores, memory etc.).
 func (baiducloud *baiducloudCloudProvider) GetResourceLimiter(ctx context.Context) (*cloudprovider.ResourceLimiter, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.GetResourceLimiter")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return baiducloud.resourceLimiter, nil
@@ -219,7 +211,6 @@ func (baiducloud *baiducloudCloudProvider) GetResourceLimiter(ctx context.Contex
 // Cleanup cleans up open resources before the cloud provider is destroyed, i.e. go routines etc.
 func (baiducloud *baiducloudCloudProvider) Cleanup(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.Cleanup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil
@@ -229,7 +220,6 @@ func (baiducloud *baiducloudCloudProvider) Cleanup(ctx context.Context) error {
 // In particular the list of node groups returned by NodeGroups can change as a result of CloudProvider.Refresh(ctx).
 func (baiducloud *baiducloudCloudProvider) Refresh(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "baiducloudCloudProvider.Refresh")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil
@@ -265,7 +255,6 @@ func (asg *Asg) MinSize() int {
 // removed nodes are deleted completely). Implementation required.
 func (asg *Asg) TargetSize(ctx context.Context) (int, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.TargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := asg.baiducloudManager.GetAsgSize(asg)
@@ -277,7 +266,6 @@ func (asg *Asg) TargetSize(ctx context.Context) (int, error) {
 // node group size is updated. Implementation required.
 func (asg *Asg) IncreaseSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.IncreaseSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if delta <= 0 {
@@ -298,7 +286,6 @@ func (asg *Asg) IncreaseSize(ctx context.Context, delta int) error {
 // should wait until node group size is updated. Implementation required.
 func (asg *Asg) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.DeleteNodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	size, err := asg.baiducloudManager.GetAsgSize(asg)
@@ -327,7 +314,6 @@ func (asg *Asg) DeleteNodes(ctx context.Context, nodes []*apiv1.Node) error {
 // is an option to just decrease the target. Implementation required.
 func (asg *Asg) DecreaseTargetSize(ctx context.Context, delta int) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.DecreaseTargetSize")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented
@@ -348,7 +334,6 @@ func (asg *Asg) Debug() string {
 // Other fields are optional.
 func (asg *Asg) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.Nodes")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	asgNodes, err := asg.baiducloudManager.GetAsgNodes(asg)
@@ -371,7 +356,6 @@ func (asg *Asg) Nodes(ctx context.Context) ([]cloudprovider.Instance, error) {
 // the node by default, using manifest (most likely only kube-proxy). Implementation optional.
 func (asg *Asg) TemplateNodeInfo(ctx context.Context) (*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.TemplateNodeInfo")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	template, err := asg.baiducloudManager.getAsgTemplate(asg.Name)
@@ -396,7 +380,6 @@ func (asg *Asg) Exist() bool {
 // Create creates the node group on the cloud provider side. Implementation optional.
 func (asg *Asg) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.Create")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nil, cloudprovider.ErrAlreadyExist
@@ -407,7 +390,6 @@ func (asg *Asg) Create(ctx context.Context) (cloudprovider.NodeGroup, error) {
 // Implementation optional.
 func (asg *Asg) Delete(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Asg.Delete")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return cloudprovider.ErrNotImplemented

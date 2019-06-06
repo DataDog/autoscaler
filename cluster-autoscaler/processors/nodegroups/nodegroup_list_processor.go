@@ -20,7 +20,6 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
@@ -49,7 +48,6 @@ func NewDefaultNodeGroupListProcessor() NodeGroupListProcessor {
 func (p *NoOpNodeGroupListProcessor) Process(ctx context.Context, context *autoscalingcontext.AutoscalingContext, nodeGroups []cloudprovider.NodeGroup, nodeInfos map[string]*schedulernodeinfo.NodeInfo,
 	unschedulablePods []*apiv1.Pod) ([]cloudprovider.NodeGroup, map[string]*schedulernodeinfo.NodeInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpNodeGroupListProcessor.Process")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	return nodeGroups, nodeInfos, nil
@@ -58,6 +56,5 @@ func (p *NoOpNodeGroupListProcessor) Process(ctx context.Context, context *autos
 // CleanUp cleans up the processor's internal structures.
 func (p *NoOpNodeGroupListProcessor) CleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "NoOpNodeGroupListProcessor.CleanUp")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 }

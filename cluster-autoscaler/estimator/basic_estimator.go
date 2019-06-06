@@ -23,7 +23,6 @@ import (
 	"math"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
@@ -103,7 +102,6 @@ func (basicEstimator *BasicNodeEstimator) GetDebug() string {
 // Estimate estimates the number needed of nodes of the given shape.
 func (basicEstimator *BasicNodeEstimator) Estimate(ctx context.Context, pods []*apiv1.Pod, nodeInfo *schedulernodeinfo.NodeInfo, upcomingNodes []*schedulernodeinfo.NodeInfo) int {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Estimate")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	for _, pod := range pods {

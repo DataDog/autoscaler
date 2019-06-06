@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
@@ -112,7 +111,6 @@ func NewStaticAutoscaler(
 // the taints are removed only once per runtime
 func (a *StaticAutoscaler) cleanUpIfRequired(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.updateClusterState")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if a.initialized {
@@ -135,7 +133,6 @@ func (a *StaticAutoscaler) cleanUpIfRequired(ctx context.Context) {
 // RunOnce iterates over node groups and scales them up/down if necessary
 func (a *StaticAutoscaler) RunOnce(ctx context.Context, currentTime time.Time) errors.AutoscalerError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.RunOnce")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	a.cleanUpIfRequired(ctx)
@@ -447,7 +444,6 @@ func (a *StaticAutoscaler) RunOnce(ctx context.Context, currentTime time.Time) e
 
 func (a *StaticAutoscaler) deleteCreatedNodesWithErrors(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.deleteCreatedNodesWithErrors")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	// We always schedule deleting of incoming errornous nodes
@@ -489,7 +485,6 @@ func (a *StaticAutoscaler) deleteCreatedNodesWithErrors(ctx context.Context) {
 
 func (a *StaticAutoscaler) nodeGroupsById(ctx context.Context) map[string]cloudprovider.NodeGroup {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.nodeGroupsById")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	nodeGroups := make(map[string]cloudprovider.NodeGroup)
@@ -502,7 +497,6 @@ func (a *StaticAutoscaler) nodeGroupsById(ctx context.Context) map[string]cloudp
 // don't consider pods newer than newPodScaleUpDelay seconds old as unschedulable
 func (a *StaticAutoscaler) filterOutYoungPods(ctx context.Context, allUnschedulablePods []*apiv1.Pod, currentTime time.Time) []*apiv1.Pod {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.filterOutYoungPods")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	var oldUnschedulablePods []*apiv1.Pod
@@ -522,7 +516,6 @@ func (a *StaticAutoscaler) filterOutYoungPods(ctx context.Context, allUnschedula
 // ExitCleanUp performs all necessary clean-ups when the autoscaler's exiting.
 func (a *StaticAutoscaler) ExitCleanUp(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.ExitCleanUp")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	a.processors.CleanUp(ctx)
@@ -535,7 +528,6 @@ func (a *StaticAutoscaler) ExitCleanUp(ctx context.Context) {
 
 func (a *StaticAutoscaler) obtainNodeLists(ctx context.Context) ([]*apiv1.Node, []*apiv1.Node, errors.AutoscalerError) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.obtainNodeLists")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	allNodes, err := a.AllNodeLister().List()
@@ -561,7 +553,6 @@ func (a *StaticAutoscaler) obtainNodeLists(ctx context.Context) ([]*apiv1.Node, 
 // actOnEmptyCluster returns true if the cluster was empty and thus acted upon
 func (a *StaticAutoscaler) actOnEmptyCluster(ctx context.Context, allNodes, readyNodes []*apiv1.Node, currentTime time.Time) bool {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.updateClusterState")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if len(allNodes) == 0 {
@@ -580,7 +571,6 @@ func (a *StaticAutoscaler) actOnEmptyCluster(ctx context.Context, allNodes, read
 
 func (a *StaticAutoscaler) updateClusterState(ctx context.Context, allNodes []*apiv1.Node, nodeInfosForGroups map[string]*schedulernodeinfo.NodeInfo, currentTime time.Time) errors.AutoscalerError {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.updateClusterState")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	err := a.clusterStateRegistry.UpdateNodes(ctx, allNodes, nodeInfosForGroups, currentTime)
@@ -596,7 +586,6 @@ func (a *StaticAutoscaler) updateClusterState(ctx context.Context, allNodes []*a
 
 func (a *StaticAutoscaler) onEmptyCluster(ctx context.Context, status string, emitEvent bool) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.updateClusterState")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	klog.Warningf(status)
@@ -612,7 +601,6 @@ func (a *StaticAutoscaler) onEmptyCluster(ctx context.Context, status string, em
 
 func allPodsAreNew(ctx context.Context, pods []*apiv1.Pod, currentTime time.Time) bool {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "StaticAutoscaler.updateClusterState")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	if getOldestCreateTime(pods).Add(unschedulablePodTimeBuffer).After(currentTime) {

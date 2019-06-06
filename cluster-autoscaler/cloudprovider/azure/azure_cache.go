@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/opentracing/opentracing-go"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 
@@ -45,7 +44,6 @@ type asgCache struct {
 
 func newAsgCache(ctx context.Context) (*asgCache, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "newAsgCache")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	cache := &asgCache{
@@ -124,7 +122,6 @@ func (m *asgCache) get() []cloudprovider.NodeGroup {
 // FindForInstance returns Asg of the given Instance
 func (m *asgCache) FindForInstance(ctx context.Context, instance *azureRef, vmType string) (cloudprovider.NodeGroup, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "asgCache.FindForInstance")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	m.mutex.Lock()
@@ -180,7 +177,6 @@ func (m *asgCache) FindForInstance(ctx context.Context, instance *azureRef, vmTy
 // Cleanup closes the channel to signal the go routine to stop that is handling the cache
 func (m *asgCache) Cleanup(ctx context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "asgCache.Cleanup")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	close(m.interrupt)
@@ -188,7 +184,6 @@ func (m *asgCache) Cleanup(ctx context.Context) {
 
 func (m *asgCache) regenerate(ctx context.Context) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "asgCache.regenerate")
-	span.SetTag(ext.AnalyticsEvent, true)
 	defer span.Finish()
 
 	newCache := make(map[azureRef]cloudprovider.NodeGroup)
