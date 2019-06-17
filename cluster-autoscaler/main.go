@@ -362,7 +362,10 @@ func main() {
 
 	ctx := context.Background()
 
-	t := opentracer.New(tracer.WithAgentAddr(*tracingAddr))
+	t := opentracer.New(
+		tracer.WithAgentAddr(*tracingAddr),
+		tracer.WithDebugMode(true),
+	)
 	defer tracer.Stop()
 
 	opentracing.SetGlobalTracer(t)
