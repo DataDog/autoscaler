@@ -46,12 +46,14 @@ RUN go get -u \
 		"github.com/golang/protobuf/proto" \
 		"google.golang.org/grpc" \
 		"golang.org/x/oauth2" \
-		"golang.org/x/net/context"
+		"golang.org/x/net/context" \
+		"golang.org/x/sync/errgroup"
 
 WORKDIR "${GOPATH}/src/k8s.io/autoscaler/cluster-autoscaler"
 COPY "cluster-autoscaler/main.go" "main.go"
+
 RUN godep save ./...
 
-# .dockerignore must prevent host Godeps and vendor from being	 copied
+# .dockerignore must prevent host Godeps and vendor from being copied
 ADD "cluster-autoscaler" "."
 RUN make build-binary
