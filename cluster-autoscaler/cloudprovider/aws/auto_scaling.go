@@ -20,6 +20,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go/aws/request"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/opentracing/opentracing-go"
@@ -29,6 +32,7 @@ import (
 // autoScaling is the interface represents a specific aspect of the auto-scaling service provided by AWS SDK for use in CA
 type autoScaling interface {
 	DescribeAutoScalingGroupsPages(input *autoscaling.DescribeAutoScalingGroupsInput, fn func(*autoscaling.DescribeAutoScalingGroupsOutput, bool) bool) error
+	DescribeAutoScalingGroupsPagesWithContext(ctx aws.Context, input *autoscaling.DescribeAutoScalingGroupsInput, fn func(*autoscaling.DescribeAutoScalingGroupsOutput, bool) bool, opts ...request.Option) error
 	DescribeLaunchConfigurations(*autoscaling.DescribeLaunchConfigurationsInput) (*autoscaling.DescribeLaunchConfigurationsOutput, error)
 	DescribeTagsPages(input *autoscaling.DescribeTagsInput, fn func(*autoscaling.DescribeTagsOutput, bool) bool) error
 	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
@@ -75,28 +79,33 @@ func (m *autoScalingWrapper) getAutoscalingGroupsByNames(ctx context.Context, na
 		return nil, nil
 	}
 
-	asgs := make([]*autoscaling.Group, 0)
+	asgs := make([]*autoscaling.Group, len(names))
 
+	eg, ctx := errgroup.WithContext(ctx)
 	// AWS only accepts up to 50 ASG names as input, describe them in batches
 	for i := 0; i < len(names); i += maxAsgNamesPerDescribe {
-		end := i + maxAsgNamesPerDescribe
-
+		i, end := i, i+maxAsgNamesPerDescribe
 		if end > len(names) {
 			end = len(names)
 		}
+		eg.Go(func() error {
+			input := autoscaling.DescribeAutoScalingGroupsInput{
+				AutoScalingGroupNames: aws.StringSlice(names[i:end]),
+				MaxRecords:            aws.Int64(maxRecordsReturnedByAPI),
+			}
+			return m.DescribeAutoScalingGroupsPagesWithContext(ctx, &input, func(output *autoscaling.DescribeAutoScalingGroupsOutput, _ bool) bool {
+				for j, group := range output.AutoScalingGroups {
+					asgs[i+j] = group
+				}
+				// We return true while we want to be called with the next page of
+				// results, if any.
+				return true
+			})
+		})
+	}
 
-		input := &autoscaling.DescribeAutoScalingGroupsInput{
-			AutoScalingGroupNames: aws.StringSlice(names[i:end]),
-			MaxRecords:            aws.Int64(maxRecordsReturnedByAPI),
-		}
-		if err := m.DescribeAutoScalingGroupsPages(input, func(output *autoscaling.DescribeAutoScalingGroupsOutput, _ bool) bool {
-			asgs = append(asgs, output.AutoScalingGroups...)
-			// We return true while we want to be called with the next page of
-			// results, if any.
-			return true
-		}); err != nil {
-			return nil, err
-		}
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 
 	return asgs, nil
