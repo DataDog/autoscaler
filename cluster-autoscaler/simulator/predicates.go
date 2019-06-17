@@ -91,19 +91,21 @@ func (NoOpEventRecorder) AnnotatedEventf(object runtime.Object, annotations map[
 
 // NewPredicateChecker builds PredicateChecker.
 func NewPredicateChecker(kubeClient kube_client.Interface, stop <-chan struct{}) (*PredicateChecker, error) {
+	filteredOptions := informers.WithNamespace("default")
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	filteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,filteredOptions)
 	algorithmProvider := factory.DefaultProvider
 
 	// Set up the configurator which can create schedulers from configs.
 	nodeInformer := informerFactory.Core().V1().Nodes()
-	podInformer := informerFactory.Core().V1().Pods()
+	podInformer := filteredInformerFactory.Core().V1().Pods()
 	pvInformer := informerFactory.Core().V1().PersistentVolumes()
-	pvcInformer := informerFactory.Core().V1().PersistentVolumeClaims()
-	replicationControllerInformer := informerFactory.Core().V1().ReplicationControllers()
-	replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
-	statefulSetInformer := informerFactory.Apps().V1().StatefulSets()
-	serviceInformer := informerFactory.Core().V1().Services()
-	pdbInformer := informerFactory.Policy().V1beta1().PodDisruptionBudgets()
+	pvcInformer := filteredInformerFactory.Core().V1().PersistentVolumeClaims()
+	replicationControllerInformer := filteredInformerFactory.Core().V1().ReplicationControllers()
+	replicaSetInformer := filteredInformerFactory.Apps().V1().ReplicaSets()
+	statefulSetInformer := filteredInformerFactory.Apps().V1().StatefulSets()
+	serviceInformer := filteredInformerFactory.Core().V1().Services()
+	pdbInformer := filteredInformerFactory.Policy().V1beta1().PodDisruptionBudgets()
 	storageClassInformer := informerFactory.Storage().V1().StorageClasses()
 	configurator := factory.NewConfigFactory(&factory.ConfigFactoryArgs{
 		SchedulerName:                  apiv1.DefaultSchedulerName,

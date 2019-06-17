@@ -176,7 +176,7 @@ func (unschedulablePodLister *UnschedulablePodLister) List() ([]*apiv1.Pod, erro
 
 // NewUnschedulablePodLister returns a lister providing pods that failed to be scheduled.
 func NewUnschedulablePodLister(kubeClient client.Interface, stopchannel <-chan struct{}) PodLister {
-	return NewUnschedulablePodInNamespaceLister(kubeClient, apiv1.NamespaceAll, stopchannel)
+	return NewUnschedulablePodInNamespaceLister(kubeClient, "default", stopchannel)
 }
 
 // NewUnschedulablePodInNamespaceLister returns a lister providing pods that failed to be scheduled in the given namespace.
@@ -209,7 +209,7 @@ func NewScheduledPodLister(kubeClient client.Interface, stopchannel <-chan struc
 	// watch unscheduled pods
 	selector := fields.ParseSelectorOrDie("spec.nodeName!=" + "" + ",status.phase!=" +
 		string(apiv1.PodSucceeded) + ",status.phase!=" + string(apiv1.PodFailed))
-	podListWatch := cache.NewListWatchFromClient(kubeClient.CoreV1().RESTClient(), "pods", apiv1.NamespaceAll, selector)
+	podListWatch := cache.NewListWatchFromClient(kubeClient.CoreV1().RESTClient(), "pods", "default", selector)
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	podLister := v1lister.NewPodLister(store)
 	podReflector := cache.NewReflector(podListWatch, &apiv1.Pod{}, store, time.Hour)
@@ -301,7 +301,7 @@ func (lister *PodDisruptionBudgetListerImpl) List() ([]*policyv1.PodDisruptionBu
 
 // NewPodDisruptionBudgetLister builds a pod disruption budget lister.
 func NewPodDisruptionBudgetLister(kubeClient client.Interface, stopchannel <-chan struct{}) PodDisruptionBudgetLister {
-	listWatcher := cache.NewListWatchFromClient(kubeClient.PolicyV1beta1().RESTClient(), "poddisruptionbudgets", apiv1.NamespaceAll, fields.Everything())
+	listWatcher := cache.NewListWatchFromClient(kubeClient.PolicyV1beta1().RESTClient(), "poddisruptionbudgets", "default", fields.Everything())
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	pdbLister := v1policylister.NewPodDisruptionBudgetLister(store)
 	reflector := cache.NewReflector(listWatcher, &policyv1.PodDisruptionBudget{}, store, time.Hour)
@@ -313,7 +313,7 @@ func NewPodDisruptionBudgetLister(kubeClient client.Interface, stopchannel <-cha
 
 // NewDaemonSetLister builds a daemonset lister.
 func NewDaemonSetLister(kubeClient client.Interface, stopchannel <-chan struct{}) v1appslister.DaemonSetLister {
-	listWatcher := cache.NewListWatchFromClient(kubeClient.AppsV1().RESTClient(), "daemonsets", apiv1.NamespaceAll, fields.Everything())
+	listWatcher := cache.NewListWatchFromClient(kubeClient.AppsV1().RESTClient(), "daemonsets", "default", fields.Everything())
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	lister := v1appslister.NewDaemonSetLister(store)
 	reflector := cache.NewReflector(listWatcher, &appsv1.DaemonSet{}, store, time.Hour)
@@ -323,7 +323,7 @@ func NewDaemonSetLister(kubeClient client.Interface, stopchannel <-chan struct{}
 
 // NewReplicationControllerLister builds a replicationcontroller lister.
 func NewReplicationControllerLister(kubeClient client.Interface, stopchannel <-chan struct{}) v1lister.ReplicationControllerLister {
-	listWatcher := cache.NewListWatchFromClient(kubeClient.CoreV1().RESTClient(), "replicationcontrollers", apiv1.NamespaceAll, fields.Everything())
+	listWatcher := cache.NewListWatchFromClient(kubeClient.CoreV1().RESTClient(), "replicationcontrollers", "default", fields.Everything())
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	lister := v1lister.NewReplicationControllerLister(store)
 	reflector := cache.NewReflector(listWatcher, &apiv1.ReplicationController{}, store, time.Hour)
@@ -333,7 +333,7 @@ func NewReplicationControllerLister(kubeClient client.Interface, stopchannel <-c
 
 // NewJobLister builds a job lister.
 func NewJobLister(kubeClient client.Interface, stopchannel <-chan struct{}) v1batchlister.JobLister {
-	listWatcher := cache.NewListWatchFromClient(kubeClient.BatchV1().RESTClient(), "jobs", apiv1.NamespaceAll, fields.Everything())
+	listWatcher := cache.NewListWatchFromClient(kubeClient.BatchV1().RESTClient(), "jobs", "default", fields.Everything())
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	lister := v1batchlister.NewJobLister(store)
 	reflector := cache.NewReflector(listWatcher, &batchv1.Job{}, store, time.Hour)
@@ -343,7 +343,7 @@ func NewJobLister(kubeClient client.Interface, stopchannel <-chan struct{}) v1ba
 
 // NewReplicaSetLister builds a replicaset lister.
 func NewReplicaSetLister(kubeClient client.Interface, stopchannel <-chan struct{}) v1appslister.ReplicaSetLister {
-	listWatcher := cache.NewListWatchFromClient(kubeClient.AppsV1().RESTClient(), "replicasets", apiv1.NamespaceAll, fields.Everything())
+	listWatcher := cache.NewListWatchFromClient(kubeClient.AppsV1().RESTClient(), "replicasets", "default", fields.Everything())
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	lister := v1appslister.NewReplicaSetLister(store)
 	reflector := cache.NewReflector(listWatcher, &appsv1.ReplicaSet{}, store, time.Hour)
@@ -353,7 +353,7 @@ func NewReplicaSetLister(kubeClient client.Interface, stopchannel <-chan struct{
 
 // NewStatefulSetLister builds a statefulset lister.
 func NewStatefulSetLister(kubeClient client.Interface, stopchannel <-chan struct{}) v1appslister.StatefulSetLister {
-	listWatcher := cache.NewListWatchFromClient(kubeClient.AppsV1().RESTClient(), "statefulsets", apiv1.NamespaceAll, fields.Everything())
+	listWatcher := cache.NewListWatchFromClient(kubeClient.AppsV1().RESTClient(), "statefulsets", "default", fields.Everything())
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	lister := v1appslister.NewStatefulSetLister(store)
 	reflector := cache.NewReflector(listWatcher, &appsv1.StatefulSet{}, store, time.Hour)
