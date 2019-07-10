@@ -22,6 +22,8 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -713,6 +715,22 @@ func (b *volumeBinder) findMatchingVolumes(pod *v1.Pod, claimsToBind []*v1.Persi
 	return
 }
 
+func (b *volumeBinder) supportDynamicProvisioning(class *storagev1.StorageClass, node *v1.Node) bool {
+	if class.Provisioner == "" {
+		return false
+	}
+	if class.Provisioner != notSupportedProvisioner {
+		return true
+	}
+	if class.Name != "local-data" {
+		return false
+	}
+	// treat local-data as dynamic provisionner if the node is not here: this is a cluster autoscaler "scale up" attempt
+	// this is an opinionated setup: the new node will have local-volume-provisionner with an available persistent volume
+	_, err := b.nodeInformer.Lister().Get(node.Name)
+	return err != nil && errors.IsNotFound(err)
+}
+
 // checkVolumeProvisions checks given unbound claims (the claims have gone through func
 // findMatchingVolumes, and do not have matching volumes for binding), and return true
 // if all of the claims are eligible for dynamic provision.
@@ -731,8 +749,7 @@ func (b *volumeBinder) checkVolumeProvisions(pod *v1.Pod, claimsToProvision []*v
 		if err != nil {
 			return false, nil, fmt.Errorf("failed to find storage class %q", className)
 		}
-		provisioner := class.Provisioner
-		if provisioner == "" || provisioner == notSupportedProvisioner {
+		if !b.supportDynamicProvisioning(class, node) {
 			klog.V(4).Infof("storage class %q of claim %q does not support dynamic provisioning", className, pvcName)
 			return false, nil, nil
 		}
