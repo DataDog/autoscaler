@@ -174,6 +174,7 @@ func NewPredicateChecker(kubeClient kube_client.Interface, namespace string, sto
 	}
 
 	informerFactory.Start(stop)
+	go pvcInformer.Informer().Run(stop)
 
 	metadataProducer, err := configurator.GetPredicateMetadataProducer()
 	if err != nil {
