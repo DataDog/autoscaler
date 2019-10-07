@@ -149,12 +149,12 @@ func IsCloudProviderNodeInfoSimilar(n1, n2 *schedulerframework.NodeInfo, ignored
 	}
 
 	// For allocatable and free we allow resource quantities to be within a few % of each other
-	if !resourceMapsWithinTolerance(allocatable, MaxAllocatableDifferenceRatio) {
-		return false
-	}
-	if !resourceMapsWithinTolerance(free, MaxFreeDifferenceRatio) {
-		return false
-	}
+	//if !resourceMapsWithinTolerance(allocatable, MaxAllocatableDifferenceRatio) {
+	//	return false
+	//}
+	//if !resourceMapsWithinTolerance(free, MaxFreeDifferenceRatio) {
+	//	return false
+	//}
 
 	if !compareLabels(nodes, ignoredLabels) {
 		return false

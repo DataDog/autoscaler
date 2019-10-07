@@ -546,14 +546,13 @@ func ScaleUp(context *context.AutoscalingContext, processors *ca_processors.Auto
 			}
 			similarNodeGroups = filterNodeGroupsByPods(similarNodeGroups, bestOption.Pods, expansionOptions)
 			for _, ng := range similarNodeGroups {
-				if clusterStateRegistry.IsNodeGroupSafeToScaleUp(ng, now) {
-					targetNodeGroups = append(targetNodeGroups, ng)
-				} else {
-					// This should never happen, as we will filter out the node group earlier on
-					// because of missing entry in podsPassingPredicates, but double checking doesn't
-					// really cost us anything
-					klog.V(2).Infof("Ignoring node group %s when balancing: group is not ready for scaleup", ng.Id())
+				if !clusterStateRegistry.IsNodeGroupSafeToScaleUp(ng, now) {
+					klog.Errorf("Failed to consider nodegroup %s when balancing: group is not ready for scaleup", ng.Id())
+					return &status.ScaleUpStatus{Result: status.ScaleUpError, CreateNodeGroupResults: createNodeGroupResults}, errors.NewAutoscalerError(
+						errors.CloudProviderError,
+						"failed to consider nodegroup %s when balancing: group is not ready for scaleup", ng.Id())
 				}
+				targetNodeGroups = append(targetNodeGroups, ng)
 			}
 			if len(targetNodeGroups) > 1 {
 				var buffer bytes.Buffer

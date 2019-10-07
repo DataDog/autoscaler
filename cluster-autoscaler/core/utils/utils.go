@@ -95,19 +95,20 @@ func GetNodeInfosForGroups(nodes []*apiv1.Node, nodeInfoCache map[string]*schedu
 	for _, nodeGroup := range cloudProvider.NodeGroups() {
 		id := nodeGroup.Id()
 		seenGroups[id] = true
-		if _, found := result[id]; found {
-			continue
-		}
+		// TODO: always use a template: see the perf impact of this
+		//if _, found := result[id]; found {
+		//	continue
+		//}
 
 		// No good template, check cache of previously running nodes.
-		if nodeInfoCache != nil {
-			if nodeInfo, found := nodeInfoCache[id]; found {
-				if nodeInfoCopy, err := deepCopyNodeInfo(nodeInfo); err == nil {
-					result[id] = nodeInfoCopy
-					continue
-				}
-			}
-		}
+		//if nodeInfoCache != nil {
+		//	if nodeInfo, found := nodeInfoCache[id]; found {
+		//		if nodeInfoCopy, err := deepCopyNodeInfo(nodeInfo); err == nil {
+		//			result[id] = nodeInfoCopy
+		//			continue
+		//		}
+		//	}
+		//}
 
 		// No good template, trying to generate one. This is called only if there are no
 		// working nodes in the node groups. By default CA tries to use a real-world example.
