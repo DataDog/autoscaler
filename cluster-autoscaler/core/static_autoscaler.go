@@ -228,14 +228,15 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) errors.AutoscalerError
 
 	klog.V(4).Info("Starting main loop")
 
-	stateUpdateStart := time.Now()
-
 	// Get nodes and pods currently living on cluster
+	start := time.Now()
 	allNodes, readyNodes, typedErr := a.obtainNodeLists(a.CloudProvider)
 	if typedErr != nil {
 		klog.Errorf("Failed to get node list: %v", typedErr)
 		return typedErr
 	}
+	metrics.UpdateDurationFromStart(metrics.ObtainNodeList, start)
+
 	originalScheduledPods, err := scheduledPodLister.List()
 	if err != nil {
 		klog.Errorf("Failed to list scheduled pods: %v", err)
@@ -246,18 +247,22 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) errors.AutoscalerError
 		return nil
 	}
 
+	start = time.Now()
 	daemonsets, err := a.ListerRegistry.DaemonSetLister().List(labels.Everything())
 	if err != nil {
 		klog.Errorf("Failed to get daemonset list: %v", err)
 		return errors.ToAutoscalerError(errors.ApiCallError, err)
 	}
+	metrics.UpdateDurationFromStart(metrics.DaemonsetList, start)
 
 	// Call CloudProvider.Refresh before any other calls to cloud provider.
+	start = time.Now()
 	err = a.AutoscalingContext.CloudProvider.Refresh()
 	if err != nil {
 		klog.Errorf("Failed to refresh cloud provider config: %v", err)
 		return errors.ToAutoscalerError(errors.CloudProviderError, err)
 	}
+	metrics.UpdateDurationFromStart(metrics.CloudProviderRefresh, start)
 
 	nonExpendableScheduledPods := core_utils.FilterOutExpendablePods(originalScheduledPods, a.ExpendablePodsPriorityCutoff)
 	// Initialize cluster state to ClusterSnapshot
@@ -265,6 +270,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) errors.AutoscalerError
 		return typedErr.AddPrefix("Initialize ClusterSnapshot")
 	}
 
+	start = time.Now()
 	nodeInfosForGroups, autoscalerError := core_utils.GetNodeInfosForGroups(
 		readyNodes, a.nodeInfoCache, autoscalingContext.CloudProvider, autoscalingContext.ListerRegistry, daemonsets, autoscalingContext.PredicateChecker, a.ignoredTaints)
 	if autoscalerError != nil {
@@ -277,12 +283,14 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) errors.AutoscalerError
 		klog.Errorf("Failed to process nodeInfos: %v", err)
 		return errors.ToAutoscalerError(errors.InternalError, err)
 	}
+	metrics.UpdateDurationFromStart(metrics.GetNodeInfosForGroups, start)
 
+	start = time.Now()
 	if typedErr := a.updateClusterState(allNodes, nodeInfosForGroups, currentTime); typedErr != nil {
 		klog.Errorf("Failed to update cluster state: %v", typedErr)
 		return typedErr
 	}
-	metrics.UpdateDurationFromStart(metrics.UpdateState, stateUpdateStart)
+	metrics.UpdateDurationFromStart(metrics.UpdateClusterState, start)
 
 	scaleUpStatus := &status.ScaleUpStatus{Result: status.ScaleUpNotTried}
 	scaleUpStatusProcessorAlreadyCalled := false
