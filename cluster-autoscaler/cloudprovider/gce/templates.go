@@ -176,7 +176,7 @@ func (t *GceTemplateBuilder) BuildNodeFromTemplate(mig Mig, template *gce.Instan
 	}
 
 	if nodeAllocatable == nil {
-		klog.Warningf("could not extract kube-reserved from kubeEnv for mig %q, setting allocatable to capacity.", mig.GceRef().Name)
+		klog.V(5).Infof("could not extract kube-reserved from kubeEnv for mig %q, setting allocatable to capacity.", mig.GceRef().Name)
 		node.Status.Allocatable = node.Status.Capacity
 	} else {
 		node.Status.Allocatable = nodeAllocatable
@@ -319,7 +319,7 @@ const (
 func extractOperatingSystemFromKubeEnv(kubeEnv string) OperatingSystem {
 	osValue, found, err := extractAutoscalerVarFromKubeEnv(kubeEnv, "os")
 	if err != nil {
-		klog.Errorf("error while obtaining os from AUTOSCALER_ENV_VARS; %v", err)
+		klog.V(5).Infof("error while obtaining os from AUTOSCALER_ENV_VARS; %v", err)
 		return OperatingSystemUnknown
 	}
 
@@ -361,7 +361,7 @@ func extractAutoscalerVarFromKubeEnv(kubeEnv, name string) (value string, found 
 			return strings.Trim(items[1], " \"'"), true, nil
 		}
 	}
-	klog.Infof("var %s not found in %s: %v", name, autoscalerVars, autoscalerVals)
+	klog.V(5).Infof("var %s not found in %s: %v", name, autoscalerVars, autoscalerVals)
 	return "", false, nil
 }
 

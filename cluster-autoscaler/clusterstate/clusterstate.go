@@ -400,6 +400,7 @@ func (csr *ClusterStateRegistry) IsNodeGroupHealthy(nodeGroupName string) bool {
 	if unjustifiedUnready > csr.config.OkTotalUnreadyCount &&
 		float64(unjustifiedUnready) > csr.config.MaxTotalUnreadyPercentage/100.0*
 			float64(readiness.Ready+readiness.Unready+readiness.NotStarted+readiness.LongNotStarted) {
+		klog.Warning("Failed to find acceptable number of Unready nodes")
 		return false
 	}
 
@@ -428,7 +429,12 @@ func (csr *ClusterStateRegistry) IsNodeGroupSafeToScaleUp(nodeGroup cloudprovide
 	if !csr.IsNodeGroupHealthy(nodeGroup.Id()) {
 		return false
 	}
-	return !csr.backoff.IsBackedOff(nodeGroup, csr.nodeInfosForGroups[nodeGroup.Id()], now)
+	isBackOff := csr.backoff.IsBackedOff(nodeGroup, csr.nodeInfosForGroups[nodeGroup.Id()], now)
+	if isBackOff {
+		klog.Warningf("Node group %s is in BackOff", nodeGroup.Id())
+		return false
+	}
+	return true
 }
 
 func (csr *ClusterStateRegistry) getProvisionedAndTargetSizesForNodeGroup(nodeGroupName string) (provisioned, target int, ok bool) {

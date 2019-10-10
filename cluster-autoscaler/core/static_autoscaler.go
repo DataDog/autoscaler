@@ -501,10 +501,22 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) errors.AutoscalerError
 			}
 		}
 
-		scaleDownInCooldown := a.processorCallbacks.disableScaleDownForLoop ||
-			a.lastScaleUpTime.Add(a.ScaleDownDelayAfterAdd).After(currentTime) ||
-			a.lastScaleDownFailTime.Add(a.ScaleDownDelayAfterFailure).After(currentTime) ||
-			a.lastScaleDownDeleteTime.Add(a.ScaleDownDelayAfterDelete).After(currentTime)
+		// TODO: this is easier to understand why we don't scale down
+		scaleDownInCooldown := true
+		switch {
+		case a.processorCallbacks.disableScaleDownForLoop:
+			klog.V(4).Info("disableScaleDownForLoop")
+		case a.lastScaleUpTime.Add(a.ScaleDownDelayAfterAdd).After(currentTime):
+			klog.V(4).Infof("lastScaleUpTime: %v", a.lastScaleUpTime.Add(a.ScaleDownDelayAfterAdd))
+		case a.lastScaleDownFailTime.Add(a.ScaleDownDelayAfterFailure).After(currentTime):
+			klog.V(4).Infof("lastScaleDownFailTime: %v", a.lastScaleDownFailTime.Add(a.ScaleDownDelayAfterFailure))
+		case a.lastScaleDownDeleteTime.Add(a.ScaleDownDelayAfterDelete).After(currentTime):
+			klog.V(4).Infof("lastScaleDownDeleteTime: %v", a.lastScaleDownDeleteTime.Add(a.ScaleDownDelayAfterDelete))
+		default:
+			klog.V(4).Infof("scaleDownNotInCooldown")
+			scaleDownInCooldown = false
+		}
+
 		// In dry run only utilization is updated
 		calculateUnneededOnly := scaleDownInCooldown || scaleDown.nodeDeletionTracker.IsNonEmptyNodeDeleteInProgress()
 
