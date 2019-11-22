@@ -369,6 +369,7 @@ func (m *AwsManager) buildNodeFromTemplate(asg *asg, template *asgTemplate) (*ap
 	node.Status.Capacity[apiv1.ResourceCPU] = *resource.NewQuantity(template.InstanceType.VCPU, resource.DecimalSI)
 	node.Status.Capacity[gpu.ResourceNvidiaGPU] = *resource.NewQuantity(template.InstanceType.GPU, resource.DecimalSI)
 	node.Status.Capacity[apiv1.ResourceMemory] = *resource.NewQuantity(instanceMemoryBi, resource.BinarySI)
+	node.Status.Capacity["storageClass/local-data"] = *resource.NewQuantity(numberOfLocalVolumes(template.InstanceType.InstanceType), resource.DecimalSI)
 
 	resourcesFromTags := extractAllocatableResourcesFromAsg(template.Tags)
 	for resourceName, val := range resourcesFromTags {

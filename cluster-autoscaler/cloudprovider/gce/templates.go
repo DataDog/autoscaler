@@ -150,6 +150,11 @@ func (t *GceTemplateBuilder) BuildNodeFromTemplate(mig Mig, template *gce.Instan
 	if err != nil {
 		return nil, err
 	}
+	var storage int64 = 0
+	if len(template.Properties.Disks) > 1 {
+		storage = 1
+	}
+	capacity["storageClass/local-data"] = *resource.NewQuantity(storage, resource.DecimalSI)
 	node.Status = apiv1.NodeStatus{
 		Capacity: capacity,
 	}

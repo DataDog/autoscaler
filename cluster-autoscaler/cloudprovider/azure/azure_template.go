@@ -118,6 +118,11 @@ func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineS
 		node.Status.Capacity[apiv1.ResourceName(resourceName)] = *val
 	}
 
+	if vmssType.InstanceType != "" {
+		volumes := numberOfLocalVolumes(vmssType.InstanceType)
+		node.Status.Capacity["storageClass/local-data"] = *resource.NewQuantity(volumes, resource.DecimalSI)
+	}
+
 	// TODO: set real allocatable.
 	node.Status.Allocatable = node.Status.Capacity
 
