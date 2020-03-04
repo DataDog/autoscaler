@@ -188,7 +188,7 @@ func createAWSManagerInternal(
 
 		if autoScalingService == nil {
 			autoScalingService = &autoScalingWrapper{
-				autoScaling: autoscaling.New(sess),
+				autoScaling:                          autoscaling.New(sess),
 				launchConfigurationInstanceTypeCache: make(map[string]string),
 			}
 		}

@@ -170,7 +170,7 @@ var (
 			"Setting it to false employs a more lenient filtering approach that does not try to pack the pods on the nodes."+
 			"Pods with nominatedNodeName set are always filtered out.")
 
-	ignoreTaintsFlag         = multiStringFlag("ignore-taint", "Specifies a taint to ignore when considering to scale a node group and mark the existing nodes as NotReady when they're still tainted")
+	ignoreTaintsFlag = multiStringFlag("ignore-taint", "Specifies a taint to ignore when considering to scale a node group and mark the existing nodes as NotReady when they're still tainted")
 )
 
 func createAutoscalingOptions() config.AutoscalingOptions {

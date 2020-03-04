@@ -61,9 +61,9 @@ type PredicateInfo struct {
 
 // PredicateChecker checks whether all required predicates pass for given Pod and Node.
 type PredicateChecker struct {
-	predicates                []PredicateInfo
-	predicateMetadataProducer predicates.PredicateMetadataProducer
-	enableAffinityPredicate   bool
+	predicates                  []PredicateInfo
+	predicateMetadataProducer   predicates.PredicateMetadataProducer
+	enableAffinityPredicate     bool
 	PersistentVolumeClaimLister v1.PersistentVolumeClaimLister
 }
 
@@ -194,16 +194,15 @@ func NewPredicateChecker(kubeClient kube_client.Interface, stop <-chan struct{})
 
 	informerFactory.Start(stop)
 
-
 	metadataProducer, err := configurator.GetPredicateMetadataProducer()
 	if err != nil {
 		return nil, fmt.Errorf("could not obtain predicateMetadataProducer; %v", err.Error())
 	}
 
 	return &PredicateChecker{
-		predicates:                predicateList,
-		predicateMetadataProducer: metadataProducer,
-		enableAffinityPredicate:   true,
+		predicates:                  predicateList,
+		predicateMetadataProducer:   metadataProducer,
+		enableAffinityPredicate:     true,
 		PersistentVolumeClaimLister: pvcInformer.Lister(),
 	}, nil
 }

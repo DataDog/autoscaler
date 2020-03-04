@@ -41,7 +41,7 @@ func (m ec2Wrapper) getInstanceTypeByLT(launchTemplate *launchTemplate) (string,
 
 	start := time.Now()
 	describeData, err := m.DescribeLaunchTemplateVersions(params)
-	metrics.ObserveCloudProviderQuery("aws", "DescribeLaunchTemplateVersions", err , start)
+	metrics.ObserveCloudProviderQuery("aws", "DescribeLaunchTemplateVersions", err, start)
 	if err != nil {
 		return "", err
 	}

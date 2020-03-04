@@ -12,7 +12,7 @@ import (
 func TestHasNidhoggTaint(t *testing.T) {
 	nodeWithoutTaint := &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "nodeWithTaint",
+			Name: "nodeWithTaint",
 		},
 		Status: apiv1.NodeStatus{
 			Capacity:    apiv1.ResourceList{},
@@ -23,13 +23,13 @@ func TestHasNidhoggTaint(t *testing.T) {
 
 	nodeWithNidhoggTaint := &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "nodeWithTaint",
+			Name: "nodeWithTaint",
 		},
 		Spec: apiv1.NodeSpec{
 			Taints: []apiv1.Taint{
 				{
-					Key: "nidhogg.uswitch.com/kube2iam.kube2iam",
-					Value: "foo",
+					Key:    "nidhogg.uswitch.com/kube2iam.kube2iam",
+					Value:  "foo",
 					Effect: "NoSchedule",
 				},
 			},
@@ -43,18 +43,18 @@ func TestHasNidhoggTaint(t *testing.T) {
 
 	nodeWithOtherTaints := &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "nodeWithTaint",
+			Name: "nodeWithTaint",
 		},
 		Spec: apiv1.NodeSpec{
 			Taints: []apiv1.Taint{
 				{
-					Key: "node",
-					Value: "foo",
+					Key:    "node",
+					Value:  "foo",
 					Effect: "NoSchedule",
 				},
 				{
-					Key: "bode",
-					Value: "foo",
+					Key:    "bode",
+					Value:  "foo",
 					Effect: "NoSchedule",
 				},
 			},
@@ -71,24 +71,24 @@ func TestFilterOutNodesWithTaints(t *testing.T) {
 	expectedReadiness := make(map[string]bool)
 
 	readyCondition := apiv1.NodeCondition{
-		Type:               apiv1.NodeReady,
-		Status:             apiv1.ConditionTrue,
+		Type:   apiv1.NodeReady,
+		Status: apiv1.ConditionTrue,
 	}
 	notreadyCondition := apiv1.NodeCondition{
-		Type:               apiv1.NodeReady,
-		Status:             apiv1.ConditionFalse,
+		Type:   apiv1.NodeReady,
+		Status: apiv1.ConditionFalse,
 	}
 
 	nodeNoNidhoggTaintReady := &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:              "nodeNoNidhoggTaintReady",
+			Name: "nodeNoNidhoggTaintReady",
 		},
 		Spec: apiv1.NodeSpec{
-			Taints:[]apiv1.Taint{
+			Taints: []apiv1.Taint{
 				{
-					Key:"foo",
-					Value:"boo",
-					Effect:"NoSchedule",
+					Key:    "foo",
+					Value:  "boo",
+					Effect: "NoSchedule",
 				},
 			},
 		},
@@ -102,14 +102,14 @@ func TestFilterOutNodesWithTaints(t *testing.T) {
 
 	nodeNoNidhoggTaintNotReady := &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:              "nodeNoNidhoggTaintNotReady",
+			Name: "nodeNoNidhoggTaintNotReady",
 		},
 		Spec: apiv1.NodeSpec{
-			Taints:[]apiv1.Taint{
+			Taints: []apiv1.Taint{
 				{
-					Key:"foo",
-					Value:"boo",
-					Effect:"NoSchedule",
+					Key:    "foo",
+					Value:  "boo",
+					Effect: "NoSchedule",
 				},
 			},
 		},
@@ -121,17 +121,16 @@ func TestFilterOutNodesWithTaints(t *testing.T) {
 	}
 	expectedReadiness[nodeNoNidhoggTaintNotReady.Name] = false
 
-
 	nodeHasNidhoggTaintReady := &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:              "nodeHasNidhoggTaintReady",
+			Name: "nodeHasNidhoggTaintReady",
 		},
 		Spec: apiv1.NodeSpec{
-			Taints:[]apiv1.Taint{
+			Taints: []apiv1.Taint{
 				{
-					Key:"nidhogg.uswitch.com/foo.bar",
-					Value:"baz",
-					Effect:"NoSchedule",
+					Key:    "nidhogg.uswitch.com/foo.bar",
+					Value:  "baz",
+					Effect: "NoSchedule",
 				},
 			},
 		},
@@ -145,14 +144,14 @@ func TestFilterOutNodesWithTaints(t *testing.T) {
 
 	nodeHasNidhoggTaintNotReady := &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:              "nodeHasNidhoggTaintNotReady",
+			Name: "nodeHasNidhoggTaintNotReady",
 		},
 		Spec: apiv1.NodeSpec{
-			Taints:[]apiv1.Taint{
+			Taints: []apiv1.Taint{
 				{
-					Key:"nidhogg.uswitch.com/x.y",
-					Value:"z",
-					Effect:"NoSchedule",
+					Key:    "nidhogg.uswitch.com/x.y",
+					Value:  "z",
+					Effect: "NoSchedule",
 				},
 			},
 		},
