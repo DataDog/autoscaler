@@ -29,6 +29,8 @@ import (
 	k8smetrics "k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 	klog "k8s.io/klog/v2"
+
+	"github.com/aws/aws-sdk-go/aws/awserr"
 )
 
 // NodeScaleDownReason describes reason for removing node
@@ -328,12 +330,23 @@ var (
 			Help:      "Number of node groups deleted by Node Autoprovisioning.",
 		},
 	)
+
+	cloudProviderQuery = k8smetrics.NewSummaryVec(
+		&k8smetrics.SummaryOpts{
+			Namespace: caNamespace,
+			Name:      "cloud_provider_query_seconds",
+			Help:      "Quantiles of time taken by cloud provider query by method and success in seconds",
+			MaxAge:    time.Hour,
+		},
+		[]string{"cloud", "method", "success", "code"},
+	)
 )
 
 // RegisterAll registers all metrics.
 func RegisterAll(emitPerNodeGroupMetrics bool) {
 	legacyregistry.MustRegister(clusterSafeToAutoscale)
 	legacyregistry.MustRegister(nodesCount)
+	legacyregistry.MustRegister(cloudProviderQuery)
 	legacyregistry.MustRegister(nodeGroupsCount)
 	legacyregistry.MustRegister(unschedulablePodsCount)
 	legacyregistry.MustRegister(maxNodesCount)
@@ -505,6 +518,21 @@ func UpdateNapEnabled(enabled bool) {
 	} else {
 		napEnabled.Set(0)
 	}
+}
+
+// ObserveCloudProviderQuery records cloud provider API calls durations
+func ObserveCloudProviderQuery(cloud, method string, err error, start time.Time) {
+	latency := time.Now().Sub(start).Seconds()
+	if err == nil {
+		cloudProviderQuery.WithLabelValues(cloud, method, "true", "ok").Observe(latency)
+		return
+	}
+	result := "error"
+	awsErr, ok := err.(awserr.Error)
+	if ok {
+		result = awsErr.Code()
+	}
+	cloudProviderQuery.WithLabelValues(cloud, method, "false", result).Observe(latency)
 }
 
 // RegisterNodeGroupCreation registers node group creation

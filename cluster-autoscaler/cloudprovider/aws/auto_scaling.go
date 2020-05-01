@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/autoscaler/cluster-autoscaler/metrics"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"k8s.io/apimachinery/pkg/util/clock"
@@ -106,7 +108,10 @@ func (m autoScalingWrapper) getInstanceTypeByLCNames(launchConfigToQuery []*stri
 			LaunchConfigurationNames: launchConfigToQuery[i:end],
 			MaxRecords:               aws.Int64(50),
 		}
+
+		start := time.Now()
 		r, err := m.DescribeLaunchConfigurations(params)
+		metrics.ObserveCloudProviderQuery("aws", "DescribeLaunchConfigurations", err, start)
 		if err != nil {
 			return nil, err
 		}
@@ -156,12 +161,15 @@ func (m *autoScalingWrapper) getAutoscalingGroupsByNames(names []string) ([]*aut
 			AutoScalingGroupNames: aws.StringSlice(names[i:end]),
 			MaxRecords:            aws.Int64(maxRecordsReturnedByAPI),
 		}
-		if err := m.DescribeAutoScalingGroupsPages(input, func(output *autoscaling.DescribeAutoScalingGroupsOutput, _ bool) bool {
+		start := time.Now()
+		err := m.DescribeAutoScalingGroupsPages(input, func(output *autoscaling.DescribeAutoScalingGroupsOutput, _ bool) bool {
 			asgs = append(asgs, output.AutoScalingGroups...)
 			// We return true while we want to be called with the next page of
 			// results, if any.
 			return true
-		}); err != nil {
+		})
+		metrics.ObserveCloudProviderQuery("aws", "DescribeAutoScalingGroupsPages", err, start)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -235,12 +243,16 @@ func (m *autoScalingWrapper) getAutoscalingGroupNamesByTags(kvs map[string]strin
 		Filters:    filters,
 		MaxRecords: aws.Int64(maxRecordsReturnedByAPI),
 	}
-	if err := m.DescribeTagsPages(input, func(out *autoscaling.DescribeTagsOutput, _ bool) bool {
+
+	start := time.Now()
+	err := m.DescribeTagsPages(input, func(out *autoscaling.DescribeTagsOutput, _ bool) bool {
 		tags = append(tags, out.Tags...)
 		// We return true while we want to be called with the next page of
 		// results, if any.
 		return true
-	}); err != nil {
+	})
+	metrics.ObserveCloudProviderQuery("aws", "DescribeTagsPages", err, start)
+	if err != nil {
 		return nil, err
 	}
 
