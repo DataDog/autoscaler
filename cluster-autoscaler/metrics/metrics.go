@@ -263,7 +263,7 @@ var (
 			Help:      "Quantiles of time taken by cloud provider query by method and success in seconds",
 			MaxAge:    time.Hour,
 		},
-		[]string{"cloud", "method", "success"},
+		[]string{"cloud", "method", "success","code"},
 	)
 )
 
