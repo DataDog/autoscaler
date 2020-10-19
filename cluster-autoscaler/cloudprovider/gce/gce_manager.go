@@ -17,6 +17,7 @@ limitations under the License.
 package gce
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -24,14 +25,16 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/units"
+	"k8s.io/client-go/util/workqueue"
 
 	apiv1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	provider_gce "k8s.io/legacy-cloud-providers/gce"
 
 	"cloud.google.com/go/compute/metadata"
@@ -359,12 +362,22 @@ func (m *gceManagerImpl) buildMigFromSpec(s *dynamic.NodeGroupSpec) (Mig, error)
 // they no longer exist in GCE.
 func (m *gceManagerImpl) fetchAutoMigs() error {
 	exists := make(map[GceRef]bool)
-	changed := false
+	var changed int32 = 0
+
+	concurrency := 5
+	if value, exists := os.LookupEnv("GCP_MAX_CONCURRENCY"); exists {
+		if i, err := strconv.Atoi(value); err == nil {
+			concurrency = i
+		}
+	}
+
+	toRegister := make([]Mig, 0)
 	for _, cfg := range m.migAutoDiscoverySpecs {
 		links, err := m.findMigsNamed(cfg.Re)
 		if err != nil {
 			return fmt.Errorf("cannot autodiscover managed instance groups: %v", err)
 		}
+
 		for _, link := range links {
 			mig, err := m.buildMigFromAutoCfg(link, cfg)
 			if err != nil {
@@ -378,21 +391,26 @@ func (m *gceManagerImpl) fetchAutoMigs() error {
 				klog.V(3).Infof("Ignoring explicitly configured MIG %s in autodiscovery.", mig.GceRef().String())
 				continue
 			}
-			if m.registerMig(mig) {
-				klog.V(3).Infof("Autodiscovered MIG %s using regexp %s", mig.GceRef().String(), cfg.Re.String())
-				changed = true
-			}
+			toRegister = append(toRegister, mig)
 		}
 	}
+
+	workqueue.ParallelizeUntil(context.Background(), concurrency, len(toRegister), func(piece int) {
+		mig := toRegister[piece]
+		if m.registerMig(mig) {
+			klog.V(3).Infof("Autodiscovered MIG %s", mig.GceRef().String())
+			atomic.StoreInt32(&changed, int32(1))
+		}
+	}, workqueue.WithChunkSize(concurrency))
 
 	for _, mig := range m.GetMigs() {
 		if !exists[mig.GceRef()] && !m.explicitlyConfigured[mig.GceRef()] {
 			m.cache.UnregisterMig(mig)
-			changed = true
+			atomic.StoreInt32(&changed, int32(1))
 		}
 	}
 
-	if changed {
+	if atomic.LoadInt32(&changed) > 0 {
 		return m.cache.RegenerateInstancesCache()
 	}
 
