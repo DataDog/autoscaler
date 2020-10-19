@@ -52,14 +52,13 @@ func NewCachingMigInstanceTemplatesProvider(cache *GceCache, gceClient Autoscali
 // GetMigInstanceTemplate returns instance template for MIG with given ref
 func (p *CachingMigInstanceTemplatesProvider) GetMigInstanceTemplate(migRef GceRef) (*gce.InstanceTemplate, error) {
 	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
 	if !p.lastRefresh.Add(migInstanceCacheRefreshInterval).After(time.Now()) {
 		p.cache.InvalidateAllMigInstanceTemplates()
 		p.lastRefresh = time.Now()
 	}
 
 	instanceTemplate, found := p.cache.GetMigInstanceTemplate(migRef)
+	p.mutex.Unlock()
 
 	if found {
 		return instanceTemplate, nil
@@ -69,6 +68,8 @@ func (p *CachingMigInstanceTemplatesProvider) GetMigInstanceTemplate(migRef GceR
 	if err != nil {
 		return nil, err
 	}
+	p.mutex.Lock()
 	p.cache.SetMigInstanceTemplate(migRef, instanceTemplate)
+	p.mutex.Unlock()
 	return instanceTemplate, nil
 }
