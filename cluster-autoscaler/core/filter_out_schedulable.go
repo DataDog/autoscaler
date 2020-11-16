@@ -26,6 +26,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
+	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	apiv1 "k8s.io/api/core/v1"
 	klog "k8s.io/klog/v2"
@@ -143,7 +144,8 @@ func (p *filterOutSchedulablePodListProcessor) filterOutSchedulableByPacking(
 	for _, pod := range unschedulableCandidates {
 		scheduledOnHintedNode := false
 		if hintedNodeName, hintFound := p.schedulablePodsNodeHints[pod.UID]; hintFound {
-			if predicateChecker.CheckPredicates(clusterSnapshot, pod, hintedNodeName) == nil {
+			nodeInfo, _ := clusterSnapshot.NodeInfos().Get(hintedNodeName)
+			if predicateChecker.CheckPredicates(clusterSnapshot, pod, hintedNodeName) == nil && isLivingNode(nodeInfo) {
 				// We treat predicate error and missing node error here in the same way
 				scheduledOnHintedNode = true
 				podsFilteredUsingHints++
@@ -184,7 +186,9 @@ func (p *filterOutSchedulablePodListProcessor) filterOutSchedulableByPacking(
 			unschedulePodsCacheHitCounter++
 			continue
 		}
-		nodeName, err := predicateChecker.FitsAnyNode(clusterSnapshot, pod)
+		nodeName, err := predicateChecker.FitsAnyNodeMatching(clusterSnapshot, pod, func(nodeInfo *schedulerframework.NodeInfo) bool {
+			return isLivingNode(nodeInfo)
+		})
 		if err == nil {
 			klog.V(4).Infof("Pod %s.%s marked as unschedulable can be scheduled on node %s. Ignoring"+
 				" in scale up.", pod.Namespace, pod.Name, nodeName)
@@ -202,6 +206,36 @@ func (p *filterOutSchedulablePodListProcessor) filterOutSchedulableByPacking(
 	klog.V(4).Infof("%v pods were kept as unschedulable based on caching", unschedulePodsCacheHitCounter)
 	klog.V(4).Infof("%v pods marked as unschedulable can be scheduled.", len(unschedulableCandidates)-len(unschedulablePods))
 	return unschedulablePods, nil
+}
+
+// filter out dead nodes (having "unknown" NodeReady condition for over 10mn), so we can ignore them if hinted.
+// Needed for 1.10 clusters, until we set TaintBasedEvictions feature gate to "true" there (already enabled
+// by default on clusters using k8s v1.14 and up): TaintBasedEvictions places a node.kubernetes.io/unreachable
+// taint on dead nodes, that helps the CA to consider them unschedulable (unless explicitely tolerated).
+func isLivingNode(nodeInfo *schedulerframework.NodeInfo) bool {
+	if nodeInfo == nil {
+		// we only care about filtering out nodes having "unknown" status.
+		return true
+	}
+
+	node := nodeInfo.Node()
+	if node == nil && node.Status.Conditions == nil {
+		return true
+	}
+
+	for _, cond := range node.Status.Conditions {
+		if cond.Type != apiv1.NodeReady {
+			continue
+		}
+		if cond.Status != apiv1.ConditionUnknown {
+			continue
+		}
+		if cond.LastTransitionTime.Time.Add(10 * time.Minute).Before(time.Now()) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func moreImportantPod(pod1, pod2 *apiv1.Pod) bool {
