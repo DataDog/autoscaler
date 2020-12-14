@@ -43,6 +43,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfos"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
@@ -177,6 +178,7 @@ var (
 	clusterAPICloudConfigAuthoritative = flag.Bool("clusterapi-cloud-config-authoritative", false, "Treat the cloud-config flag authoritatively (do not fallback to using kubeconfig flag). ClusterAPI only")
 	cordonNodeBeforeTerminate          = flag.Bool("cordon-node-before-terminating", false, "Should CA cordon nodes before terminating during downscale process")
 	daemonSetEvictionForEmptyNodes     = flag.Bool("daemonset-eviction-for-empty-nodes", false, "DaemonSet pods will be gracefully terminated from empty nodes")
+	enableRefineUsingSimilarNodeGroups = flag.Bool("refine-using-similar-nodegroups", false, "Mitigate unbalance among similar node groups when scale-up-from-zero is enabled")
 )
 
 func createAutoscalingOptions() config.AutoscalingOptions {
@@ -251,6 +253,7 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		ClusterAPICloudConfigAuthoritative: *clusterAPICloudConfigAuthoritative,
 		CordonNodeBeforeTerminate:          *cordonNodeBeforeTerminate,
 		DaemonSetEvictionForEmptyNodes:     *daemonSetEvictionForEmptyNodes,
+		EnableRefineUsingSimilarNodeGroups: *enableRefineUsingSimilarNodeGroups,
 	}
 }
 
@@ -323,6 +326,13 @@ func buildAutoscaler() (core.Autoscaler, error) {
 
 	opts.Processors.NodeGroupSetProcessor = &nodegroupset.BalancingNodeGroupSetProcessor{
 		Comparator: nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels),
+	}
+
+	if autoscalingOptions.EnableRefineUsingSimilarNodeGroups {
+		opts.Processors.NodeInfoProcessor = &nodeinfos.RefineNodeInfosProcessor{
+			NodeGroupSetProcessor:        opts.Processors.NodeGroupSetProcessor,
+			RefineUsingSimilarNodeGroups: autoscalingOptions.EnableRefineUsingSimilarNodeGroups,
+		}
 	}
 
 	// These metrics should be published only once.

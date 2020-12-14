@@ -159,4 +159,7 @@ type AutoscalingOptions struct {
 	CordonNodeBeforeTerminate bool
 	// DaemonSetEvictionForEmptyNodes is whether CA will gracefully terminate DaemonSet pods from empty nodes.
 	DaemonSetEvictionForEmptyNodes bool
+	// EnableRefineUsingSimilarNodeGroups tells wether cluster-autoscaler should try to refine synthetic nodeinfos (generated
+	// by using cloud providers TemplateInfos()) by using nodeinfos obtained from real-world nodes from similar nodegroups.
+	EnableRefineUsingSimilarNodeGroups bool
 }
