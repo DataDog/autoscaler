@@ -20,6 +20,7 @@ import (
 	ctx "context"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -58,6 +59,8 @@ import (
 	"k8s.io/component-base/config/options"
 	"k8s.io/component-base/metrics/legacyregistry"
 	klog "k8s.io/klog/v2"
+
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
 // MultiStringFlag is a flag for passing multiple parameters using same flag
@@ -379,6 +382,23 @@ func main() {
 	healthCheck := metrics.NewHealthCheck(*maxInactivityTimeFlag, *maxFailingTimeFlag)
 
 	klog.V(1).Infof("Cluster Autoscaler %s", version.ClusterAutoscalerVersion)
+
+	err := profiler.Start(
+		profiler.WithService("clusterautoscaler"),
+		profiler.WithEnv("staging"),
+		profiler.WithVersion("1.19.0-dd.14"),
+		profiler.WithTags("app:cluster-autoscaler"),
+		profiler.WithProfileTypes(
+			profiler.HeapProfile,
+			profiler.CPUProfile,
+			profiler.GoroutineProfile,
+			profiler.BlockProfile,
+		),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer profiler.Stop()
 
 	go func() {
 		pathRecorderMux := mux.NewPathRecorderMux("cluster-autoscaler")
