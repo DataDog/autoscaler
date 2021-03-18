@@ -43,6 +43,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/podtemplates"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
@@ -179,6 +180,7 @@ var (
 	cordonNodeBeforeTerminate          = flag.Bool("cordon-node-before-terminating", false, "Should CA cordon nodes before terminating during downscale process")
 	daemonSetEvictionForEmptyNodes     = flag.Bool("daemonset-eviction-for-empty-nodes", false, "DaemonSet pods will be gracefully terminated from empty nodes")
 	userAgent                          = flag.String("user-agent", "cluster-autoscaler", "User agent used for HTTP calls.")
+	extraDaemonsetsFromPodTemplates    = flag.Bool("extra-daemonsets-from-pod-templates", false, "Enable ExtraDaemonset Processor to consider specific PodTemplate as DaemonSet")
 )
 
 func createAutoscalingOptions() config.AutoscalingOptions {
@@ -254,7 +256,7 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		ClusterAPICloudConfigAuthoritative: *clusterAPICloudConfigAuthoritative,
 		CordonNodeBeforeTerminate:          *cordonNodeBeforeTerminate,
 		DaemonSetEvictionForEmptyNodes:     *daemonSetEvictionForEmptyNodes,
-		UserAgent:                          *userAgent,
+		ExtraDaemonsetsFromPodTemplates:    *extraDaemonsetsFromPodTemplates,
 	}
 }
 
@@ -327,6 +329,11 @@ func buildAutoscaler() (core.Autoscaler, error) {
 
 	opts.Processors.NodeGroupSetProcessor = &nodegroupset.BalancingNodeGroupSetProcessor{
 		Comparator: nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels),
+	}
+
+	// Enable PodTemplateListProcessor if needed
+	if autoscalingOptions.ExtraDaemonsetsFromPodTemplates {
+		opts.Processors.PodTemplateListProcessor = podtemplates.NewActivePodTemplateListProcessor(kubeClient)
 	}
 
 	// These metrics should be published only once.

@@ -163,4 +163,6 @@ type AutoscalingOptions struct {
 	DaemonSetEvictionForEmptyNodes bool
 	// User agent to use for HTTP calls.
 	UserAgent string
+	// ExtraDaemonsetsFromPodTemplates enable ExtraDaemonset Processor to consider specific PodTemplate as DaemonSet.
+	ExtraDaemonsetsFromPodTemplates bool
 }
