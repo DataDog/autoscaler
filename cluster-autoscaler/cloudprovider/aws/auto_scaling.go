@@ -18,6 +18,7 @@ package aws
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -149,9 +150,17 @@ func (m *autoScalingWrapper) getAutoscalingGroupsByNames(names []string) ([]*aut
 
 	asgs := make([]*autoscaling.Group, 0)
 
+	// temporary until this maxRecords boost goes everywhere
+	maxRecords := maxRecordsReturnedByAPI
+	maxAsgNames := maxAsgNamesPerDescribe
+	if region := os.Getenv("AWS_REGION"); region == "us-east-1" {
+		maxRecords = 100
+		maxAsgNames = 100
+	}
+
 	// AWS only accepts up to 50 ASG names as input, describe them in batches
-	for i := 0; i < len(names); i += maxAsgNamesPerDescribe {
-		end := i + maxAsgNamesPerDescribe
+	for i := 0; i < len(names); i += maxAsgNames {
+		end := i + maxAsgNames
 
 		if end > len(names) {
 			end = len(names)
@@ -159,7 +168,7 @@ func (m *autoScalingWrapper) getAutoscalingGroupsByNames(names []string) ([]*aut
 
 		input := &autoscaling.DescribeAutoScalingGroupsInput{
 			AutoScalingGroupNames: aws.StringSlice(names[i:end]),
-			MaxRecords:            aws.Int64(maxRecordsReturnedByAPI),
+			MaxRecords:            aws.Int64(int64(maxRecords)),
 		}
 		start := time.Now()
 		err := m.DescribeAutoScalingGroupsPages(input, func(output *autoscaling.DescribeAutoScalingGroupsOutput, _ bool) bool {
