@@ -43,7 +43,8 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
-	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfos/podtemplates"
+	nodeinfobuilder "k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfos/builder"
+	_ "k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfos/podtemplates"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
@@ -180,7 +181,7 @@ var (
 	cordonNodeBeforeTerminate          = flag.Bool("cordon-node-before-terminating", false, "Should CA cordon nodes before terminating during downscale process")
 	daemonSetEvictionForEmptyNodes     = flag.Bool("daemonset-eviction-for-empty-nodes", false, "DaemonSet pods will be gracefully terminated from empty nodes")
 	userAgent                          = flag.String("user-agent", "cluster-autoscaler", "User agent used for HTTP calls.")
-	extraDaemonsetsFromPodTemplates    = flag.Bool("extra-daemonsets-from-pod-templates", false, "Enable ExtraDaemonset Processor to consider specific PodTemplate as DaemonSet")
+	nodeInfoProcessorName              = flag.String("node-info-processor", "", "node-info processor type. Available values: ["+strings.Join(nodeinfobuilder.GetAvailableNodeInfoProcessors(), ",")+"]")
 )
 
 func createAutoscalingOptions() config.AutoscalingOptions {
@@ -256,7 +257,8 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		ClusterAPICloudConfigAuthoritative: *clusterAPICloudConfigAuthoritative,
 		CordonNodeBeforeTerminate:          *cordonNodeBeforeTerminate,
 		DaemonSetEvictionForEmptyNodes:     *daemonSetEvictionForEmptyNodes,
-		ExtraDaemonsetsFromPodTemplates:    *extraDaemonsetsFromPodTemplates,
+		UserAgent:                          *userAgent,
+		NodeInfoProcessorName:              *nodeInfoProcessorName,
 	}
 }
 
@@ -331,9 +333,14 @@ func buildAutoscaler() (core.Autoscaler, error) {
 		Comparator: nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels),
 	}
 
-	// Enable PodTemplateListProcessor if needed
-	if autoscalingOptions.ExtraDaemonsetsFromPodTemplates {
-		opts.Processors.NodeInfoProcessor = podtemplates.NewNodeInfoWithPodTemplateProcessor(kubeClient)
+	// Enable a NodeInfoProcessorName if requested.
+	if autoscalingOptions.NodeInfoProcessorName != "" {
+		processor, err := nodeinfobuilder.Build(&opts)
+		if err != nil {
+			klog.Errorf("Unable to instantiate the requested NodeInfoProcessor, err: %w", err)
+		} else {
+			opts.Processors.NodeInfoProcessor = processor
+		}
 	}
 
 	// These metrics should be published only once.

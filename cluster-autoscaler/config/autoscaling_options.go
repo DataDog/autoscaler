@@ -163,6 +163,6 @@ type AutoscalingOptions struct {
 	DaemonSetEvictionForEmptyNodes bool
 	// User agent to use for HTTP calls.
 	UserAgent string
-	// ExtraDaemonsetsFromPodTemplates enable ExtraDaemonset Processor to consider specific PodTemplate as DaemonSet.
-	ExtraDaemonsetsFromPodTemplates bool
+	// NodeInfoProcessorName sets the type of the NodeInfo processor. Allowed value: podtemplates.
+	NodeInfoProcessorName string
 }
