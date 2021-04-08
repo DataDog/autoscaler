@@ -147,4 +147,8 @@ type AutoscalingOptions struct {
 	// ClusterAPICloudConfigAuthoritative tells the Cluster API provider to treat the CloudConfig option as authoritative and
 	// not use KubeConfigPath as a fallback when it is not provided.
 	ClusterAPICloudConfigAuthoritative bool
+	// ScaleUpTemplateFromCloudProvider tells cluster-autoscaler to always use cloud-providers node groups (ASG, MIG, VMSS...)
+	// templates rather than templates built from real-world nodes. Warning: this isn't supported by all providers, gives less
+	// accurate informations than real-world nodes, and can lead to wrong upscale decisions.
+	ScaleUpTemplateFromCloudProvider bool
 }
