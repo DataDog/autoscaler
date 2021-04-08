@@ -176,7 +176,7 @@ var (
 	concurrentGceRefreshes             = flag.Int("gce-concurrent-refreshes", 1, "Maximum number of concurrent refreshes per cloud object type.")
 	enableProfiling                    = flag.Bool("profiling", false, "Is debug/pprof endpoint enabled")
 	clusterAPICloudConfigAuthoritative = flag.Bool("clusterapi-cloud-config-authoritative", false, "Treat the cloud-config flag authoritatively (do not fallback to using kubeconfig flag). ClusterAPI only")
-	scaleUpTemplateFromCloudProvider   = flag.Bool("scale-up-from-cloud-provider-template", false, "Build nodes templates from cloud providers node groups rather than real-world nodes. WARNING: this isn't supported by all cloud providers, and can lead to wrong autoscaling decisions (erroneous capacity evaluations causing infinite upscales, or pods left pending).")
+	scaleUpTemplateFromCloudProvider   = flag.Bool("scale-up-from-cloud-provider-template", true, "Build nodes templates from cloud providers node groups rather than real-world nodes. WARNING: this isn't supported by all cloud providers, and can lead to wrong autoscaling decisions (erroneous capacity evaluations causing infinite upscales, or pods left pending).")
 )
 
 func createAutoscalingOptions() config.AutoscalingOptions {
