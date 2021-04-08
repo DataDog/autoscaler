@@ -119,6 +119,10 @@ type AutoscalingOptions struct {
 	NodeAutoprovisioningEnabled bool
 	// MaxAutoprovisionedNodeGroupCount is the maximum number of autoprovisioned groups in the cluster.
 	MaxAutoprovisionedNodeGroupCount int
+	// ScaleUpTemplateFromCloudProvider tells cluster-autoscaler to always use cloud-providers node groups (ASG, MIG, VMSS...)
+	// templates rather than templates built from real-world nodes. Warning: this isn't supported by all providers, gives less
+	// accurate informations than real-world nodes, and can lead to wrong upscale decisions.
+	ScaleUpTemplateFromCloudProvider bool
 	// UnremovableNodeRecheckTimeout is the timeout before we check again a node that couldn't be removed before
 	UnremovableNodeRecheckTimeout time.Duration
 	// Pods with priority below cutoff are expendable. They can be killed without any consideration during scale down and they don't cause scale-up.
