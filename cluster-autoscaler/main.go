@@ -164,7 +164,7 @@ var (
 	balanceSimilarNodeGroupsFlag     = flag.Bool("balance-similar-node-groups", false, "Detect similar node groups and balance the number of nodes between them")
 	nodeAutoprovisioningEnabled      = flag.Bool("node-autoprovisioning-enabled", false, "Should CA autoprovision node groups when needed")
 	maxAutoprovisionedNodeGroupCount = flag.Int("max-autoprovisioned-node-group-count", 15, "The maximum number of autoprovisioned groups in the cluster.")
-	scaleUpTemplateFromCloudProvider = flag.Bool("scale-up-from-cloud-provider-template", false, "Build nodes templates from cloud providers node groups rather than real-world nodes. WARNING: this isn't supported by all cloud providers, and can lead to wrong autoscaling decisions (erroneous capacity evaluations causing infinite upscales, or pods left pending).")
+	scaleUpTemplateFromCloudProvider = flag.Bool("scale-up-from-cloud-provider-template", true, "Build nodes templates from cloud providers node groups rather than real-world nodes. WARNING: this isn't supported by all cloud providers, and can lead to wrong autoscaling decisions (erroneous capacity evaluations causing infinite upscales, or pods left pending).")
 
 	unremovableNodeRecheckTimeout = flag.Duration("unremovable-node-recheck-timeout", 5*time.Minute, "The timeout before we check again a node that couldn't be removed before")
 	expendablePodsPriorityCutoff  = flag.Int("expendable-pods-priority-cutoff", -10, "Pods with priority below cutoff will be expendable. They can be killed without any consideration during scale down and they don't cause scale up. Pods with null priority (PodPriority disabled) are non expendable.")
