@@ -26,6 +26,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/utils/gpu"
 	_ "k8s.io/component-base/metrics/prometheus/restclient" // for client-go metrics registration
 
+	corev1 "k8s.io/api/core/v1"
 	k8smetrics "k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/legacyregistry"
 	klog "k8s.io/klog/v2"
@@ -222,6 +223,24 @@ var (
 		},
 	)
 
+	podScaleUpDuration = k8smetrics.NewHistogramVec(
+		&k8smetrics.HistogramOpts{
+			Namespace: caNamespace,
+			Name:      "pod_scale_up_duration_seconds",
+			Help:      "Time taken for a pod since its creation to trigger a scale up.",
+			Buckets:   []float64{0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 12.5, 15.0, 17.5, 20.0, 22.5, 25.0, 27.5, 30.0, 50.0, 75.0, 100.0, 1000.0},
+		}, []string{"namespace"},
+	)
+
+	podScaleUpDurationSummary = k8smetrics.NewSummaryVec(
+		&k8smetrics.SummaryOpts{
+			Namespace: caNamespace,
+			Name:      "pod_scale_up_duration_quantile_seconds",
+			Help:      "Time taken for a pod since its creation to trigger a scale up",
+			MaxAge:    time.Hour,
+		}, []string{"namespace"},
+	)
+
 	unneededNodesCount = k8smetrics.NewGauge(
 		&k8smetrics.GaugeOpts{
 			Namespace: caNamespace,
@@ -298,6 +317,8 @@ func RegisterAll() {
 	legacyregistry.MustRegister(scaleDownCount)
 	legacyregistry.MustRegister(gpuScaleDownCount)
 	legacyregistry.MustRegister(evictionsCount)
+	legacyregistry.MustRegister(podScaleUpDuration)
+	legacyregistry.MustRegister(podScaleUpDurationSummary)
 	legacyregistry.MustRegister(unneededNodesCount)
 	legacyregistry.MustRegister(unremovableNodesCount)
 	legacyregistry.MustRegister(scaleDownInCooldown)
@@ -394,6 +415,13 @@ func RegisterScaleDown(nodesCount int, gpuType string, reason NodeScaleDownReaso
 // RegisterEvictions records number of evicted pods
 func RegisterEvictions(podsCount int) {
 	evictionsCount.Add(float64(podsCount))
+}
+
+// RecordPodScaleUp process the time taken since a pod creation to trigger a scale up
+func RecordPodScaleUp(pod *corev1.Pod) {
+	t := time.Since(pod.CreationTimestamp.Time).Seconds()
+	podScaleUpDuration.WithLabelValues(pod.Namespace).Observe(t)
+	podScaleUpDurationSummary.WithLabelValues(pod.Namespace).Observe(t)
 }
 
 // UpdateUnneededNodesCount records number of currently unneeded nodes

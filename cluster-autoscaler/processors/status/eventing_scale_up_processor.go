@@ -26,6 +26,7 @@ import (
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
+	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 )
 
 // EventingScaleUpStatusProcessor processes the state of the cluster after
@@ -51,6 +52,7 @@ func (p *EventingScaleUpStatusProcessor) Process(context *context.AutoscalingCon
 		for _, pod := range status.PodsTriggeredScaleUp {
 			context.Recorder.Eventf(pod, apiv1.EventTypeNormal, "TriggeredScaleUp",
 				"pod triggered scale-up: %v", status.ScaleUpInfos)
+			metrics.RecordPodScaleUp(pod)
 		}
 	}
 }
