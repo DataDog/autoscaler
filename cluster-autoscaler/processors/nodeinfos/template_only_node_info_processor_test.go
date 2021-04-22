@@ -55,9 +55,4 @@ func TestTemplateOnlyNodeInfoProcessorProcess(t *testing.T) {
 	assert.Equal(t, 2, len(res))
 	assert.Contains(t, res, "ng1")
 	assert.Contains(t, res, "ng2")
-
-	// nodegroup not providing templates
-	provider1.AddNodeGroup("ng3", 0, 1000, 0)
-	_, err = processor.Process(ctx, nil, nil, nil)
-	assert.Error(t, err)
 }
