@@ -18,19 +18,20 @@ package nodeinfos
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
-	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	klog "k8s.io/klog/v2"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
-const nodeInfoRefreshInterval = 15 * time.Minute
+const nodeInfoRefreshInterval = 5 * time.Minute
 
 type nodeInfoCacheEntry struct {
 	nodeInfo    *schedulerframework.NodeInfo
@@ -39,58 +40,90 @@ type nodeInfoCacheEntry struct {
 
 // TemplateOnlyNodeInfoProcessor return NodeInfos built from node group templates.
 type TemplateOnlyNodeInfoProcessor struct {
+	sync.Mutex
 	nodeInfoCache map[string]*nodeInfoCacheEntry
+	cloudProvider cloudprovider.CloudProvider
+	interrupt     chan struct{}
 }
 
 // Process returns nodeInfos built from node groups templates.
 func (p *TemplateOnlyNodeInfoProcessor) Process(ctx *context.AutoscalingContext, nodeInfosForNodeGroups map[string]*schedulerframework.NodeInfo, daemonsets []*appsv1.DaemonSet, ignoredTaints taints.TaintKeySet) (map[string]*schedulerframework.NodeInfo, error) {
-	result := make(map[string]*schedulerframework.NodeInfo)
-	seenGroups := make(map[string]bool)
+	start := time.Now()
 
-	for _, nodeGroup := range ctx.CloudProvider.NodeGroups() {
+	if p.interrupt == nil {
+		p.interrupt = make(chan struct{})
+		p.cloudProvider = ctx.CloudProvider
+		p.refresh()
+		go wait.Until(func() {
+			p.refresh()
+		}, 10*time.Second, p.interrupt)
+	}
+
+	p.Lock()
+	defer p.Unlock()
+
+	result := make(map[string]*schedulerframework.NodeInfo)
+	for _, nodeGroup := range p.cloudProvider.NodeGroups() {
+		var err error
+		var nodeInfo *schedulerframework.NodeInfo
+
 		id := nodeGroup.Id()
-		seenGroups[id] = true
+		if cacheEntry, found := p.nodeInfoCache[id]; found {
+			nodeInfo, err = utils.GetFullNodeInfoFromBase(id, cacheEntry.nodeInfo, daemonsets, ctx.PredicateChecker, ignoredTaints)
+		} else {
+			// new nodegroup: this can be slow (locked) but allows faster discovery
+			klog.V(4).Infof("No cached base NodeInfo for %s yet", id)
+			nodeInfo, err = utils.GetNodeInfoFromTemplate(nodeGroup, daemonsets, ctx.PredicateChecker, ignoredTaints)
+		}
+		if err != nil {
+			klog.Warningf("Failed to build NodeInfo template for %s: %v", id, err)
+			continue
+		}
+		result[id] = nodeInfo
+	}
+
+	klog.V(4).Infof("TemplateOnlyNodeInfoProcessor took %s for %d NodeInfos", time.Since(start), len(result))
+
+	return result, nil
+}
+
+func (p *TemplateOnlyNodeInfoProcessor) refresh() {
+	result := make(map[string]*nodeInfoCacheEntry)
+
+	for _, nodeGroup := range p.cloudProvider.NodeGroups() {
+		id := nodeGroup.Id()
 
 		splay := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(int(nodeInfoRefreshInterval.Seconds() + 1))
 		lastRefresh := time.Now().Add(-time.Second * time.Duration(splay))
+
 		if ng, ok := p.nodeInfoCache[id]; ok {
 			if ng.lastRefresh.Add(nodeInfoRefreshInterval).After(time.Now()) {
-				result[id] = ng.nodeInfo
+				result[id] = ng
 				continue
 			}
 			lastRefresh = time.Now()
 		}
 
-		nodeInfo, err := utils.GetNodeInfoFromTemplate(nodeGroup, daemonsets, ctx.PredicateChecker, ignoredTaints)
+		nodeInfo, err := nodeGroup.TemplateNodeInfo()
 		if err != nil {
-			if err == cloudprovider.ErrNotImplemented {
-				klog.Warningf("Running in template only mode, but template isn't implemented for group %s", id)
-				continue
-			} else {
-				klog.Errorf("Unable to build proper template node for %s: %v", id, err)
-				return map[string]*schedulerframework.NodeInfo{},
-					errors.ToAutoscalerError(errors.CloudProviderError, err)
-			}
+			klog.Warningf("Unable to build template node for %s: %v", id, err)
+			continue
 		}
 
-		p.nodeInfoCache[id] = &nodeInfoCacheEntry{
+		result[id] = &nodeInfoCacheEntry{
 			nodeInfo:    nodeInfo,
 			lastRefresh: lastRefresh,
 		}
-		result[id] = nodeInfo
 	}
 
-	for id := range p.nodeInfoCache {
-		if _, ok := seenGroups[id]; !ok {
-			delete(p.nodeInfoCache, id)
-		}
-	}
-
-	return result, nil
+	p.Lock()
+	p.nodeInfoCache = result
+	p.Unlock()
 }
 
 // CleanUp cleans up processor's internal structures.
 func (p *TemplateOnlyNodeInfoProcessor) CleanUp() {
+	close(p.interrupt)
 }
 
 // NewTemplateOnlyNodeInfoProcessor returns a NodeInfoProcessor generating NodeInfos from node group templates.
