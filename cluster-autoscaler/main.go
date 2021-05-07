@@ -309,7 +309,7 @@ func buildAutoscaler() (core.Autoscaler, error) {
 	}
 
 	opts.Processors = ca_processors.DefaultProcessors()
-	opts.Processors.PodListProcessor = pods.NewFilterOutSchedulablePodListProcessor()
+	opts.Processors.PodListProcessor = pods.NewFilteringPodListProcessor()
 
 	nodeInfoComparatorBuilder := nodegroupset.CreateGenericNodeInfoComparator
 	if autoscalingOptions.CloudProviderName == cloudprovider.AzureProviderName {
