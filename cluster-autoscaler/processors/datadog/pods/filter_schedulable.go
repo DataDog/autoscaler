@@ -20,32 +20,30 @@ import (
 	"sort"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/autoscaler/cluster-autoscaler/context"
-	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
-	"k8s.io/autoscaler/cluster-autoscaler/metrics"
-	"k8s.io/autoscaler/cluster-autoscaler/simulator"
-	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
-
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	klog "k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/api/v1/pod"
+
+	"k8s.io/autoscaler/cluster-autoscaler/context"
+	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
+	"k8s.io/autoscaler/cluster-autoscaler/simulator"
+	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
-type filterOutSchedulablePodListProcessor struct {
+type filterOutSchedulable struct {
 	schedulablePodsNodeHints map[types.UID]string
 }
 
-// NewFilterOutSchedulablePodListProcessor creates a PodListProcessor filtering out schedulable pods
-func NewFilterOutSchedulablePodListProcessor() *filterOutSchedulablePodListProcessor {
-	return &filterOutSchedulablePodListProcessor{
+// NewFilterOutSchedulable creates a PodListProcessor filtering out schedulable pods
+func NewFilterOutSchedulable() *filterOutSchedulable {
+	return &filterOutSchedulable{
 		schedulablePodsNodeHints: make(map[types.UID]string),
 	}
 }
 
 // Process filters out pods which are schedulable from list of unschedulable pods.
-func (p *filterOutSchedulablePodListProcessor) Process(
+func (p *filterOutSchedulable) Process(
 	context *context.AutoscalingContext,
 	unschedulablePods []*apiv1.Pod) ([]*apiv1.Pod, error) {
 	// We need to check whether pods marked as unschedulable are actually unschedulable.
@@ -63,42 +61,6 @@ func (p *filterOutSchedulablePodListProcessor) Process(
 	//
 	// With the check enabled the last point won't happen because CA will ignore a pod
 	// which is supposed to schedule on an existing node.
-
-	klog.V(4).Infof("Filtering out schedulables")
-	filterOutSchedulableStart := time.Now()
-	var unschedulablePodsToHelp []*apiv1.Pod
-
-	pvcLister := context.ListerRegistry.PersistentVolumeClaimLister()
-	for _, po := range unschedulablePods {
-		var volumes []apiv1.Volume
-		for _, vol := range po.Spec.Volumes {
-			if vol.PersistentVolumeClaim == nil {
-				volumes = append(volumes, vol)
-				continue
-			}
-			pvc, err := pvcLister.PersistentVolumeClaims(po.Namespace).Get(vol.PersistentVolumeClaim.ClaimName)
-			if err != nil {
-				volumes = append(volumes, vol)
-				continue
-			}
-			if *pvc.Spec.StorageClassName != "local-data" {
-				volumes = append(volumes, vol)
-				continue
-			}
-
-			if len(po.Spec.Containers[0].Resources.Requests) == 0 {
-				po.Spec.Containers[0].Resources.Requests = apiv1.ResourceList{}
-			}
-			if len(po.Spec.Containers[0].Resources.Limits) == 0 {
-				po.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{}
-			}
-
-			po.Spec.Containers[0].Resources.Requests["storageclass/local-data"] = *resource.NewQuantity(1, resource.DecimalSI)
-			po.Spec.Containers[0].Resources.Limits["storageclass/local-data"] = *resource.NewQuantity(1, resource.DecimalSI)
-		}
-		po.Spec.Volumes = volumes
-	}
-
 	unschedulablePodsToHelp, err := p.filterOutSchedulableByPacking(unschedulablePods, context.ClusterSnapshot,
 		context.PredicateChecker)
 
@@ -106,9 +68,8 @@ func (p *filterOutSchedulablePodListProcessor) Process(
 		return nil, err
 	}
 
-	metrics.UpdateDurationFromStart(metrics.FilterOutSchedulable, filterOutSchedulableStart)
-
-	if len(unschedulablePodsToHelp) != len(unschedulablePods) {
+	if len(filterByAge(unschedulablePodsToHelp, youngerThan, longPendingCutoff)) !=
+		len(filterByAge(unschedulablePods, youngerThan, longPendingCutoff)) {
 		klog.V(2).Info("Schedulable pods present")
 		context.ProcessorCallbacks.DisableScaleDownForLoop()
 	} else {
@@ -117,14 +78,14 @@ func (p *filterOutSchedulablePodListProcessor) Process(
 	return unschedulablePodsToHelp, nil
 }
 
-func (p *filterOutSchedulablePodListProcessor) CleanUp() {
+func (p *filterOutSchedulable) CleanUp() {
 }
 
 // filterOutSchedulableByPacking checks whether pods from <unschedulableCandidates> marked as
 // unschedulable can be scheduled on free capacity on existing nodes by trying to pack the pods. It
 // tries to pack the higher priority pods first. It takes into account pods that are bound to node
 // and will be scheduled after lower priority pod preemption.
-func (p *filterOutSchedulablePodListProcessor) filterOutSchedulableByPacking(
+func (p *filterOutSchedulable) filterOutSchedulableByPacking(
 	unschedulableCandidates []*apiv1.Pod,
 	clusterSnapshot simulator.ClusterSnapshot,
 	predicateChecker simulator.PredicateChecker) ([]*apiv1.Pod, error) {
