@@ -67,7 +67,8 @@ func (p *filterOutSchedulable) Process(
 		return nil, err
 	}
 
-	if len(unschedulablePodsToHelp) != len(unschedulablePods) {
+	if len(filterByAge(unschedulablePodsToHelp, youngerThan, longPendingCutoff)) !=
+		len(filterByAge(unschedulablePods, youngerThan, longPendingCutoff)) {
 		klog.V(2).Info("Schedulable pods present")
 		context.ProcessorCallbacks.DisableScaleDownForLoop()
 	} else {
