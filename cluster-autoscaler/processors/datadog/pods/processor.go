@@ -32,6 +32,7 @@ import (
 func NewFilteringPodListProcessor(stopCtx stdcontext.Context, nodeFilter func(*framework.NodeInfo) bool) *pods.CombinedPodListProcessor {
 	return pods.NewCombinedPodListProcessor([]pods.PodListProcessor{
 		NewTransformLocalData(stopCtx),
+		NewFilterOutLongPending(),
 		podlistprocessor.NewClearTPURequestsPodListProcessor(),
 		podlistprocessor.NewFilterOutExpendablePodListProcessor(),
 		podlistprocessor.NewCurrentlyDrainedNodesPodListProcessor(),
