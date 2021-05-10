@@ -30,6 +30,7 @@ import (
 func NewFilteringPodListProcessor(nodeFilter func(*framework.NodeInfo) bool) *pods.CombinedPodListProcessor {
 	return pods.NewCombinedPodListProcessor([]pods.PodListProcessor{
 		NewTransformLocalData(),
+		NewFilterOutLongPending(),
 		podlistprocessor.NewClearTPURequestsPodListProcessor(),
 		podlistprocessor.NewFilterOutExpendablePodListProcessor(),
 		podlistprocessor.NewCurrentlyDrainedNodesPodListProcessor(),
