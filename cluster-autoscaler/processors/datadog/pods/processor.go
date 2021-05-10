@@ -41,6 +41,7 @@ func NewFilteringPodListProcessor(predicateChecker predicatechecker.PredicateChe
 			NewTransformLocalData(),
 		},
 		filters: []proc.PodListProcessor{
+			NewFilterOutLongPending(),
 			podlistprocessor.NewCurrentlyDrainedNodesPodListProcessor(),
 			podlistprocessor.NewFilterOutSchedulablePodListProcessor(predicateChecker),
 			podlistprocessor.NewFilterOutDaemonSetPodListProcessor(),
