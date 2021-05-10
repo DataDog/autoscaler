@@ -22,6 +22,7 @@ func NewFilteringPodListProcessor() *filteringPodListProcessor {
 			NewTransformLocalData(),
 		},
 		filters: []proc.PodListProcessor{
+			NewFilterOutLongPending(),
 			NewFilterOutSchedulable(),
 		},
 	}
