@@ -168,7 +168,7 @@ func (p *filterOutSchedulable) filterOutSchedulableByPacking(
 	return unschedulablePods, nil
 }
 
-// filter out dead nodes (having "unknown" NodeReady condition for over 10mn), so we can ignore them if hinted.
+// filter out dead nodes (having "unknown" NodeReady condition for over 5mn), so we can ignore them if hinted.
 // Needed for 1.10 clusters, until we set TaintBasedEvictions feature gate to "true" there (already enabled
 // by default on clusters using k8s v1.14 and up): TaintBasedEvictions places a node.kubernetes.io/unreachable
 // taint on dead nodes, that helps the CA to consider them unschedulable (unless explicitly tolerated).
@@ -190,7 +190,7 @@ func isLivingNode(nodeInfo *schedulerframework.NodeInfo) bool {
 		if cond.Status != apiv1.ConditionUnknown {
 			continue
 		}
-		if cond.LastTransitionTime.Time.Add(10 * time.Minute).Before(time.Now()) {
+		if cond.LastTransitionTime.Time.Add(5 * time.Minute).Before(time.Now()) {
 			return false
 		}
 	}
