@@ -26,6 +26,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	klog "k8s.io/klog/v2"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
@@ -108,6 +109,12 @@ func (p *TemplateOnlyNodeInfoProcessor) refresh() {
 		if err != nil {
 			klog.Warningf("Unable to build template node for %s: %v", id, err)
 			continue
+		}
+
+		// Virtual nodes in NodeInfo templates (built from ASG / MIGS / VMSS) having the
+		// local-storage:true label now also gets the Datadog local-storage custom resource
+		if common.NodeHasLocalData(nodeInfo.Node()) {
+			common.SetNodeLocalDataResource(nodeInfo)
 		}
 
 		result[id] = &nodeInfoCacheEntry{
