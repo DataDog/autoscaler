@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
-	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	v1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 )
@@ -100,12 +99,10 @@ func TestTransformLocalDataProcess(t *testing.T) {
 			pvcLister, err := newTestPVCLister(tt.pvcs)
 			assert.NoError(t, err)
 
-			registry := kube_util.NewListerRegistry(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, pvcLister)
-			ctx := &context.AutoscalingContext{
-				AutoscalingKubeClients: context.AutoscalingKubeClients{ListerRegistry: registry},
+			tld := transformLocalData{
+				pvcLister: pvcLister,
 			}
-
-			actual, err := NewTransformLocalData().Process(ctx, tt.pods)
+			actual, err := tld.Process(&context.AutoscalingContext{}, tt.pods)
 			assert.NoError(t, err)
 			assert.True(t, apiequality.Semantic.DeepEqual(tt.expected, actual))
 		})
@@ -133,7 +130,7 @@ func buildPod(name string, requests, limits corev1.ResourceList, claimNames ...s
 		Spec: corev1.PodSpec{
 			Volumes: []corev1.Volume{},
 			Containers: []corev1.Container{
-				corev1.Container{
+				{
 					Resources: corev1.ResourceRequirements{
 						Requests: requests,
 						Limits:   limits,
