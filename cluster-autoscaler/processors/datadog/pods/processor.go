@@ -28,7 +28,14 @@ func NewFilteringPodListProcessor() *filteringPodListProcessor {
 	}
 }
 
-func (p *filteringPodListProcessor) CleanUp() {}
+func (p *filteringPodListProcessor) CleanUp() {
+	for _, transform := range p.transforms {
+		transform.CleanUp()
+	}
+	for _, filter := range p.filters {
+		filter.CleanUp()
+	}
+}
 
 func (p *filteringPodListProcessor) Process(ctx *context.AutoscalingContext, pending []*apiv1.Pod) ([]*apiv1.Pod, error) {
 	klog.V(4).Infof("Filtering pending pods")

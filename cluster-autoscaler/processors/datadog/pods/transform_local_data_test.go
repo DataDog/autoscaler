@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
-	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	v1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 )
@@ -84,12 +83,10 @@ func TestTransformLocalDataProcess(t *testing.T) {
 			pvcLister, err := newTestPVCLister(tt.pvcs)
 			assert.NoError(t, err)
 
-			registry := kube_util.NewListerRegistry(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, pvcLister)
-			ctx := &context.AutoscalingContext{
-				AutoscalingKubeClients: context.AutoscalingKubeClients{ListerRegistry: registry},
+			td := transformLocalData{
+				pvcLister: pvcLister,
 			}
-
-			actual, err := NewTransformLocalData().Process(ctx, tt.pods)
+			actual, err := td.Process(&context.AutoscalingContext{}, tt.pods)
 			assert.NoError(t, err)
 			assert.True(t, apiequality.Semantic.DeepEqual(tt.expected, actual))
 		})
