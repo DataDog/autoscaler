@@ -22,6 +22,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
@@ -31,7 +32,10 @@ import (
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
-const nodeInfoRefreshInterval = 5 * time.Minute
+const (
+	nodeInfoRefreshInterval  = 5 * time.Minute
+	DatadogLocalStorageLabel = "nodegroups.datadoghq.com/local-storage"
+)
 
 type nodeInfoCacheEntry struct {
 	nodeInfo    *schedulerframework.NodeInfo
@@ -108,6 +112,12 @@ func (p *TemplateOnlyNodeInfoProcessor) refresh() {
 		if err != nil {
 			klog.Warningf("Unable to build template node for %s: %v", id, err)
 			continue
+		}
+
+		node := nodeInfo.Node()
+		if val, ok := node.GetLabels()[DatadogLocalStorageLabel]; ok && val == "true" {
+			node.Status.Capacity["storageclass/local-data"] = *resource.NewQuantity(1, resource.DecimalSI)
+			node.Status.Allocatable["storageclass/local-data"] = *resource.NewQuantity(1, resource.DecimalSI)
 		}
 
 		result[id] = &nodeInfoCacheEntry{
