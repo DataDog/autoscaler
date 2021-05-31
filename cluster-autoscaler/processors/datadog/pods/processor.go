@@ -27,6 +27,7 @@ import (
 func NewFilteringPodListProcessor(predicateChecker predicatechecker.PredicateChecker, nodeFilter func(*schedulerframework.NodeInfo) bool) *proc.CombinedPodListProcessor {
 	return proc.NewCombinedPodListProcessor([]proc.PodListProcessor{
 		NewTransformLocalData(),
+		NewTransformDataNodes(),
 		NewFilterOutLongPending(),
 		podlistprocessor.NewClearTPURequestsPodListProcessor(),
 		podlistprocessor.NewFilterOutExpendablePodListProcessor(),
