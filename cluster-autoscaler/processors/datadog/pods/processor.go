@@ -39,6 +39,7 @@ func NewFilteringPodListProcessor(predicateChecker predicatechecker.PredicateChe
 	return &filteringPodListProcessor{
 		transforms: []proc.PodListProcessor{
 			NewTransformLocalData(),
+			NewTransformDataNodes(),
 		},
 		filters: []proc.PodListProcessor{
 			NewFilterOutLongPending(),
