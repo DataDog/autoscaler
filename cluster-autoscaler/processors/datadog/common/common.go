@@ -23,7 +23,7 @@ import (
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
-var (
+const (
 	// DatadogLocalStorageLabel is "true" on nodes offering local storage
 	DatadogLocalStorageLabel = "nodegroups.datadoghq.com/local-storage"
 
@@ -32,6 +32,7 @@ var (
 	// Pending pods having a PVC for local-data volumes.
 	DatadogLocalDataResource apiv1.ResourceName = "storageclass/local-data"
 
+var (
 	// DatadogLocalDataQuantity is the default amount of DatadogLocalDataResource
 	DatadogLocalDataQuantity = resource.NewQuantity(1, resource.DecimalSI)
 )
