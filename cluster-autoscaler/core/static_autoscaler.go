@@ -25,6 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
+	datadogprovider "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
+
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/clusterstate"
 	"k8s.io/autoscaler/cluster-autoscaler/clusterstate/utils"
@@ -47,6 +49,8 @@ import (
 
 	klog "k8s.io/klog/v2"
 )
+
+var nodeInfosProvider = datadogprovider.NewTemplateOnlyNodeInfoProcessor()
 
 const (
 	// How old the oldest unschedulable pod should be before starting scale up.
@@ -267,11 +271,10 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) errors.AutoscalerError
 		return typedErr.AddPrefix("Initialize ClusterSnapshot")
 	}
 
-	nodeInfosForGroups, autoscalerError := core_utils.GetNodeInfosForGroups(
-		readyNodes, a.nodeInfoCache, autoscalingContext.CloudProvider, autoscalingContext.ListerRegistry, daemonsets, autoscalingContext.PredicateChecker, a.ignoredTaints)
-	if autoscalerError != nil {
-		klog.Errorf("Failed to get node infos for groups: %v", autoscalerError)
-		return autoscalerError.AddPrefix("failed to build node infos for node groups: ")
+	nodeInfosForGroups, err := nodeInfosProvider.Process(autoscalingContext, daemonsets, a.ignoredTaints)
+	if err != nil {
+		klog.Errorf("Failed to get node infos for groups: %v", err)
+		return errors.ToAutoscalerError(errors.InternalError, fmt.Errorf("failed to build node infos for node groups: %w", err))
 	}
 
 	nodeInfosForGroups, err = a.processors.NodeInfoProcessor.Process(autoscalingContext, nodeInfosForGroups)
