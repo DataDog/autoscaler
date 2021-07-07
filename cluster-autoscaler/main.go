@@ -31,6 +31,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -324,6 +325,10 @@ func buildAutoscaler() (core.Autoscaler, error) {
 	// These metrics should be published only once.
 	metrics.UpdateNapEnabled(autoscalingOptions.NodeAutoprovisioningEnabled)
 	metrics.UpdateMaxNodesCount(autoscalingOptions.MaxNodesTotal)
+
+	// Datadog only: hook our "ASG template only" nodeInfos provider; not in the cleanest, but in the less
+	// intrusive and most rebase friendly way we can; until a "nodeInfos provider processor" makes it upstream.
+	core.GetNodeInfosForGroups = nodeinfosprovider.NewTemplateOnlyNodeInfoProvider().GetNodeInfosForGroups
 
 	// Create autoscaler.
 	return core.NewAutoscaler(opts)
