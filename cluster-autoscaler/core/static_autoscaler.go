@@ -48,6 +48,9 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
+// GetNodeInfosForGroups is a non intrusive entrypoint for nodeinfos provider override
+var GetNodeInfosForGroups = core_utils.GetNodeInfosForGroups
+
 const (
 	// How old the oldest unschedulable pod should be before starting scale up.
 	unschedulablePodTimeBuffer = 2 * time.Second
@@ -267,7 +270,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) errors.AutoscalerError
 		return typedErr.AddPrefix("Initialize ClusterSnapshot")
 	}
 
-	nodeInfosForGroups, autoscalerError := core_utils.GetNodeInfosForGroups(
+	nodeInfosForGroups, autoscalerError := GetNodeInfosForGroups(
 		readyNodes, a.nodeInfoCache, autoscalingContext.CloudProvider, autoscalingContext.ListerRegistry, daemonsets, autoscalingContext.PredicateChecker, a.ignoredTaints)
 	if autoscalerError != nil {
 		klog.Errorf("Failed to get node infos for groups: %v", autoscalerError)
