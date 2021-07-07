@@ -21,9 +21,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	schedulerframework "k8s.io/autoscaler/cluster-autoscaler/simulator/framework"
 )
 
 func TestNodeHasLocalData(t *testing.T) {
@@ -80,12 +79,16 @@ func TestNodeHasLocalData(t *testing.T) {
 
 func TestSetNodeLocalDataResource(t *testing.T) {
 	ni := schedulerframework.NewNodeInfo(
-		&corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "spam"},
-		},
-		&corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "egg"},
-		},
+		&corev1.Node{},
+		nil,
+		schedulerframework.NewPodInfo(
+			&corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "spam"},
+			}, nil),
+		schedulerframework.NewPodInfo(
+			&corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "egg"},
+			}, nil),
 	)
 	ni.SetNode(&corev1.Node{})
 
@@ -93,11 +96,14 @@ func TestSetNodeLocalDataResource(t *testing.T) {
 
 	nodeValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataResource]
 	assert.True(t, ok)
-	assert.Equal(t, nodeValue, *resource.NewQuantity(1, resource.DecimalSI))
+	expectedValue := DatadogLocalDataQuantity
+	assert.Equal(t, nodeValue, *expectedValue)
 
-	niValue, ok := ni.Allocatable.ScalarResources[DatadogLocalDataResource]
+	niValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataResource]
 	assert.True(t, ok)
-	assert.Equal(t, niValue, int64(1))
+	int64value, ok := niValue.AsInt64()
+	assert.True(t, ok)
+	assert.Equal(t, int64value, int64(1))
 
-	assert.Equal(t, len(ni.Pods), 2)
+	assert.Equal(t, len(ni.Pods()), 2)
 }
