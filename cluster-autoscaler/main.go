@@ -31,6 +31,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +46,6 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
-	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfos"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
@@ -166,7 +166,6 @@ var (
 	balanceSimilarNodeGroupsFlag     = flag.Bool("balance-similar-node-groups", false, "Detect similar node groups and balance the number of nodes between them")
 	nodeAutoprovisioningEnabled      = flag.Bool("node-autoprovisioning-enabled", false, "Should CA autoprovision node groups when needed")
 	maxAutoprovisionedNodeGroupCount = flag.Int("max-autoprovisioned-node-group-count", 15, "The maximum number of autoprovisioned groups in the cluster.")
-	scaleUpTemplateFromCloudProvider = flag.Bool("scale-up-from-cloud-provider-template", true, "Build nodes templates from cloud providers node groups rather than real-world nodes. WARNING: this isn't supported by all cloud providers, and can lead to wrong autoscaling decisions (erroneous capacity evaluations causing infinite upscales, or pods left pending).")
 
 	unremovableNodeRecheckTimeout = flag.Duration("unremovable-node-recheck-timeout", 5*time.Minute, "The timeout before we check again a node that couldn't be removed before")
 	expendablePodsPriorityCutoff  = flag.Int("expendable-pods-priority-cutoff", -10, "Pods with priority below cutoff will be expendable. They can be killed without any consideration during scale down and they don't cause scale up. Pods with null priority (PodPriority disabled) are non expendable.")
@@ -238,7 +237,6 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		ClusterName:                        *clusterName,
 		NodeAutoprovisioningEnabled:        *nodeAutoprovisioningEnabled,
 		MaxAutoprovisionedNodeGroupCount:   *maxAutoprovisionedNodeGroupCount,
-		ScaleUpTemplateFromCloudProvider:   *scaleUpTemplateFromCloudProvider,
 		UnremovableNodeRecheckTimeout:      *unremovableNodeRecheckTimeout,
 		ExpendablePodsPriorityCutoff:       *expendablePodsPriorityCutoff,
 		Regional:                           *regional,
@@ -324,13 +322,13 @@ func buildAutoscaler() (core.Autoscaler, error) {
 		Comparator: nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels),
 	}
 
-	if autoscalingOptions.ScaleUpTemplateFromCloudProvider {
-		opts.Processors.NodeInfoProcessor = nodeinfos.NewTemplateOnlyNodeInfoProcessor()
-	}
-
 	// These metrics should be published only once.
 	metrics.UpdateNapEnabled(autoscalingOptions.NodeAutoprovisioningEnabled)
 	metrics.UpdateMaxNodesCount(autoscalingOptions.MaxNodesTotal)
+
+	// Datadog only: hook our "ASG template only" nodeInfos provider; not in the cleanest, but in the less
+	// intrusive and most rebase friendly way we can; until a "nodeInfos provider processor" makes it upstream.
+	core.GetNodeInfosForGroups = nodeinfosprovider.NewTemplateOnlyNodeInfoProvider().GetNodeInfosForGroups
 
 	// Create autoscaler.
 	return core.NewAutoscaler(opts)
