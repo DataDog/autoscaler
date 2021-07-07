@@ -14,14 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package nodeinfos
+package nodeinfosprovider
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	testprovider "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/test"
-	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
@@ -29,7 +28,7 @@ import (
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
-func TestTemplateOnlyNodeInfoProcessorProcess(t *testing.T) {
+func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	predicateChecker, err := simulator.NewTestPredicateChecker()
 	assert.NoError(t, err)
 
@@ -42,13 +41,16 @@ func TestTemplateOnlyNodeInfoProcessorProcess(t *testing.T) {
 	provider1.AddNodeGroup("ng1", 1, 10, 1)
 	provider1.AddNodeGroup("ng2", 2, 20, 2)
 
-	ctx := &context.AutoscalingContext{
-		CloudProvider:    provider1,
-		PredicateChecker: predicateChecker,
-	}
-
-	processor := NewTemplateOnlyNodeInfoProcessor()
-	res, err := processor.Process(ctx, nil, nil, nil)
+	processor := NewTemplateOnlyNodeInfoProvider()
+	res, err := processor.GetNodeInfosForGroups(
+		nil,
+		nil,
+		provider1,
+		nil,
+		nil,
+		predicateChecker,
+		nil,
+	)
 
 	// nodegroups providing templates
 	assert.NoError(t, err)
