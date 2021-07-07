@@ -71,7 +71,7 @@ func (p *transformDataNodes) CleanUp() {}
 
 // Process injects local data custom resources to nodes offering local-data storage, that became ready since less than 5mn
 func (p *transformDataNodes) Process(ctx *context.AutoscalingContext, pods []*apiv1.Pod) ([]*apiv1.Pod, error) {
-	nodeInfos, err := ctx.ClusterSnapshot.NodeInfos().List()
+	nodeInfos, err := ctx.ClusterSnapshot.ListNodeInfos()
 	if err != nil {
 		return pods, err
 	}

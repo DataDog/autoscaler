@@ -20,7 +20,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	schedulerframework "k8s.io/autoscaler/cluster-autoscaler/simulator/framework"
 )
 
 const (
@@ -54,7 +54,8 @@ func SetNodeLocalDataResource(nodeInfo *schedulerframework.NodeInfo) {
 	}
 
 	node := nodeInfo.Node()
-	nodeInfo.RemoveNode()
+	// Was nodeInfo.RemoveNode() (on previous CA version)
+	nodeInfo.ToScheduler().RemoveNode()
 	if node.Status.Allocatable == nil {
 		node.Status.Allocatable = apiv1.ResourceList{}
 	}
@@ -63,5 +64,7 @@ func SetNodeLocalDataResource(nodeInfo *schedulerframework.NodeInfo) {
 	}
 	node.Status.Capacity[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
 	node.Status.Allocatable[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
+	// Direct/live modifications of the underlying *v1.Node is not enough: we also need nodeInfo's Allocatable update.
+	// Hence the RemoveNode() + SetNode() dance.
 	nodeInfo.SetNode(node)
 }
