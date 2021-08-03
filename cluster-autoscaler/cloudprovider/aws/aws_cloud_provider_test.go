@@ -91,6 +91,7 @@ func newTestAwsManagerWithService(service autoScaling, autoDiscoverySpecs []asgA
 			interrupt:             make(chan struct{}),
 			asgAutoDiscoverySpecs: autoDiscoverySpecs,
 			service:               wrapper,
+			autoscalingOptions:    make(map[AwsRef]map[string]string),
 		},
 	}
 }
