@@ -34,6 +34,7 @@ import (
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	klog "k8s.io/klog/v2"
+	kubeletapis "k8s.io/kubelet/pkg/apis"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -87,6 +88,8 @@ func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node
 			klog.Warningf("Failed to build NodeInfo template for %s: %v", id, err)
 			continue
 		}
+
+		updateDeprecatedTemplateLabels(nodeInfo)
 		result[id] = nodeInfo
 	}
 
@@ -195,6 +198,27 @@ func sanitizeTemplateNode(node *apiv1.Node, nodeGroup string, ignoredTaints tain
 // CleanUp cleans up processor's internal structures.
 func (p *TemplateOnlyNodeInfoProvider) CleanUp() {
 	close(p.interrupt)
+}
+
+// updateDeprecatedTemplateLabels updates beta and deprecated labels from stable labels
+// Cherry picked from autoscaler/master/cluster-autoscaler/core/utils/utils.go
+func updateDeprecatedTemplateLabels(nodeInfo *schedulerframework.NodeInfo) {
+	node := nodeInfo.Node()
+	if v, ok := node.ObjectMeta.Labels[apiv1.LabelArchStable]; ok {
+		node.ObjectMeta.Labels[kubeletapis.LabelArch] = v
+	}
+	if v, ok := node.ObjectMeta.Labels[apiv1.LabelOSStable]; ok {
+		node.ObjectMeta.Labels[kubeletapis.LabelOS] = v
+	}
+	if v, ok := node.ObjectMeta.Labels[apiv1.LabelInstanceTypeStable]; ok {
+		node.ObjectMeta.Labels[apiv1.LabelInstanceType] = v
+	}
+	if v, ok := node.ObjectMeta.Labels[apiv1.LabelTopologyRegion]; ok {
+		node.ObjectMeta.Labels[apiv1.LabelZoneRegion] = v
+	}
+	if v, ok := node.ObjectMeta.Labels[apiv1.LabelTopologyZone]; ok {
+		node.ObjectMeta.Labels[apiv1.LabelZoneFailureDomain] = v
+	}
 }
 
 // NewTemplateOnlyNodeInfoProvider returns a NodeInfoProcessor generating NodeInfos from node group templates.

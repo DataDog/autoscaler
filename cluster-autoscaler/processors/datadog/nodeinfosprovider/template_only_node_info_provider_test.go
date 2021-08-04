@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	apiv1 "k8s.io/api/core/v1"
 	testprovider "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/test"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 
@@ -33,7 +34,9 @@ func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	assert.NoError(t, err)
 
 	tni := schedulerframework.NewNodeInfo()
-	tni.SetNode(BuildTestNode("tn", 100, 100))
+	tn := BuildTestNode("tn", 100, 100)
+	tn.SetLabels(map[string]string{apiv1.LabelTopologyZone: "planet-earth"})
+	tni.SetNode(tn)
 
 	provider1 := testprovider.NewTestAutoprovisioningCloudProvider(
 		nil, nil, nil, nil, nil,
@@ -57,4 +60,6 @@ func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	assert.Equal(t, 2, len(res))
 	assert.Contains(t, res, "ng1")
 	assert.Contains(t, res, "ng2")
+	assert.Contains(t, res["ng1"].Node().GetLabels(), apiv1.LabelZoneFailureDomain)
+	assert.Equal(t, res["ng1"].Node().GetLabels()[apiv1.LabelZoneFailureDomain], "planet-earth")
 }
