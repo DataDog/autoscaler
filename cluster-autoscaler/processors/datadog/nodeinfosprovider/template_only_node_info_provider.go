@@ -32,9 +32,9 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/utils/daemonset"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
+	"k8s.io/autoscaler/cluster-autoscaler/utils/labels"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	klog "k8s.io/klog/v2"
-	kubeletapis "k8s.io/kubelet/pkg/apis"
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -89,7 +89,7 @@ func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node
 			continue
 		}
 
-		updateDeprecatedTemplateLabels(nodeInfo)
+		labels.UpdateDeprecatedLabels(nodeInfo.Node().ObjectMeta.Labels)
 		result[id] = nodeInfo
 	}
 
@@ -138,7 +138,7 @@ func (p *TemplateOnlyNodeInfoProvider) refresh() {
 	p.Unlock()
 }
 
-// GetFullNodeInfoFromBase returns NodeInfo object built base on provided base TemplateNodeInfo
+// GetFullNodeInfoFromBase returns a new NodeInfo object built from provided base TemplateNodeInfo
 func GetFullNodeInfoFromBase(nodeGroupId string, baseNodeInfo *schedulerframework.NodeInfo, daemonsets []*appsv1.DaemonSet, predicateChecker simulator.PredicateChecker, ignoredTaints taints.TaintKeySet) (*schedulerframework.NodeInfo, errors.AutoscalerError) {
 	pods, err := daemonset.GetDaemonSetPodsForNode(baseNodeInfo, daemonsets, predicateChecker)
 	if err != nil {
@@ -198,27 +198,6 @@ func sanitizeTemplateNode(node *apiv1.Node, nodeGroup string, ignoredTaints tain
 // CleanUp cleans up processor's internal structures.
 func (p *TemplateOnlyNodeInfoProvider) CleanUp() {
 	close(p.interrupt)
-}
-
-// updateDeprecatedTemplateLabels updates beta and deprecated labels from stable labels
-// Cherry picked from autoscaler/master/cluster-autoscaler/core/utils/utils.go
-func updateDeprecatedTemplateLabels(nodeInfo *schedulerframework.NodeInfo) {
-	node := nodeInfo.Node()
-	if v, ok := node.ObjectMeta.Labels[apiv1.LabelArchStable]; ok {
-		node.ObjectMeta.Labels[kubeletapis.LabelArch] = v
-	}
-	if v, ok := node.ObjectMeta.Labels[apiv1.LabelOSStable]; ok {
-		node.ObjectMeta.Labels[kubeletapis.LabelOS] = v
-	}
-	if v, ok := node.ObjectMeta.Labels[apiv1.LabelInstanceTypeStable]; ok {
-		node.ObjectMeta.Labels[apiv1.LabelInstanceType] = v
-	}
-	if v, ok := node.ObjectMeta.Labels[apiv1.LabelTopologyRegion]; ok {
-		node.ObjectMeta.Labels[apiv1.LabelZoneRegion] = v
-	}
-	if v, ok := node.ObjectMeta.Labels[apiv1.LabelTopologyZone]; ok {
-		node.ObjectMeta.Labels[apiv1.LabelZoneFailureDomain] = v
-	}
 }
 
 // NewTemplateOnlyNodeInfoProvider returns a NodeInfoProcessor generating NodeInfos from node group templates.
