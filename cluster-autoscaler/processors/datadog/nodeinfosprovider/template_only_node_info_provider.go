@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
+	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/daemonset"
@@ -38,7 +39,10 @@ import (
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
-const nodeInfoRefreshInterval = 5 * time.Minute
+const (
+	nodeInfoRefreshInterval                       = 5 * time.Minute
+	templateOnlyFuncLabel   metrics.FunctionLabel = "TemplateOnlyNodeInfoProvider"
+)
 
 type nodeInfoCacheEntry struct {
 	nodeInfo    *schedulerframework.NodeInfo
@@ -56,17 +60,10 @@ type TemplateOnlyNodeInfoProvider struct {
 // GetNodeInfosForGroups returns nodeInfos built from node groups (ASGs, MIGs, VMSS) templates only, not real-world nodes.
 // Function signature is meant to match that of std core/utils.go:GetNodeInfosForGroups
 // (even though we don't use some of the args) to ease replacement and subsequent rebases, and keep untouched core tests working.
+// A proper API is being discussed upstream: https://github.com/kubernetes/autoscaler/pull/4191
 func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node, nodeInfoCache map[string]*schedulerframework.NodeInfo, cloudProvider cloudprovider.CloudProvider, listers kube_util.ListerRegistry, daemonsets []*appsv1.DaemonSet, predicateChecker simulator.PredicateChecker, ignoredTaints taints.TaintKeySet) (map[string]*schedulerframework.NodeInfo, errors.AutoscalerError) {
-	start := time.Now()
-
-	if p.interrupt == nil {
-		p.interrupt = make(chan struct{})
-		p.cloudProvider = cloudProvider
-		p.refresh()
-		go wait.Until(func() {
-			p.refresh()
-		}, 10*time.Second, p.interrupt)
-	}
+	defer metrics.UpdateDurationFromStart(templateOnlyFuncLabel, time.Now())
+	p.init(cloudProvider)
 
 	p.Lock()
 	defer p.Unlock()
@@ -80,9 +77,12 @@ func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node
 		if cacheEntry, found := p.nodeInfoCache[id]; found {
 			nodeInfo, err = GetFullNodeInfoFromBase(id, cacheEntry.nodeInfo, daemonsets, predicateChecker, ignoredTaints)
 		} else {
-			// new nodegroup: this can be slow (locked) but allows faster discovery
+			// new nodegroup: this can be slow (locked) but allows discovering new nodegroups faster
 			klog.V(4).Infof("No cached base NodeInfo for %s yet", id)
 			nodeInfo, err = utils.GetNodeInfoFromTemplate(nodeGroup, daemonsets, predicateChecker, ignoredTaints)
+			if common.NodeHasLocalData(nodeInfo.Node()) {
+				common.SetNodeLocalDataResource(nodeInfo)
+			}
 		}
 		if err != nil {
 			klog.Warningf("Failed to build NodeInfo template for %s: %v", id, err)
@@ -93,9 +93,22 @@ func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node
 		result[id] = nodeInfo
 	}
 
-	klog.V(4).Infof("TemplateOnlyNodeInfoProvider took %s for %d NodeInfos", time.Since(start), len(result))
-
 	return result, nil
+}
+
+// init starts a background refresh loop (and a shutdown channel). this should go away
+// once upstream gets a stateful processor API that supports GetNodeInfosForGroups.
+func (p *TemplateOnlyNodeInfoProvider) init(cloudProvider cloudprovider.CloudProvider) {
+	if p.interrupt != nil {
+		return
+	}
+
+	p.interrupt = make(chan struct{})
+	p.cloudProvider = cloudProvider
+	p.refresh()
+	go wait.Until(func() {
+		p.refresh()
+	}, 10*time.Second, p.interrupt)
 }
 
 func (p *TemplateOnlyNodeInfoProvider) refresh() {
