@@ -33,7 +33,7 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-const maxDistinctWorkloadsHavingPendingPods = 30
+const maxDistinctWorkloadsHavingPendingPods = 50
 
 var now = time.Now // unit tests
 
@@ -63,9 +63,10 @@ func (p *filterOutLongPending) Process(ctx *context.AutoscalingContext, pending 
 	currentPods := make(map[types.UID]struct{}, len(pending))
 	allowedPods := make([]*apiv1.Pod, 0)
 
-	if countDistinctOwnerReferences(pending) > maxDistinctWorkloadsHavingPendingPods {
-		klog.Warning("detected pending pods from many distinct workloads:" +
-			" disabling backoff on long pending pods")
+	distinctWorkloadsCount := countDistinctOwnerReferences(pending)
+	if distinctWorkloadsCount > maxDistinctWorkloadsHavingPendingPods {
+		klog.Warningf("detected pending pods from too many (%d) distinct workloads:"+
+			" disabling backoff on long pending pods", distinctWorkloadsCount)
 		return pending, nil
 	}
 
