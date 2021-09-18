@@ -20,6 +20,7 @@ import (
 	ctx "context"
 	"flag"
 	"fmt"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/nodes"
 	"net/http"
 	"net/url"
 	"os"
@@ -34,6 +35,8 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/apiserver/pkg/server/routes"
@@ -42,14 +45,12 @@ import (
 	cloudBuilder "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/builder"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	"k8s.io/autoscaler/cluster-autoscaler/core"
-	"k8s.io/autoscaler/cluster-autoscaler/core/podlistprocessor"
 	"k8s.io/autoscaler/cluster-autoscaler/estimator"
 	"k8s.io/autoscaler/cluster-autoscaler/expander"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfosprovider"
-	"k8s.io/autoscaler/cluster-autoscaler/processors/nodes"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
@@ -400,7 +401,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 
 	opts.Processors = ca_processors.DefaultProcessors()
 	opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(nodeInfoCacheExpireTime)
-	opts.Processors.PodListProcessor = podlistprocessor.NewDefaultPodListProcessor(opts.PredicateChecker)
+	opts.Processors.PodListProcessor = pods.NewFilteringPodListProcessor()
 	if autoscalingOptions.ParallelDrain {
 		sdProcessor := nodes.NewScaleDownCandidatesSortingProcessor()
 		opts.Processors.ScaleDownNodeProcessor = sdProcessor
