@@ -51,11 +51,11 @@ import (
 	capacitybuffer "k8s.io/autoscaler/cluster-autoscaler/capacitybuffer/controller"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/core"
-	"k8s.io/autoscaler/cluster-autoscaler/core/podlistprocessor"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/observers/loopstart"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	cbprocessor "k8s.io/autoscaler/cluster-autoscaler/processors/capacitybuffer"
+	ddpods "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/podinjection"
@@ -136,7 +136,7 @@ func buildAutoscaler(context ctx.Context, debuggingSnapshotter debuggingsnapshot
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)
 	opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
-	podListProcessor := podlistprocessor.NewDefaultPodListProcessor(scheduling.ScheduleAnywhere)
+	podListProcessor := ddpods.NewFilteringPodListProcessor(scheduling.ScheduleAnywhere)
 
 	var ProvisioningRequestInjector *provreq.ProvisioningRequestPodsInjector
 	if autoscalingOptions.ProvisioningRequestEnabled {
