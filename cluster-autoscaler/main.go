@@ -34,6 +34,8 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/apiserver/pkg/server/routes"
@@ -406,6 +408,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 		opts.Processors.ScaleDownNodeProcessor = sdProcessor
 		opts.Processors.ScaleDownCandidatesNotifier.Register(sdProcessor)
 	}
+	opts.Processors.PodListProcessor = pods.NewFilteringPodListProcessor()
 
 	var nodeInfoComparator nodegroupset.NodeInfoComparator
 	if len(autoscalingOptions.BalancingLabels) > 0 {
