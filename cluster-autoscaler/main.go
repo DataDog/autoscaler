@@ -51,12 +51,12 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/gce/localssdsize"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	"k8s.io/autoscaler/cluster-autoscaler/core"
-	"k8s.io/autoscaler/cluster-autoscaler/core/podlistprocessor"
 	"k8s.io/autoscaler/cluster-autoscaler/estimator"
 	"k8s.io/autoscaler/cluster-autoscaler/expander"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/observers/loopstart"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
+	ddpods "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/podinjection"
@@ -503,7 +503,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)
 	opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(nodeInfoCacheExpireTime, *forceDaemonSets)
-	podListProcessor := podlistprocessor.NewDefaultPodListProcessor(opts.PredicateChecker, scheduling.ScheduleAnywhere)
+	podListProcessor := ddpods.NewFilteringPodListProcessor(opts.PredicateChecker, scheduling.ScheduleAnywhere)
 
 	if autoscalingOptions.ProvisioningRequestEnabled {
 		podListProcessor.AddProcessor(provreq.NewProvisioningRequestPodsFilter(provreq.NewDefautlEventManager()))
