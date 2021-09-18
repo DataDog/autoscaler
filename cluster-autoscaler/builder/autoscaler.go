@@ -32,7 +32,6 @@ import (
 	cacontext "k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/core"
 	coreoptions "k8s.io/autoscaler/cluster-autoscaler/core/options"
-	"k8s.io/autoscaler/cluster-autoscaler/core/podlistprocessor"
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaleup/orchestrator"
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
 	"k8s.io/autoscaler/cluster-autoscaler/debuggingsnapshot"
@@ -40,6 +39,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	cbprocessor "k8s.io/autoscaler/cluster-autoscaler/processors/capacitybuffer"
+	ddpods "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/podinjection"
@@ -179,7 +179,7 @@ func (b *AutoscalerBuilder) Build(ctx context.Context) (core.Autoscaler, *loop.L
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)
 	opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
-	podListProcessor := podlistprocessor.NewDefaultPodListProcessor(scheduling.ScheduleAnywhere)
+	podListProcessor := ddpods.NewFilteringPodListProcessor(ctx, scheduling.ScheduleAnywhere)
 
 	opts.ScaleUpFailuresRegistry = scaleupfailures.NewRegistry()
 	opts.LoopStartObservers = append(opts.LoopStartObservers, opts.ScaleUpFailuresRegistry)
