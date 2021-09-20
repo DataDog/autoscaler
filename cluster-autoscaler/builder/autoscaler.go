@@ -178,7 +178,7 @@ func (b *AutoscalerBuilder) Build(ctx context.Context) (core.Autoscaler, *loop.L
 	}
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)
-	opts.Processors.TemplateNodeInfoProvider = ddnodeinfosprovider.NewTemplateOnlyNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
+	opts.Processors.TemplateNodeInfoProvider = ddnodeinfosprovider.NewTemplateOnlyNodeInfoProvider(ctx, &autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets, &opts)
 	podListProcessor := ddpods.NewFilteringPodListProcessor(ctx, scheduling.ScheduleAnywhere)
 
 	opts.ScaleUpFailuresRegistry = scaleupfailures.NewRegistry()
