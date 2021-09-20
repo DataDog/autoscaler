@@ -50,7 +50,7 @@ func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 		CloudProvider:    provider1,
 	}
 
-	processor := NewTemplateOnlyNodeInfoProvider()
+	processor := NewTemplateOnlyNodeInfoProvider(nil)
 	res, err := processor.Process(ctx, nil, nil, nil)
 
 	// nodegroups providing templates
