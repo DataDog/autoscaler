@@ -31,6 +31,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfos/podtemplates"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 
@@ -343,6 +344,11 @@ func buildAutoscaler() (core.Autoscaler, error) {
 	metrics.UpdateMaxNodesCount(autoscalingOptions.MaxNodesTotal)
 	metrics.UpdateCPULimitsCores(autoscalingOptions.MinCoresTotal, autoscalingOptions.MaxCoresTotal)
 	metrics.UpdateMemoryLimitsBytes(autoscalingOptions.MinMemoryTotal, autoscalingOptions.MaxMemoryTotal)
+
+	// Datadog only: Configure the PodTemplateProcessor to support extra Daemonset workloads
+	if autoscalingOptions.NodeInfoProcessorPodTemplates {
+		opts.Processors.NodeInfoProcessor = podtemplates.NewNodeInfoWithPodTemplateProcessor(&opts)
+	}
 
 	// Datadog only: hook our "ASG template only" nodeInfos provider; not in the cleanest, but in the less
 	// intrusive and most rebase friendly way we can; until a "nodeInfos provider processor" makes it upstream.
