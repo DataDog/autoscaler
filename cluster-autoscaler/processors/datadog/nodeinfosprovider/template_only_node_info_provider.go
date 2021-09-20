@@ -26,8 +26,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
+	"k8s.io/autoscaler/cluster-autoscaler/core"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider/podtemplate"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	schedulerframework "k8s.io/autoscaler/cluster-autoscaler/simulator/framework"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
@@ -53,6 +55,8 @@ type TemplateOnlyNodeInfoProvider struct {
 	cloudProvider   cloudprovider.CloudProvider
 	interrupt       chan struct{}
 	forceDaemonSets bool
+
+	podTemplateProcessor podtemplate.Interface
 }
 
 // Process returns nodeInfos built from node groups (ASGs, MIGs, VMSS) templates only, not real-world nodes.
@@ -75,7 +79,7 @@ func (p *TemplateOnlyNodeInfoProvider) Process(ctx *context.AutoscalingContext, 
 
 		id := nodeGroup.Id()
 		if cacheEntry, found := p.nodeInfoCache[id]; found {
-			nodeInfo, err = SanitizedTemplateNodeInfoFromNodeGroupCached(id, cacheEntry.nodeInfo, daemonsets, taintConfig)
+			nodeInfo, err = p.SanitizedTemplateNodeInfoFromNodeGroupCached(id, cacheEntry.nodeInfo, daemonsets, taintConfig)
 		} else {
 			// new nodegroup: this can be slow (locked) but allows discovering new nodegroups faster
 			klog.V(4).Infof("No cached base NodeInfo for %s yet", id)
@@ -153,23 +157,41 @@ func (p *TemplateOnlyNodeInfoProvider) refresh() {
 }
 
 // SanitizedTemplateNodeInfoFromNodeGroupCached is a copy of simulator.SanitizedTemplateNodeInfoFromNodeGroup,
-// but using a provided nodeInfo rather than calling TemplateNodeInfo() (which is costly).
-func SanitizedTemplateNodeInfoFromNodeGroupCached(id string, baseNodeInfo *schedulerframework.NodeInfo,
+// but using a provided nodeInfo rather than calling TemplateNodeInfo() (which is costly) + injecting
+// the datadog-agent pod(s) inferred from a podTemplate (== the agents pods that aren't managed by DaemonSets).
+func (p *TemplateOnlyNodeInfoProvider) SanitizedTemplateNodeInfoFromNodeGroupCached(id string, baseNodeInfo *schedulerframework.NodeInfo,
 	daemonsets []*appsv1.DaemonSet, taintConfig taints.TaintConfig) (*schedulerframework.NodeInfo, errors.AutoscalerError) {
 	labels.UpdateDeprecatedLabels(baseNodeInfo.Node().ObjectMeta.Labels)
-	return simulator.SanitizedTemplateNodeInfoFromNodeInfo(baseNodeInfo, id, daemonsets, true, taintConfig)
+
+	sim, err := simulator.SanitizedTemplateNodeInfoFromNodeInfo(baseNodeInfo, id, daemonsets, true, taintConfig)
+	if err != nil {
+		return sim, err
+	}
+
+	// this is only meant to support main agent EDS nowadays (whose resources usage are discovered from a podTemplate)
+	podTpls, err2 := p.podTemplateProcessor.GetDaemonSetPodsFromPodTemplateForNode(sim, taintConfig)
+	if err2 != nil {
+		return nil, errors.ToAutoscalerError(errors.InternalError, err2)
+	}
+	for _, pod := range podTpls {
+		sim.AddPod(&schedulerframework.PodInfo{Pod: pod})
+	}
+
+	return sim, nil
 }
 
 // CleanUp cleans up processor's internal structures.
 func (p *TemplateOnlyNodeInfoProvider) CleanUp() {
+	p.podTemplateProcessor.CleanUp()
 	close(p.interrupt)
 }
 
 // NewTemplateOnlyNodeInfoProvider returns a NodeInfoProcessor generating NodeInfos from node group templates.
-func NewTemplateOnlyNodeInfoProvider(t *time.Duration, forceDaemonSets bool) *TemplateOnlyNodeInfoProvider {
+func NewTemplateOnlyNodeInfoProvider(t *time.Duration, forceDaemonSets bool, opts *core.AutoscalerOptions) *TemplateOnlyNodeInfoProvider {
 	return &TemplateOnlyNodeInfoProvider{
-		ttl:             *t,
-		nodeInfoCache:   make(map[string]*nodeInfoCacheEntry),
-		forceDaemonSets: forceDaemonSets,
+		ttl:                  *t,
+		nodeInfoCache:        make(map[string]*nodeInfoCacheEntry),
+		forceDaemonSets:      forceDaemonSets,
+		podTemplateProcessor: podtemplate.NewPodTemplateProcessor(opts),
 	}
 }
