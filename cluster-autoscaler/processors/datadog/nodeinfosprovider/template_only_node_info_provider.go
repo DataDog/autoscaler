@@ -17,7 +17,6 @@ limitations under the License.
 package nodeinfosprovider
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -26,13 +25,13 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/daemonset"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
-	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/labels"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
 	klog "k8s.io/klog/v2"
@@ -57,13 +56,10 @@ type TemplateOnlyNodeInfoProvider struct {
 	interrupt     chan struct{}
 }
 
-// GetNodeInfosForGroups returns nodeInfos built from node groups (ASGs, MIGs, VMSS) templates only, not real-world nodes.
-// Function signature is meant to match that of std core/utils.go:GetNodeInfosForGroups
-// (even though we don't use some of the args) to ease replacement and subsequent rebases, and keep untouched core tests working.
-// A proper API is being discussed upstream: https://github.com/kubernetes/autoscaler/pull/4191
-func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node, nodeInfoCache map[string]*schedulerframework.NodeInfo, cloudProvider cloudprovider.CloudProvider, listers kube_util.ListerRegistry, daemonsets []*appsv1.DaemonSet, predicateChecker simulator.PredicateChecker, ignoredTaints taints.TaintKeySet) (map[string]*schedulerframework.NodeInfo, errors.AutoscalerError) {
+// Process returns nodeInfos built from node groups (ASGs, MIGs, VMSS) templates only, not real-world nodes.
+func (p *TemplateOnlyNodeInfoProvider) Process(ctx *context.AutoscalingContext, nodes []*apiv1.Node, daemonsets []*appsv1.DaemonSet, ignoredTaints taints.TaintKeySet) (map[string]*schedulerframework.NodeInfo, errors.AutoscalerError) {
 	defer metrics.UpdateDurationFromStart(templateOnlyFuncLabel, time.Now())
-	p.init(cloudProvider)
+	p.init(ctx.CloudProvider)
 
 	p.Lock()
 	defer p.Unlock()
@@ -75,11 +71,11 @@ func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node
 
 		id := nodeGroup.Id()
 		if cacheEntry, found := p.nodeInfoCache[id]; found {
-			nodeInfo, err = GetFullNodeInfoFromBase(id, cacheEntry.nodeInfo, daemonsets, predicateChecker, ignoredTaints)
+			nodeInfo, err = GetFullNodeInfoFromBase(id, cacheEntry.nodeInfo, daemonsets, ctx.PredicateChecker, ignoredTaints)
 		} else {
 			// new nodegroup: this can be slow (locked) but allows discovering new nodegroups faster
 			klog.V(4).Infof("No cached base NodeInfo for %s yet", id)
-			nodeInfo, err = utils.GetNodeInfoFromTemplate(nodeGroup, daemonsets, predicateChecker, ignoredTaints)
+			nodeInfo, err = utils.GetNodeInfoFromTemplate(nodeGroup, daemonsets, ctx.PredicateChecker, ignoredTaints)
 			if common.NodeHasLocalData(nodeInfo.Node()) {
 				common.SetNodeLocalDataResource(nodeInfo)
 			}
@@ -96,8 +92,9 @@ func (p *TemplateOnlyNodeInfoProvider) GetNodeInfosForGroups(nodes []*apiv1.Node
 	return result, nil
 }
 
-// init starts a background refresh loop (and a shutdown channel). this should go away
-// once upstream gets a stateful processor API that supports GetNodeInfosForGroups.
+// init starts a background refresh loop (and a shutdown channel).
+// we unfortunately can't do or call that from NewTemplateOnlyNodeInfoProvider(),
+// because don't have cloudProvider yet at New time.
 func (p *TemplateOnlyNodeInfoProvider) init(cloudProvider cloudprovider.CloudProvider) {
 	if p.interrupt != nil {
 		return
@@ -152,6 +149,8 @@ func (p *TemplateOnlyNodeInfoProvider) refresh() {
 }
 
 // GetFullNodeInfoFromBase returns a new NodeInfo object built from provided base TemplateNodeInfo
+// differs from utils.GetNodeInfoFromTemplate() in that it takes a nodeInfo as arg instead of a
+// nodegroup, and doesn't need to call nodeGroup.TemplateNodeInfo() -> we can reuse a cached nodeInfo.
 func GetFullNodeInfoFromBase(nodeGroupId string, baseNodeInfo *schedulerframework.NodeInfo, daemonsets []*appsv1.DaemonSet, predicateChecker simulator.PredicateChecker, ignoredTaints taints.TaintKeySet) (*schedulerframework.NodeInfo, errors.AutoscalerError) {
 	pods, err := daemonset.GetDaemonSetPodsForNode(baseNodeInfo, daemonsets, predicateChecker)
 	if err != nil {
@@ -162,50 +161,11 @@ func GetFullNodeInfoFromBase(nodeGroupId string, baseNodeInfo *schedulerframewor
 	}
 	fullNodeInfo := schedulerframework.NewNodeInfo(pods...)
 	fullNodeInfo.SetNode(baseNodeInfo.Node())
-	sanitizedNodeInfo, typedErr := sanitizeNodeInfo(fullNodeInfo, nodeGroupId, ignoredTaints)
+	sanitizedNodeInfo, typedErr := utils.SanitizeNodeInfo(fullNodeInfo, nodeGroupId, ignoredTaints)
 	if typedErr != nil {
 		return nil, typedErr
 	}
 	return sanitizedNodeInfo, nil
-}
-
-// copied from core/utils/
-func sanitizeNodeInfo(nodeInfo *schedulerframework.NodeInfo, nodeGroupName string, ignoredTaints taints.TaintKeySet) (*schedulerframework.NodeInfo, errors.AutoscalerError) {
-	// Sanitize node name.
-	sanitizedNode, err := sanitizeTemplateNode(nodeInfo.Node(), nodeGroupName, ignoredTaints)
-	if err != nil {
-		return nil, err
-	}
-
-	// Update nodename in pods.
-	sanitizedPods := make([]*apiv1.Pod, 0)
-	for _, podInfo := range nodeInfo.Pods {
-		sanitizedPod := podInfo.Pod.DeepCopy()
-		sanitizedPod.Spec.NodeName = sanitizedNode.Name
-		sanitizedPods = append(sanitizedPods, sanitizedPod)
-	}
-
-	// Build a new node info.
-	sanitizedNodeInfo := schedulerframework.NewNodeInfo(sanitizedPods...)
-	sanitizedNodeInfo.SetNode(sanitizedNode)
-	return sanitizedNodeInfo, nil
-}
-
-// copied from core/utils/
-func sanitizeTemplateNode(node *apiv1.Node, nodeGroup string, ignoredTaints taints.TaintKeySet) (*apiv1.Node, errors.AutoscalerError) {
-	newNode := node.DeepCopy()
-	nodeName := fmt.Sprintf("template-node-for-%s-%d", nodeGroup, rand.Int63())
-	newNode.Labels = make(map[string]string, len(node.Labels))
-	for k, v := range node.Labels {
-		if k != apiv1.LabelHostname {
-			newNode.Labels[k] = v
-		} else {
-			newNode.Labels[k] = nodeName
-		}
-	}
-	newNode.Name = nodeName
-	newNode.Spec.Taints = taints.SanitizeTaints(newNode.Spec.Taints, ignoredTaints)
-	return newNode, nil
 }
 
 // CleanUp cleans up processor's internal structures.

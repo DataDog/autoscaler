@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	apiv1 "k8s.io/api/core/v1"
 	testprovider "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/test"
+	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
@@ -44,16 +45,13 @@ func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	provider1.AddNodeGroup("ng1", 1, 10, 1)
 	provider1.AddNodeGroup("ng2", 2, 20, 2)
 
+	ctx := &context.AutoscalingContext{
+		PredicateChecker: predicateChecker,
+		CloudProvider:    provider1,
+	}
+
 	processor := NewTemplateOnlyNodeInfoProvider()
-	res, err := processor.GetNodeInfosForGroups(
-		nil,
-		nil,
-		provider1,
-		nil,
-		nil,
-		predicateChecker,
-		nil,
-	)
+	res, err := processor.Process(ctx, nil, nil, nil)
 
 	// nodegroups providing templates
 	assert.NoError(t, err)
