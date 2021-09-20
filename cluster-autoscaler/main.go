@@ -34,6 +34,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	ddnodeinfosprovider "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,7 +50,6 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
-	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
@@ -391,8 +391,8 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 	}
 
 	opts.Processors = ca_processors.DefaultProcessors()
-	opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(nodeInfoCacheExpireTime)
 	opts.Processors.PodListProcessor = pods.NewFilteringPodListProcessor()
+	opts.Processors.TemplateNodeInfoProvider = ddnodeinfosprovider.NewTemplateOnlyNodeInfoProvider(&opts)
 
 	var nodeInfoComparator nodegroupset.NodeInfoComparator
 	if len(autoscalingOptions.BalancingLabels) > 0 {
@@ -405,7 +405,8 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 			nodeInfoComparatorBuilder = nodegroupset.CreateAwsNodeInfoComparator
 		} else if autoscalingOptions.CloudProviderName == cloudprovider.GceProviderName {
 			nodeInfoComparatorBuilder = nodegroupset.CreateGceNodeInfoComparator
-			opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAnnotationNodeInfoProvider(nodeInfoCacheExpireTime)
+			// Explicitly disabled so our ddnodeinfosprovider processor is not overridden
+			//opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAnnotationNodeInfoProvider(nodeInfoCacheExpireTime)
 		} else if autoscalingOptions.CloudProviderName == cloudprovider.ClusterAPIProviderName {
 			nodeInfoComparatorBuilder = nodegroupset.CreateClusterAPINodeInfoComparator
 		}
