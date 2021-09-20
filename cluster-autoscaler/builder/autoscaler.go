@@ -39,9 +39,9 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
 	cbprocessor "k8s.io/autoscaler/cluster-autoscaler/processors/capacitybuffer"
+	ddnodeinfosprovider "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
 	ddpods "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodegroupset"
-	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/podinjection"
 	podinjectionbackoff "k8s.io/autoscaler/cluster-autoscaler/processors/podinjection/backoff"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/pods"
@@ -178,7 +178,7 @@ func (b *AutoscalerBuilder) Build(ctx context.Context) (core.Autoscaler, *loop.L
 	}
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)
-	opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
+	opts.Processors.TemplateNodeInfoProvider = ddnodeinfosprovider.NewTemplateOnlyNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
 	podListProcessor := ddpods.NewFilteringPodListProcessor(ctx, scheduling.ScheduleAnywhere)
 
 	opts.ScaleUpFailuresRegistry = scaleupfailures.NewRegistry()
@@ -286,10 +286,12 @@ func (b *AutoscalerBuilder) Build(ctx context.Context) (core.Autoscaler, *loop.L
 			nodeInfoComparatorBuilder = nodegroupset.CreateAzureNodeInfoComparator
 		} else if autoscalingOptions.CloudProviderName == cloudprovider.AwsProviderName {
 			nodeInfoComparatorBuilder = nodegroupset.CreateAwsNodeInfoComparator
-			opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAsgTagResourceNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
+			// Explicitly disabled so our ddnodeinfosprovider processor is not overridden
+			//opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAsgTagResourceNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
 		} else if autoscalingOptions.CloudProviderName == cloudprovider.GceProviderName {
 			nodeInfoComparatorBuilder = nodegroupset.CreateGceNodeInfoComparator
-			opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAnnotationNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
+			// Explicitly disabled so our ddnodeinfosprovider processor is not overridden
+			//opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAnnotationNodeInfoProvider(&autoscalingOptions.NodeInfoCacheExpireTime, autoscalingOptions.ForceDaemonSets)
 		}
 		nodeInfoComparator = nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels, autoscalingOptions.NodeGroupSetRatios)
 	}
