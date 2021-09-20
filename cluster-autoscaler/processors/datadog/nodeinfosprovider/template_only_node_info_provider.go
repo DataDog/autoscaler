@@ -26,9 +26,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
+	"k8s.io/autoscaler/cluster-autoscaler/core"
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider/podtemplate"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/predicatechecker"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/daemonset"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
@@ -55,10 +57,11 @@ type TemplateOnlyNodeInfoProvider struct {
 	cloudProvider   cloudprovider.CloudProvider
 	interrupt       chan struct{}
 	forceDaemonSets bool
+
+	podTemplateProcessor podtemplate.Interface
 }
 
 // Process returns nodeInfos built from node groups (ASGs, MIGs, VMSS) templates only, not real-world nodes.
-// Process(ctx *context.AutoscalingContext, nodes []*apiv1.Node, daemonsets []*appsv1.DaemonSet, taintConfig taints.TaintConfig, currentTime time.Time) (map[string]*schedulerframework.NodeInfo, errors.AutoscalerError)
 func (p *TemplateOnlyNodeInfoProvider) Process(ctx *context.AutoscalingContext, nodes []*apiv1.Node, daemonsets []*appsv1.DaemonSet, taintConfig taints.TaintConfig, currentTime time.Time) (map[string]*schedulerframework.NodeInfo, errors.AutoscalerError) {
 	defer metrics.UpdateDurationFromStart(templateOnlyFuncLabel, time.Now())
 	p.init(ctx.CloudProvider)
@@ -73,11 +76,11 @@ func (p *TemplateOnlyNodeInfoProvider) Process(ctx *context.AutoscalingContext, 
 
 		id := nodeGroup.Id()
 		if cacheEntry, found := p.nodeInfoCache[id]; found {
-			nodeInfo, err = GetFullNodeInfoFromBase(id, cacheEntry.nodeInfo, daemonsets, ctx.PredicateChecker, taintConfig, p.forceDaemonSets)
+			nodeInfo, err = p.GetFullNodeInfoFromBase(id, cacheEntry.nodeInfo, daemonsets, ctx.PredicateChecker, taintConfig)
 		} else {
 			// new nodegroup: this can be slow (locked) but allows discovering new nodegroups faster
 			klog.V(4).Infof("No cached base NodeInfo for %s yet", id)
-			nodeInfo, err = utils.GetNodeInfoFromTemplate(nodeGroup, daemonsets, taintConfig)
+			nodeInfo, err = p.GetNodeInfoFromTemplate(nodeGroup, daemonsets, ctx.PredicateChecker, taintConfig)
 			if common.NodeHasLocalData(nodeInfo.Node()) {
 				common.SetNodeLocalDataResource(nodeInfo)
 			}
@@ -150,18 +153,38 @@ func (p *TemplateOnlyNodeInfoProvider) refresh() {
 	p.Unlock()
 }
 
+// GetNodeInfoFromTemplate returns NodeInfo object built base on TemplateNodeInfo returned by NodeGroup.TemplateNodeInfo().
+func (p *TemplateOnlyNodeInfoProvider) GetNodeInfoFromTemplate(nodeGroup cloudprovider.NodeGroup, daemonsets []*appsv1.DaemonSet, predicateChecker predicatechecker.PredicateChecker, taintConfig taints.TaintConfig) (*schedulerframework.NodeInfo, errors.AutoscalerError) {
+	id := nodeGroup.Id()
+	baseNodeInfo, err := nodeGroup.TemplateNodeInfo()
+	if err != nil {
+		return nil, errors.ToAutoscalerError(errors.CloudProviderError, err)
+	}
+
+	labels.UpdateDeprecatedLabels(baseNodeInfo.Node().ObjectMeta.Labels)
+
+	return p.GetFullNodeInfoFromBase(id, baseNodeInfo, daemonsets, predicateChecker, taintConfig)
+}
+
 // GetFullNodeInfoFromBase returns a new NodeInfo object built from provided base TemplateNodeInfo
 // differs from utils.GetNodeInfoFromTemplate() in that it takes a nodeInfo as arg instead of a
 // nodegroup, and doesn't need to call nodeGroup.TemplateNodeInfo() -> we can reuse a cached nodeInfo.
-func GetFullNodeInfoFromBase(nodeGroupId string, baseNodeInfo *schedulerframework.NodeInfo, daemonsets []*appsv1.DaemonSet, predicateChecker predicatechecker.PredicateChecker, taintConfig taints.TaintConfig, forceDaemonSets bool) (*schedulerframework.NodeInfo, errors.AutoscalerError) {
+func (p *TemplateOnlyNodeInfoProvider) GetFullNodeInfoFromBase(nodeGroupId string, baseNodeInfo *schedulerframework.NodeInfo, daemonsets []*appsv1.DaemonSet, predicateChecker predicatechecker.PredicateChecker, taintConfig taints.TaintConfig) (*schedulerframework.NodeInfo, errors.AutoscalerError) {
 	var pods []*apiv1.Pod
-	if forceDaemonSets {
+	if p.forceDaemonSets {
 		dsPods, err := daemonset.GetDaemonSetPodsForNode(baseNodeInfo, daemonsets)
 		if err != nil {
 			return nil, errors.ToAutoscalerError(errors.InternalError, err)
 		}
 		pods = append(pods, dsPods...)
+
+		podTpls, err := p.podTemplateProcessor.GetDaemonSetPodsFromPodTemplateForNode(baseNodeInfo, predicateChecker, taintConfig)
+		if err != nil {
+			return nil, errors.ToAutoscalerError(errors.InternalError, err)
+		}
+		pods = append(pods, podTpls...)
 	}
+
 	for _, podInfo := range baseNodeInfo.Pods {
 		pods = append(pods, podInfo.Pod)
 	}
@@ -177,14 +200,16 @@ func GetFullNodeInfoFromBase(nodeGroupId string, baseNodeInfo *schedulerframewor
 
 // CleanUp cleans up processor's internal structures.
 func (p *TemplateOnlyNodeInfoProvider) CleanUp() {
+	p.podTemplateProcessor.CleanUp()
 	close(p.interrupt)
 }
 
 // NewTemplateOnlyNodeInfoProvider returns a NodeInfoProcessor generating NodeInfos from node group templates.
-func NewTemplateOnlyNodeInfoProvider(t *time.Duration, forceDaemonSets bool) *TemplateOnlyNodeInfoProvider {
+func NewTemplateOnlyNodeInfoProvider(t *time.Duration, forceDaemonSets bool, opts *core.AutoscalerOptions) *TemplateOnlyNodeInfoProvider {
 	return &TemplateOnlyNodeInfoProvider{
-		ttl:             *t,
-		nodeInfoCache:   make(map[string]*nodeInfoCacheEntry),
-		forceDaemonSets: forceDaemonSets,
+		ttl:                  *t,
+		nodeInfoCache:        make(map[string]*nodeInfoCacheEntry),
+		forceDaemonSets:      forceDaemonSets,
+		podTemplateProcessor: podtemplate.NewPodTemplateProcessor(opts),
 	}
 }

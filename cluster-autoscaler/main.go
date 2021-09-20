@@ -504,7 +504,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 	}
 
 	opts.Processors = ca_processors.DefaultProcessors(autoscalingOptions)
-	opts.Processors.TemplateNodeInfoProvider = ddnodeinfosprovider.NewTemplateOnlyNodeInfoProvider(nodeInfoCacheExpireTime, *forceDaemonSets)
+	opts.Processors.TemplateNodeInfoProvider = ddnodeinfosprovider.NewTemplateOnlyNodeInfoProvider(nodeInfoCacheExpireTime, *forceDaemonSets, &opts)
 	podListProcessor := ddpods.NewFilteringPodListProcessor(opts.PredicateChecker, scheduling.ScheduleAnywhere)
 
 	if autoscalingOptions.ProvisioningRequestEnabled {

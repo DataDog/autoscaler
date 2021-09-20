@@ -54,7 +54,7 @@ func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	}
 
 	ttl := 5 * time.Minute
-	processor := NewTemplateOnlyNodeInfoProvider(&ttl, true)
+	processor := NewTemplateOnlyNodeInfoProvider(&ttl, true, nil)
 	res, err := processor.Process(ctx, nil, nil, taints.TaintConfig{}, time.Now())
 
 	// nodegroups providing templates
