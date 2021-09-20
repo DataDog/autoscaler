@@ -31,6 +31,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -320,6 +321,7 @@ func buildAutoscaler() (core.Autoscaler, error) {
 
 	opts.Processors = ca_processors.DefaultProcessors()
 	opts.Processors.PodListProcessor = pods.NewFilteringPodListProcessor()
+	opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewTemplateOnlyNodeInfoProvider()
 
 	nodeInfoComparatorBuilder := nodegroupset.CreateGenericNodeInfoComparator
 	if autoscalingOptions.CloudProviderName == cloudprovider.AzureProviderName {
