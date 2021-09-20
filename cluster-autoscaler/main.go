@@ -34,6 +34,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	ddnodeinfosprovider "k8s.io/autoscaler/cluster-autoscaler/processors/datadog/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/pods"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +45,7 @@ import (
 	cloudBuilder "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/builder"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	"k8s.io/autoscaler/cluster-autoscaler/core"
+	"k8s.io/autoscaler/cluster-autoscaler/core/podlistprocessor"
 	"k8s.io/autoscaler/cluster-autoscaler/estimator"
 	"k8s.io/autoscaler/cluster-autoscaler/expander"
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
@@ -408,6 +410,7 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 		opts.Processors.ScaleDownCandidatesNotifier.Register(sdProcessor)
 	}
 	opts.Processors.PodListProcessor = pods.NewFilteringPodListProcessor()
+	opts.Processors.TemplateNodeInfoProvider = ddnodeinfosprovider.NewTemplateOnlyNodeInfoProvider(&opts)
 
 	var nodeInfoComparator nodegroupset.NodeInfoComparator
 	if len(autoscalingOptions.BalancingLabels) > 0 {
@@ -420,7 +423,8 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 			nodeInfoComparatorBuilder = nodegroupset.CreateAwsNodeInfoComparator
 		} else if autoscalingOptions.CloudProviderName == cloudprovider.GceProviderName {
 			nodeInfoComparatorBuilder = nodegroupset.CreateGceNodeInfoComparator
-			opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAnnotationNodeInfoProvider(nodeInfoCacheExpireTime)
+			// Explicitly disabled so our ddnodeinfosprovider processor is not overridden
+			//opts.Processors.TemplateNodeInfoProvider = nodeinfosprovider.NewAnnotationNodeInfoProvider(nodeInfoCacheExpireTime)
 		}
 		nodeInfoComparator = nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels, autoscalingOptions.NodeGroupSetRatios)
 	}
