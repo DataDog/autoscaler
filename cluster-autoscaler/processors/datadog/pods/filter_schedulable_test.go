@@ -113,7 +113,7 @@ func TestFilterOutSchedulableByPacking(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			filterOutSchedulablePodListProcessor := NewFilterOutSchedulable()
+			filterOutSchedulablePodListProcessor := NewFilterOutSchedulablePodListProcessor()
 
 			err = clusterSnapshot.Fork()
 			assert.NoError(t, err)
@@ -258,7 +258,7 @@ func BenchmarkFilterOutSchedulableByPacking(b *testing.B) {
 				b.ResetTimer()
 
 				for i := 0; i < b.N; i++ {
-					filterOutSchedulablePodListProcessor := NewFilterOutSchedulable()
+					filterOutSchedulablePodListProcessor := NewFilterOutSchedulablePodListProcessor()
 					if stillPending, err := filterOutSchedulablePodListProcessor.filterOutSchedulableByPacking(pendingPods, clusterSnapshot, predicateChecker); err != nil {
 						assert.NoError(b, err)
 					} else if len(stillPending) < tc.pendingPods {

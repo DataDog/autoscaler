@@ -41,7 +41,7 @@ func NewFilteringPodListProcessor() *filteringPodListProcessor {
 		},
 		filters: []proc.PodListProcessor{
 			NewFilterOutLongPending(),
-			NewFilterOutSchedulable(),
+			NewFilterOutSchedulablePodListProcessor(),
 		},
 	}
 }

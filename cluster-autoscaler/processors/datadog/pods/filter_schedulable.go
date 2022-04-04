@@ -20,29 +20,32 @@ import (
 	"sort"
 	"time"
 
-	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	klog "k8s.io/klog/v2"
-
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/core/utils"
+	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
+
+	apiv1 "k8s.io/api/core/v1"
+	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
+	klog "k8s.io/klog/v2"
+
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
-type filterOutSchedulable struct {
+type filterOutSchedulablePodListProcessor struct {
 	schedulablePodsNodeHints map[types.UID]string
 }
 
-// NewFilterOutSchedulable creates a PodListProcessor filtering out schedulable pods
-func NewFilterOutSchedulable() *filterOutSchedulable {
-	return &filterOutSchedulable{
+// NewFilterOutSchedulablePodListProcessor creates a PodListProcessor filtering out schedulable pods
+func NewFilterOutSchedulablePodListProcessor() *filterOutSchedulablePodListProcessor {
+	return &filterOutSchedulablePodListProcessor{
 		schedulablePodsNodeHints: make(map[types.UID]string),
 	}
 }
 
 // Process filters out pods which are schedulable from list of unschedulable pods.
-func (p *filterOutSchedulable) Process(
+func (p *filterOutSchedulablePodListProcessor) Process(
 	context *context.AutoscalingContext,
 	unschedulablePods []*apiv1.Pod) ([]*apiv1.Pod, error) {
 	// We need to check whether pods marked as unschedulable are actually unschedulable.
@@ -60,6 +63,11 @@ func (p *filterOutSchedulable) Process(
 	//
 	// With the check enabled the last point won't happen because CA will ignore a pod
 	// which is supposed to schedule on an existing node.
+
+	klog.V(4).Infof("Filtering out schedulables")
+	filterOutSchedulableStart := time.Now()
+	var unschedulablePodsToHelp []*apiv1.Pod
+
 	unschedulablePodsToHelp, err := p.filterOutSchedulableByPacking(unschedulablePods, context.ClusterSnapshot,
 		context.PredicateChecker)
 
@@ -67,28 +75,35 @@ func (p *filterOutSchedulable) Process(
 		return nil, err
 	}
 
+	metrics.UpdateDurationFromStart(metrics.FilterOutSchedulable, filterOutSchedulableStart)
+
 	if len(filterByAge(unschedulablePodsToHelp, youngerThan, longPendingCutoff)) !=
 		len(filterByAge(unschedulablePods, youngerThan, longPendingCutoff)) {
 		klog.V(2).Info("Schedulable pods present")
-		context.ProcessorCallbacks.DisableScaleDownForLoop()
+
+		if context.DebuggingSnapshotter.IsDataCollectionAllowed() {
+			schedulablePods := findSchedulablePods(unschedulablePods, unschedulablePodsToHelp)
+			context.DebuggingSnapshotter.SetUnscheduledPodsCanBeScheduled(schedulablePods)
+		}
+
 	} else {
 		klog.V(4).Info("No schedulable pods")
 	}
 	return unschedulablePodsToHelp, nil
 }
 
-func (p *filterOutSchedulable) CleanUp() {
+func (p *filterOutSchedulablePodListProcessor) CleanUp() {
 }
 
 // filterOutSchedulableByPacking checks whether pods from <unschedulableCandidates> marked as
 // unschedulable can be scheduled on free capacity on existing nodes by trying to pack the pods. It
 // tries to pack the higher priority pods first. It takes into account pods that are bound to node
 // and will be scheduled after lower priority pod preemption.
-func (p *filterOutSchedulable) filterOutSchedulableByPacking(
+func (p *filterOutSchedulablePodListProcessor) filterOutSchedulableByPacking(
 	unschedulableCandidates []*apiv1.Pod,
 	clusterSnapshot simulator.ClusterSnapshot,
 	predicateChecker simulator.PredicateChecker) ([]*apiv1.Pod, error) {
-	unschedulablePodsCache := make(utils.PodSchedulableMap)
+	unschedulablePodsCache := utils.NewPodSchedulableMap()
 
 	// Sort unschedulable pods by importance
 	sort.Slice(unschedulableCandidates, func(i, j int) bool {
@@ -163,6 +178,7 @@ func (p *filterOutSchedulable) filterOutSchedulableByPacking(
 			unschedulablePodsCache.Set(pod, nil)
 		}
 	}
+	metrics.UpdateOverflowingControllers(unschedulablePodsCache.OverflowingControllerCount())
 	klog.V(4).Infof("%v pods were kept as unschedulable based on caching", unschedulePodsCacheHitCounter)
 	klog.V(4).Infof("%v pods marked as unschedulable can be scheduled.", len(unschedulableCandidates)-len(unschedulablePods))
 	return unschedulablePods, nil
@@ -206,19 +222,21 @@ func isLivingNode(nodeInfo *schedulerframework.NodeInfo) bool {
 func moreImportantPod(pod1, pod2 *apiv1.Pod) bool {
 	// based on schedulers MoreImportantPod but does not compare Pod.Status.StartTime which does not make sense
 	// for unschedulable pods
-	p1 := GetPodPriority(pod1)
-	p2 := GetPodPriority(pod2)
+	p1 := corev1helpers.PodPriority(pod1)
+	p2 := corev1helpers.PodPriority(pod2)
 	return p1 > p2
 }
 
-// GetPodPriority returns priority of the given pod. -- copied from v1.19:k8s.io/kubernetes/pkg/api/v1/pod
-// to ease upgrade to 1.21. Once upgraded, use GetPodPriority from
-func GetPodPriority(pod *apiv1.Pod) int32 {
-	if pod.Spec.Priority != nil {
-		return *pod.Spec.Priority
+func findSchedulablePods(allUnschedulablePods, podsStillUnschedulable []*apiv1.Pod) []*apiv1.Pod {
+	podsStillUnschedulableMap := make(map[*apiv1.Pod]struct{}, len(podsStillUnschedulable))
+	for _, x := range podsStillUnschedulable {
+		podsStillUnschedulableMap[x] = struct{}{}
 	}
-	// When priority of a running pod is nil, it means it was created at a time
-	// that there was no global default priority class and the priority class
-	// name of the pod was empty. So, we resolve to the static default priority.
-	return 0
+	var schedulablePods []*apiv1.Pod
+	for _, x := range allUnschedulablePods {
+		if _, found := podsStillUnschedulableMap[x]; !found {
+			schedulablePods = append(schedulablePods, x)
+		}
+	}
+	return schedulablePods
 }
