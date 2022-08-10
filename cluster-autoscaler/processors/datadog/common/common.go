@@ -19,6 +19,7 @@ package common
 import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/klog/v2"
 
 	schedulerframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
@@ -31,6 +32,12 @@ const (
 	// nodes offering local storage, and currently injected as requests on
 	// Pending pods having a PVC for local-data volumes.
 	DatadogLocalDataResource apiv1.ResourceName = "storageclass/local-data"
+
+	// DatadogLocalStorageProvisionerLabel is indicating which technology will be used to provide local storage
+	DatadogLocalStorageProvisionerLabel = "nodegroups.datadoghq.com/local-storage-provisioner"
+	// DatadogInitialStorageCapacityLabel is storing the amount of local storage a new node will have in the beginning
+	// e.g. nodegroups.datadoghq.com/initial-storage-capacity=100Gi
+	DatadogInitialStorageCapacityLabel = "nodegroups.datadoghq.com/initial-storage-capacity"
 )
 
 var (
@@ -61,7 +68,22 @@ func SetNodeLocalDataResource(nodeInfo *schedulerframework.NodeInfo) {
 	if node.Status.Capacity == nil {
 		node.Status.Capacity = apiv1.ResourceList{}
 	}
-	node.Status.Capacity[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
-	node.Status.Allocatable[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
+
+	provisioner, _ := node.Labels[DatadogLocalStorageProvisionerLabel]
+	switch provisioner {
+	case "topolvm":
+		capacity, _ := node.Labels[DatadogInitialStorageCapacityLabel]
+		capacityResource, err := resource.ParseQuantity(capacity)
+		if err == nil {
+			node.Status.Capacity[DatadogLocalDataResource] = capacityResource.DeepCopy()
+			node.Status.Allocatable[DatadogLocalDataResource] = capacityResource.DeepCopy()
+		} else {
+			klog.Warningf("failed to attach storage information to node (%s): %v", node.Name, err)
+		}
+	default:
+		node.Status.Capacity[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
+		node.Status.Allocatable[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
+	}
+
 	nodeInfo.SetNode(node)
 }
