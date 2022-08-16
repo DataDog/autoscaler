@@ -71,6 +71,8 @@ func SetNodeLocalDataResource(nodeInfo *schedulerframework.NodeInfo) {
 
 	provisioner, _ := node.Labels[DatadogLocalStorageProvisionerLabel]
 	switch provisioner {
+	case "openebs-lvm":
+		fallthrough
 	case "topolvm":
 		capacity, _ := node.Labels[DatadogInitialStorageCapacityLabel]
 		capacityResource, err := resource.ParseQuantity(capacity)
