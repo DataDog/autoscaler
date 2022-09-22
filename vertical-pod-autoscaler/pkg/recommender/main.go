@@ -18,11 +18,13 @@ package main
 
 import (
 	"flag"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/common"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/history"
+	input_metrics "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/routines"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics"
@@ -36,16 +38,18 @@ import (
 const DefaultRecommenderName = "default"
 
 var (
-	metricsFetcherInterval = flag.Duration("recommender-interval", 1*time.Minute, `How often metrics should be fetched`)
-	checkpointsGCInterval  = flag.Duration("checkpoints-gc-interval", 10*time.Minute, `How often orphaned checkpoints should be garbage collected`)
-	prometheusAddress      = flag.String("prometheus-address", "", `Where to reach for Prometheus metrics`)
-	prometheusJobName      = flag.String("prometheus-cadvisor-job-name", "kubernetes-cadvisor", `Name of the prometheus job name which scrapes the cAdvisor metrics`)
-	address                = flag.String("address", ":8942", "The address to expose Prometheus metrics.")
-	kubeconfig             = flag.String("kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
-	kubeApiQps             = flag.Float64("kube-api-qps", 5.0, `QPS limit when making requests to Kubernetes apiserver`)
-	kubeApiBurst           = flag.Float64("kube-api-burst", 10.0, `QPS burst limit when making requests to Kubernetes apiserver`)
+	metricsFetcherInterval  = flag.Duration("recommender-interval", 1*time.Minute, `How often metrics should be fetched`)
+	checkpointsGCInterval   = flag.Duration("checkpoints-gc-interval", 10*time.Minute, `How often orphaned checkpoints should be garbage collected`)
+	snapshotHistoryInterval = flag.Duration("dd-history-interval", 10*time.Second, `How far back in time to look for a snapshot of data (datadog only)`)
+	prometheusAddress       = flag.String("prometheus-address", "", `Where to reach for Prometheus metrics`)
+	prometheusJobName       = flag.String("prometheus-cadvisor-job-name", "kubernetes-cadvisor", `Name of the prometheus job name which scrapes the cAdvisor metrics`)
+	address                 = flag.String("address", ":8942", "The address to expose Prometheus metrics.")
+	kubeconfig              = flag.String("kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
+	kubeApiQps              = flag.Float64("kube-api-qps", 5.0, `QPS limit when making requests to Kubernetes apiserver`)
+	kubeApiBurst            = flag.Float64("kube-api-burst", 10.0, `QPS burst limit when making requests to Kubernetes apiserver`)
 
-	storage = flag.String("storage", "", `Specifies storage mode. Supported values: prometheus, checkpoint (default)`)
+	storage       = flag.String("storage", "", `Specifies storage mode. Supported values: prometheus, checkpoint (default)`)
+	metricsSource = flag.String("source", "metrics-server", "Specifies metrics source.  Supported values: metrics-server (default), datadog")
 	// prometheus history provider configs
 	historyLength       = flag.String("history-length", "8d", `How much time back prometheus have to be queried to get historical metrics`)
 	historyResolution   = flag.String("history-resolution", "1h", `Resolution at which Prometheus is queried for historical metrics`)
@@ -58,6 +62,8 @@ var (
 	ctrPodNameLabel     = flag.String("container-pod-name-label", "pod_name", `Label name to look for container pod names`)
 	ctrNameLabel        = flag.String("container-name-label", "name", `Label name to look for container names`)
 	vpaObjectNamespace  = flag.String("vpa-object-namespace", apiv1.NamespaceAll, "Namespace to search for VPA objects and pod stats. Empty means all namespaces will be used.")
+
+	kubeClusterName = flag.String("dd-cluster-name", ``, `kube_cluster_name to qualify metrics queries to.  Required with no default.`)
 )
 
 // Aggregation configuration flags
@@ -83,7 +89,20 @@ func main() {
 	metrics_quality.Register()
 
 	useCheckpoints := *storage != "prometheus"
-	recommender := routines.NewRecommender(config, *checkpointsGCInterval, useCheckpoints, *vpaObjectNamespace)
+	var metricsClient *input_metrics.MetricsClient
+
+	if *metricsSource != "datadog" {
+		k8sClient := input.NewDefaultMetricsClient(config, *vpaObjectNamespace)
+		metricsClient = &k8sClient
+	} else {
+		if len(*kubeClusterName) < 1 {
+			klog.Fatalf("--dd-cluster-name required for datadog metrics source.")
+		}
+		ddClient := input_metrics.NewMetricsClient(input_metrics.NewDatadogClient(*snapshotHistoryInterval, *kubeClusterName), *vpaObjectNamespace)
+		metricsClient = &ddClient
+	}
+
+	recommender := routines.NewRecommender(config, *checkpointsGCInterval, useCheckpoints, *vpaObjectNamespace, *metricsClient)
 
 	promQueryTimeout, err := time.ParseDuration(*queryTimeout)
 	if err != nil {
