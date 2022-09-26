@@ -93,7 +93,7 @@ func aggregateResourceData(values map[string][]datadog.MetricsQueryMetadata, res
 	dest *ContainerResourceData) {
 	for containerName, ress := range values {
 		for _, res := range ress {
-			for _, row := range *res.Pointlist {
+			for _, row := range res.Pointlist {
 				timestamp := *row[0]
 				value := transform(res, *row[1])
 				(*dest)[timestamp][containerName][resourceName] = value
@@ -106,14 +106,14 @@ func aggregateResourceData(values map[string][]datadog.MetricsQueryMetadata, res
 // raw measurement.
 func scaleCpuToCores(met datadog.MetricsQueryMetadata, value float64) float64 {
 	// Nanocores have a scale factor of 1e-9.
-	scale := (*met.Unit)[0].ScaleFactor
+	scale := (met.Unit)[0].ScaleFactor
 	return value * *scale
 }
 
 // Returns the number of bytes indicated by this raw measurement.
 func scaleMemToBytes(met datadog.MetricsQueryMetadata, value float64) float64 {
 	// These are always in bytes (scale=1), but let's be resilient.
-	scale := (*met.Unit)[0].ScaleFactor
+	scale := (met.Unit)[0].ScaleFactor
 	return value * *scale
 }
 
