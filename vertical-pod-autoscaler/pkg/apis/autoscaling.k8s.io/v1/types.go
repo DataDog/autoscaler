@@ -182,6 +182,37 @@ type ContainerResourcePolicy struct {
 	// The default is "RequestsAndLimits".
 	// +optional
 	ControlledValues *ContainerControlledValues `json:"controlledValues,omitempty" protobuf:"bytes,6,rep,name=controlledValues"`
+
+	// Specify how to calculate a resource value based on a main one using a ratio.
+	// The main resource value is the one recommended by the engine.
+	// The other specified resources will be computed using a ratio applied to the main resource value.
+	// +optional
+	ResourceRatio *ContainerResourceRatio `json:"resourceRatio,omitempty" protobuf:"bytes,7,rep,name=resourceRatio"`
+}
+
+// ContainerResourceRatio controls how some values are computed based on the recommendation
+// the was established for a main resource
+type ContainerResourceRatio struct {
+	// Define which resource is the main one to compute others
+	// The main resource value from the recommendation will be used to calculate other resources with a ratio
+	MainResourceName v1.ResourceName `json:"mainResourceName,omitempty" protobuf:"bytes,1,opt,name=mainResourceName"`
+
+	// Define which resource is the main one to compute others
+	// The main resource value from the recommendation will be used to calculate other resources with a ratio
+	RatiosForResources []RatioForResource `json:"ratiosForResources,omitempty" protobuf:"bytes,2,opt,name=ratiosForResources"`
+}
+
+// RatioForResource defines which resource should be calculated
+// using the MainResource and a ratio. The recommendation value for the resource
+// is overridden with the calculated value.
+type RatioForResource struct {
+	// Specifies which resource is going to be computed using the ratio
+	CalculatedResourceName v1.ResourceName
+
+	// Define the ratio to be used to calculate the value for the resource
+	// The ratio is always applied on MilliValue
+	// MilliValue = ratio * MainResource.MilliValue
+	Ratio float64
 }
 
 const (
