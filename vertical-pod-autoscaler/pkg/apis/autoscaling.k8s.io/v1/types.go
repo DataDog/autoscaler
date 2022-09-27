@@ -182,6 +182,11 @@ type ContainerResourcePolicy struct {
 	// The default is "RequestsAndLimits".
 	// +optional
 	ControlledValues *ContainerControlledValues `json:"controlledValues,omitempty" protobuf:"bytes,6,rep,name=controlledValues"`
+
+	// Specifies resources that should be calculated based on ratio defined in the original pod spec
+	// A key define the reference resource and the value the resource that should be calculated
+	// If there are multiple entries, the defined graph must be acyclic
+	MaintainedRatios [][2]v1.ResourceName `json:"maintainedRatios,omitempty" protobuf:"bytes,7,rep,name=maintainedRatios"`
 }
 
 const (
