@@ -51,6 +51,10 @@ type VpaTargetSelectorFetcher interface {
 	// Fetch returns a labelSelector used to gather Pods controlled by the given VPA.
 	// If error is nil, the returned labelSelector is not nil.
 	Fetch(vpa *vpa_types.VerticalPodAutoscaler) (labels.Selector, error)
+
+	// GetPodTemplate returns a PodTemplate used to define Pods controlled by the given VPA.
+	// If error is nil, the returned pdTemplate is not nil.
+	GetPodTemplate(vpa *vpa_types.VerticalPodAutoscaler) (*corev1.PodTemplateSpec, error)
 }
 
 type wellKnownController string
@@ -145,6 +149,18 @@ func (f *vpaTargetSelectorFetcher) Fetch(vpa *vpa_types.VerticalPodAutoscaler) (
 	return selector, nil
 }
 
+func (f *vpaTargetSelectorFetcher) GetPodTemplate(vpa *vpa_types.VerticalPodAutoscaler) (*corev1.PodTemplateSpec, error) {
+	if vpa.Spec.TargetRef == nil {
+		return nil, fmt.Errorf("targetRef not defined. If this is a v1beta1 object switch to v1beta2.")
+	}
+	kind := wellKnownController(vpa.Spec.TargetRef.Kind)
+	informer, exists := f.informersMap[kind]
+	if exists {
+		return getPodTemplate(informer, vpa.Spec.TargetRef.Kind, vpa.Namespace, vpa.Spec.TargetRef.Name)
+	}
+	return nil, fmt.Errorf("unknown controller, can't retrieve pod template.")
+}
+
 func getLabelSelector(informer cache.SharedIndexInformer, kind, namespace, name string) (labels.Selector, error) {
 	obj, exists, err := informer.GetStore().GetByKey(namespace + "/" + name)
 	if err != nil {
@@ -199,4 +215,31 @@ func (f *vpaTargetSelectorFetcher) getLabelSelectorFromResource(
 
 	// nothing found, apparently the resource does support scale (or we lack RBAC)
 	return nil, lastError
+}
+
+func getPodTemplate(informer cache.SharedIndexInformer, kind, namespace, name string) (*corev1.PodTemplateSpec, error) {
+	obj, exists, err := informer.GetStore().GetByKey(namespace + "/" + name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("%s %s/%s does not exist", kind, namespace, name)
+	}
+	switch apiObj := obj.(type) {
+	case (*appsv1.DaemonSet):
+		return apiObj.Spec.Template.DeepCopy(), nil
+	case (*appsv1.Deployment):
+		return apiObj.Spec.Template.DeepCopy(), nil
+	case (*appsv1.StatefulSet):
+		return apiObj.Spec.Template.DeepCopy(), nil
+	case (*appsv1.ReplicaSet):
+		return apiObj.Spec.Template.DeepCopy(), nil
+	case (*batchv1.Job):
+		return apiObj.Spec.Template.DeepCopy(), nil
+	case (*batchv1.CronJob):
+		return apiObj.Spec.JobTemplate.Spec.Template.DeepCopy(), nil
+	case (*corev1.ReplicationController):
+		return apiObj.Spec.Template.DeepCopy(), nil
+	}
+	return nil, fmt.Errorf("don't know how to read pod template")
 }

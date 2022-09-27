@@ -95,7 +95,14 @@ func main() {
 		klog.Errorf("Failed to create limitRangeCalculator, falling back to not checking limits. Error message: %s", err)
 		limitRangeCalculator = limitrange.NewNoopLimitsCalculator()
 	}
-	recommendationProvider := recommendation.NewProvider(limitRangeCalculator, vpa_api_util.NewCappingRecommendationProcessor(limitRangeCalculator))
+	cappingProcessor := vpa_api_util.NewCappingRecommendationProcessor(limitRangeCalculator)
+	maintainRatioProcessor := vpa_api_util.NewResourceRatioRecommendationProcessor()
+
+	sequentialProcessor := vpa_api_util.NewSequentialProcessor([]vpa_api_util.RecommendationProcessor{
+		maintainRatioProcessor,
+		cappingProcessor, // the capping processor should always terminate the processing
+	})
+	recommendationProvider := recommendation.NewProvider(limitRangeCalculator, sequentialProcessor)
 	vpaMatcher := vpa.NewMatcher(vpaLister, targetSelectorFetcher)
 
 	hostname, err := os.Hostname()

@@ -59,7 +59,7 @@ func addVpa(t *testing.T, cluster *model.ClusterState, vpaID model.VpaID, select
 	apiObject.Name = vpaID.VpaName
 	labelSelector, _ := metav1.ParseToLabelSelector(selector)
 	parsedSelector, _ := metav1.LabelSelectorAsSelector(labelSelector)
-	err := cluster.AddOrUpdateVpa(&apiObject, parsedSelector)
+	err := cluster.AddOrUpdateVpa(&apiObject, parsedSelector, nil)
 	if err != nil {
 		t.Fatalf("AddOrUpdateVpa() failed: %v", err)
 	}

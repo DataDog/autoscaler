@@ -219,6 +219,7 @@ func TestLoadPods(t *testing.T) {
 			}
 
 			targetSelectorFetcher.EXPECT().Fetch(vpa).Return(tc.selector, tc.fetchSelectorError)
+			targetSelectorFetcher.EXPECT().GetPodTemplate(vpa).Return(nil, tc.fetchSelectorError)
 			clusterStateFeeder.LoadVPAs()
 
 			vpaID := model.VpaID{

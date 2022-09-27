@@ -383,7 +383,12 @@ func (feeder *clusterStateFeeder) LoadVPAs() {
 		selector, conditions := feeder.getSelector(vpaCRD)
 		klog.V(4).Infof("Using selector %s for VPA %s/%s", selector.String(), vpaCRD.Namespace, vpaCRD.Name)
 
-		if feeder.clusterState.AddOrUpdateVpa(vpaCRD, selector) == nil {
+		podTemplate, err := feeder.selectorFetcher.GetPodTemplate(vpaCRD)
+		if err != nil {
+			klog.Errorf("Cannot read pod template. Reason: %+v", err)
+		}
+
+		if feeder.clusterState.AddOrUpdateVpa(vpaCRD, selector, podTemplate) == nil {
 			// Successfully added VPA to the model.
 			vpaKeys[vpaID] = true
 

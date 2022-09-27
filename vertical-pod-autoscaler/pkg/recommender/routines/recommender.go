@@ -107,7 +107,10 @@ func (r *recommender) UpdateVPAs() {
 		}
 		resources := r.podResourceRecommender.GetRecommendedPodResources(GetContainerNameToAggregateStateMap(vpa))
 		had := vpa.HasRecommendation()
-		vpa.UpdateRecommendation(getCappedRecommendation(vpa.ID, resources, observedVpa.Spec.ResourcePolicy))
+		recommendation := MapToListOfRecommendedContainerResources(resources)
+		postProcessedRecommendation := r.postProcessResourcesRecommendation(vpa, recommendation, observedVpa.Spec.ResourcePolicy)
+		cappedRecommendation := getCappedRecommendation(vpa.ID, postProcessedRecommendation, observedVpa.Spec.ResourcePolicy)
+		vpa.UpdateRecommendation(cappedRecommendation)
 		if vpa.HasRecommendation() && !had {
 			metrics_recommender.ObserveRecommendationLatency(vpa.Created)
 		}
@@ -142,30 +145,9 @@ func (r *recommender) UpdateVPAs() {
 // resources, setting the UncappedTarget to the calculated recommended target
 // and if necessary, capping the Target, LowerBound and UpperBound according
 // to the ResourcePolicy.
-func getCappedRecommendation(vpaID model.VpaID, resources logic.RecommendedPodResources,
+func getCappedRecommendation(vpaID model.VpaID, recommendation *vpa_types.RecommendedPodResources,
 	policy *vpa_types.PodResourcePolicy) *vpa_types.RecommendedPodResources {
-	containerResources := make([]vpa_types.RecommendedContainerResources, 0, len(resources))
-	// Sort the container names from the map. This is because maps are an
-	// unordered data structure, and iterating through the map will return
-	// a different order on every call.
-	containerNames := make([]string, 0, len(resources))
-	for containerName := range resources {
-		containerNames = append(containerNames, containerName)
-	}
-	sort.Strings(containerNames)
-	// Create the list of recommendations for each container.
-	for _, name := range containerNames {
-		containerResources = append(containerResources, vpa_types.RecommendedContainerResources{
-			ContainerName:  name,
-			Target:         model.ResourcesAsResourceList(resources[name].Target),
-			LowerBound:     model.ResourcesAsResourceList(resources[name].LowerBound),
-			UpperBound:     model.ResourcesAsResourceList(resources[name].UpperBound),
-			UncappedTarget: model.ResourcesAsResourceList(resources[name].Target),
-		})
-	}
-	recommendation := &vpa_types.RecommendedPodResources{
-		ContainerRecommendations: containerResources,
-	}
+
 	cappedRecommendation, err := vpa_utils.ApplyVPAPolicy(recommendation, policy)
 	if err != nil {
 		klog.Errorf("Failed to apply policy for VPA %v/%v: %v", vpaID.Namespace, vpaID.VpaName, err)
@@ -269,4 +251,44 @@ func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, us
 		CheckpointsGCInterval:  checkpointsGCInterval,
 		UseCheckpoints:         useCheckpoints,
 	}.Make()
+}
+
+func (r *recommender) postProcessResourcesRecommendation(vpa *model.Vpa, recommendation *vpa_types.RecommendedPodResources,
+	policy *vpa_types.PodResourcePolicy) *vpa_types.RecommendedPodResources {
+
+	// For the moment we have only one postProcessor
+	// but in the future we should register the postProcessor and loop/apply them
+	postProcessor := vpa_utils.NewResourceRatioRecommendationProcessor()
+	postProcessedRecommendation, _, err := postProcessor.Apply(recommendation.DeepCopy(), vpa.ResourcePolicy, nil, vpa_utils.NewPodFromTemplate(vpa.PodTemplate))
+	if err != nil {
+		klog.Errorf("Failed to apply RatioPostProcessor for VPA %v/%v: %v", vpa.ID.Namespace, vpa.ID.VpaName, err)
+		return recommendation
+	}
+	return postProcessedRecommendation
+}
+
+func MapToListOfRecommendedContainerResources(resources logic.RecommendedPodResources) *vpa_types.RecommendedPodResources {
+	containerResources := make([]vpa_types.RecommendedContainerResources, 0, len(resources))
+	// Sort the container names from the map. This is because maps are an
+	// unordered data structure, and iterating through the map will return
+	// a different order on every call.
+	containerNames := make([]string, 0, len(resources))
+	for containerName := range resources {
+		containerNames = append(containerNames, containerName)
+	}
+	sort.Strings(containerNames)
+	// Create the list of recommendations for each container.
+	for _, name := range containerNames {
+		containerResources = append(containerResources, vpa_types.RecommendedContainerResources{
+			ContainerName:  name,
+			Target:         model.ResourcesAsResourceList(resources[name].Target),
+			LowerBound:     model.ResourcesAsResourceList(resources[name].LowerBound),
+			UpperBound:     model.ResourcesAsResourceList(resources[name].UpperBound),
+			UncappedTarget: model.ResourcesAsResourceList(resources[name].Target),
+		})
+	}
+	recommendation := &vpa_types.RecommendedPodResources{
+		ContainerRecommendations: containerResources,
+	}
+	return recommendation
 }

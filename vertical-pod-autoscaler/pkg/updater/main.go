@@ -93,6 +93,15 @@ func main() {
 	if namespace != "" {
 		admissionControllerStatusNamespace = namespace
 	}
+
+	cappingProcessor := vpa_api_util.NewCappingRecommendationProcessor(limitRangeCalculator)
+	maintainRatioProcessor := vpa_api_util.NewResourceRatioRecommendationProcessor()
+
+	sequentialProcessor := vpa_api_util.NewSequentialProcessor([]vpa_api_util.RecommendationProcessor{
+		maintainRatioProcessor,
+		cappingProcessor, // the capping processor should always terminate the processing
+	})
+
 	// TODO: use SharedInformerFactory in updater
 	updater, err := updater.NewUpdater(
 		kubeClient,
@@ -103,7 +112,7 @@ func main() {
 		*evictionToleranceFraction,
 		*useAdmissionControllerStatus,
 		admissionControllerStatusNamespace,
-		vpa_api_util.NewCappingRecommendationProcessor(limitRangeCalculator),
+		sequentialProcessor,
 		nil,
 		targetSelectorFetcher,
 		priority.NewProcessor(),
