@@ -5,6 +5,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/test"
 	"testing"
 )
 
@@ -144,6 +145,109 @@ func Test_applyMaintainRatioVPAPolicy(t *testing.T) {
 			annotations := applyMaintainRatioVPAPolicy(tt.recommendation, tt.policy, tt.containerOriginalResources)
 			assert.Equalf(t, annotations, tt.expectedAnnotations, "Expected annotation differs: %v", annotations)
 			assert.Equalf(t, tt.recommendation, tt.expectedRecommendation, "Expected recommendation differs: %#v", tt.recommendation)
+		})
+	}
+}
+
+func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
+	pod_1_3 := test.Pod().WithName("pod1").AddContainer(test.BuildTestContainer("ctr-name", "1", "3")).Get()
+
+	podRecommendation := &vpa_types.RecommendedPodResources{
+		ContainerRecommendations: []vpa_types.RecommendedContainerResources{
+			{
+				ContainerName: "ctr-name",
+				Target: apiv1.ResourceList{
+					apiv1.ResourceCPU:    *resource.NewScaledQuantity(5, 0),
+					apiv1.ResourceMemory: *resource.NewScaledQuantity(10, 1)},
+				LowerBound: apiv1.ResourceList{
+					apiv1.ResourceCPU:    *resource.NewScaledQuantity(50, 0),
+					apiv1.ResourceMemory: *resource.NewScaledQuantity(100, 1)},
+				UpperBound: apiv1.ResourceList{
+					apiv1.ResourceCPU:    *resource.NewScaledQuantity(150, 0),
+					apiv1.ResourceMemory: *resource.NewScaledQuantity(200, 1)},
+			},
+		},
+	}
+	podRecommendationExpected_1_3 := &vpa_types.RecommendedPodResources{
+		ContainerRecommendations: []vpa_types.RecommendedContainerResources{
+			{
+				ContainerName: "ctr-name",
+				Target: apiv1.ResourceList{
+					apiv1.ResourceCPU:    *resource.NewScaledQuantity(5, 0),
+					apiv1.ResourceMemory: *resource.NewScaledQuantity(15000, -3)},
+				LowerBound: apiv1.ResourceList{
+					apiv1.ResourceCPU:    *resource.NewScaledQuantity(50, 0),
+					apiv1.ResourceMemory: *resource.NewScaledQuantity(150000, -3)},
+				UpperBound: apiv1.ResourceList{
+					apiv1.ResourceCPU:    *resource.NewScaledQuantity(150, 0),
+					apiv1.ResourceMemory: *resource.NewScaledQuantity(450000, -3)},
+			},
+		},
+	}
+
+	type args struct {
+		podRecommendation *vpa_types.RecommendedPodResources
+		policy            *vpa_types.PodResourcePolicy
+		conditions        []vpa_types.VerticalPodAutoscalerCondition
+		pod               *apiv1.Pod
+	}
+	tests := []struct {
+		name           string
+		args           args
+		wantReco       *vpa_types.RecommendedPodResources
+		wantAnnotation ContainerToAnnotationsMap
+		wantErr        bool
+	}{
+		{
+			name: "nil",
+			args: args{
+				podRecommendation: nil,
+				policy:            nil,
+				conditions:        nil,
+				pod:               pod_1_3,
+			},
+			wantReco:       nil,
+			wantAnnotation: nil,
+			wantErr:        false,
+		},
+		{
+			name: "no policy",
+			args: args{
+				podRecommendation: podRecommendation,
+				policy:            nil,
+				conditions:        nil,
+				pod:               pod_1_3,
+			},
+			wantReco:       podRecommendation,
+			wantAnnotation: map[string][]string{},
+			wantErr:        false,
+		},
+		{
+			name: "cpu to mem",
+			args: args{
+				podRecommendation: podRecommendation,
+				policy: &vpa_types.PodResourcePolicy{
+					ContainerPolicies: []vpa_types.ContainerResourcePolicy{{
+						ContainerName:    vpa_types.DefaultContainerResourcePolicy,
+						MaintainedRatios: [][2]apiv1.ResourceName{{"cpu", "memory"}},
+					}},
+				},
+				conditions: nil,
+				pod:        pod_1_3,
+			},
+			wantReco:       podRecommendationExpected_1_3,
+			wantAnnotation: map[string][]string{},
+			wantErr:        false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := resourceRatioRecommendationProcessor{}
+			got, got1, err := r.Apply(tt.args.podRecommendation, tt.args.policy, tt.args.conditions, tt.args.pod)
+			assert.Equalf(t, tt.wantErr, err != nil, "Error is not the expected one: %v", err)
+
+			assert.Equalf(t, tt.wantReco, got, "Recommendation: Apply(%v, %v, %v, %v)", tt.args.podRecommendation, tt.args.policy, tt.args.conditions, tt.args.pod)
+			assert.Equalf(t, tt.wantAnnotation, got1, "Annotation: Apply(%v, %v, %v, %v)", tt.args.podRecommendation, tt.args.policy, tt.args.conditions, tt.args.pod)
 		})
 	}
 }

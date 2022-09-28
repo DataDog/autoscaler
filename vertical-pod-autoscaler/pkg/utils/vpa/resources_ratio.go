@@ -9,6 +9,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// NewResourceRatioRecommendationProcessor constructs new RecommendationsProcessor that adjusts recommendation
+// for given pod to obey VPA resources maintainedRatio policy
 func NewResourceRatioRecommendationProcessor() RecommendationProcessor {
 	return &resourceRatioRecommendationProcessor{}
 }
@@ -19,6 +21,7 @@ type resourceRatioRecommendationProcessor struct {
 // resourceRatioRecommendationProcessor must implement RecommendationProcessor
 var _ RecommendationProcessor = &resourceRatioRecommendationProcessor{}
 
+// Apply returns a recommendation for the given pod, adjusted to obey maintainedRatio policy
 func (r resourceRatioRecommendationProcessor) Apply(
 	podRecommendation *vpa_types.RecommendedPodResources,
 	policy *vpa_types.PodResourcePolicy,
@@ -59,6 +62,7 @@ func (r resourceRatioRecommendationProcessor) Apply(
 	return &vpa_types.RecommendedPodResources{ContainerRecommendations: updatedRecommendations}, containerToAnnotationsMap, nil
 }
 
+// getRecommendationForContainerWithRatioApplied returns a recommendation for the given container, adjusted to obey maintainedRatios policy
 func getRecommendationForContainerWithRatioApplied(
 	container apiv1.Container,
 	containerRecommendation *vpa_types.RecommendedContainerResources,
@@ -84,6 +88,8 @@ func getRecommendationForContainerWithRatioApplied(
 	return amendedRecommendations, generatedAnnotations, nil
 }
 
+// applyMaintainRatioVPAPolicy uses the maintainRatio constraints and the defined ratios in the Pod
+// and amend the recommendation to respect the original ratios
 func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, policy *vpa_types.ContainerResourcePolicy, containerOriginalResources apiv1.ResourceList) []string {
 	if policy == nil || policy.MaintainedRatios == nil {
 		return nil
@@ -115,6 +121,15 @@ func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, policy *vpa_
 
 var resourceNameHash = func(r apiv1.ResourceName) string { return string(r) }
 
+// getMaintainedRatiosCalculationOrder validates (no cycle) and sort the constraints
+// in an order that should be used to compute resource values
+// for example if the user gives:
+// {"B","C"},{"A","B"} , we must first compute B using value of A, and then only compute C using value of B
+// this function will return:
+// {"A","B"},{"B","C"}
+// The function will return an error if the graph defined contains cycle.
+// The function support multiple graphs like: {"A","B"},{"C","D"} ... but in that case the ordered output is undetermined
+// it could be {"A","B"},{"C","D"} or {"C","D"},{"A","B"}
 func getMaintainedRatiosCalculationOrder(m [][2]apiv1.ResourceName) ([][2]apiv1.ResourceName, error) {
 
 	// Create the graph that represent the relation between resources
