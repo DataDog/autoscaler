@@ -1,3 +1,19 @@
+/*
+Copyright 2018 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package api
 
 import (
@@ -150,7 +166,7 @@ func Test_applyMaintainRatioVPAPolicy(t *testing.T) {
 }
 
 func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
-	pod_1_3 := test.Pod().WithName("pod1").AddContainer(test.BuildTestContainer("ctr-name", "1", "3")).Get()
+	pod13 := test.Pod().WithName("pod1").AddContainer(test.BuildTestContainer("ctr-name", "1", "3")).Get()
 
 	podRecommendation := &vpa_types.RecommendedPodResources{
 		ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -168,7 +184,7 @@ func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
 			},
 		},
 	}
-	podRecommendationExpected_1_3 := &vpa_types.RecommendedPodResources{
+	podRecommendationExpected13 := &vpa_types.RecommendedPodResources{
 		ContainerRecommendations: []vpa_types.RecommendedContainerResources{
 			{
 				ContainerName: "ctr-name",
@@ -204,7 +220,7 @@ func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
 				podRecommendation: nil,
 				policy:            nil,
 				conditions:        nil,
-				pod:               pod_1_3,
+				pod:               pod13,
 			},
 			wantReco:       nil,
 			wantAnnotation: nil,
@@ -216,7 +232,7 @@ func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
 				podRecommendation: podRecommendation,
 				policy:            nil,
 				conditions:        nil,
-				pod:               pod_1_3,
+				pod:               pod13,
 			},
 			wantReco:       podRecommendation,
 			wantAnnotation: map[string][]string{},
@@ -233,9 +249,9 @@ func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
 					}},
 				},
 				conditions: nil,
-				pod:        pod_1_3,
+				pod:        pod13,
 			},
-			wantReco:       podRecommendationExpected_1_3,
+			wantReco:       podRecommendationExpected13,
 			wantAnnotation: map[string][]string{},
 			wantErr:        false,
 		},
