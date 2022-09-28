@@ -20,7 +20,10 @@ require (
 	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
 )
 
+require github.com/DataDog/datadog-api-client-go v1.16.0
+
 require (
+	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/blang/semver v3.5.0+incompatible // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/evanphx/json-patch v4.2.0+incompatible // indirect
@@ -42,7 +45,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9 // indirect
-	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45 // indirect
+	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
 	golang.org/x/sys v0.0.0-20191022100944-742c48ecaeb7 // indirect
 	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/appengine v1.5.0 // indirect

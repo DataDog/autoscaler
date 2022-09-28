@@ -134,6 +134,7 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 	}.Make()
 }
 
+// NewDefaultMetricsClient creates a MetricsClient bound with the given namespace.
 func NewDefaultMetricsClient(config *rest.Config, namespace string) metrics.MetricsClient {
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
 	return metrics.NewMetricsClient(metricsGetter, namespace)

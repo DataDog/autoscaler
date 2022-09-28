@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1alpha1"
+	// For updated pod metrics.
 	_ "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
 	resourceclient "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
 	"math"
@@ -86,14 +87,14 @@ func classifyByTag(values []datadog.MetricsQueryMetadata, tag string, emptyTag s
 	return result
 }
 
-type ContainerResourceData map[float64]map[string]map[string]float64
+type containerResourceData map[float64]map[string]map[string]float64
 
 func aggregateResourceData(values map[string][]datadog.MetricsQueryMetadata, resourceName string,
 	transform func(datadog.MetricsQueryMetadata, float64) float64,
-	dest *ContainerResourceData) {
+	dest *containerResourceData) {
 	for containerName, ress := range values {
 		for _, res := range ress {
-			for _, row := range *res.Pointlist {
+			for _, row := range res.Pointlist {
 				timestamp := *row[0]
 				value := transform(res, *row[1])
 				(*dest)[timestamp][containerName][resourceName] = value
@@ -106,14 +107,14 @@ func aggregateResourceData(values map[string][]datadog.MetricsQueryMetadata, res
 // raw measurement.
 func scaleCpuToCores(met datadog.MetricsQueryMetadata, value float64) float64 {
 	// Nanocores have a scale factor of 1e-9.
-	scale := (*met.Unit)[0].ScaleFactor
+	scale := (met.Unit)[0].ScaleFactor
 	return value * *scale
 }
 
 // Returns the number of bytes indicated by this raw measurement.
 func scaleMemToBytes(met datadog.MetricsQueryMetadata, value float64) float64 {
 	// These are always in bytes (scale=1), but let's be resilient.
-	scale := (*met.Unit)[0].ScaleFactor
+	scale := (met.Unit)[0].ScaleFactor
 	return value * *scale
 }
 
@@ -135,7 +136,7 @@ func (d ddclientPodMetrics) aggregatePodMetrics(cpuResp []datadog.MetricsQueryMe
 	containersCpu := classifyByTag(cpuResp, "container_name", "unknown-container")
 
 	// Map of timestamp -> container_name -> resource (apis.metrics.v1.ResourceName: "cpu", "memory") -> value
-	data := make(ContainerResourceData)
+	data := make(containerResourceData)
 	aggregateResourceData(containersMem, "memory", scaleMemToBytes, &data)
 	aggregateResourceData(containersCpu, "cpu", scaleCpuToCores, &data)
 
@@ -223,6 +224,7 @@ func (d ddclientPodMetrics) List(_ context.Context, _ metav1.ListOptions) (*v1be
 	return &v1beta1.PodMetricsList{Items: podItems}, nil
 }
 
+// NewDatadogClient - Returns an implementation of PodMetricsesGetter using the Datadog API instead of metrics-server.
 func NewDatadogClient(queryInterval time.Duration, cluster string) resourceclient.PodMetricsesGetter {
 	ctx := datadog.NewDefaultContext(context.Background())
 	configuration := datadog.NewConfiguration()
