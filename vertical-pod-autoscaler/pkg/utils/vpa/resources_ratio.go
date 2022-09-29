@@ -18,7 +18,6 @@ package api
 
 import (
 	"fmt"
-	"github.com/dominikbraun/graph"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
@@ -135,8 +134,6 @@ func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, policy *vpa_
 	return annotations
 }
 
-var resourceNameHash = func(r apiv1.ResourceName) string { return string(r) }
-
 // getMaintainedRatiosCalculationOrder validates (no cycle) and sort the constraints
 // in an order that should be used to compute resource values
 // for example if the user gives:
@@ -148,38 +145,13 @@ var resourceNameHash = func(r apiv1.ResourceName) string { return string(r) }
 // it could be {"A","B"},{"C","D"} or {"C","D"},{"A","B"}
 func getMaintainedRatiosCalculationOrder(m [][2]apiv1.ResourceName) ([][2]apiv1.ResourceName, error) {
 
-	// Create the graph that represent the relation between resources
-	// This graph is directed and must be acyclic
-	g := graph.New(resourceNameHash, graph.Directed(), graph.PermitCycles())
-	doneVertex := map[apiv1.ResourceName]struct{}{}
-	for _, s := range m {
-		if _, ok := doneVertex[s[0]]; !ok {
-			g.AddVertex(s[0])
-			doneVertex[s[0]] = struct{}{}
-		}
-		if _, ok := doneVertex[s[1]]; !ok {
-			g.AddVertex(s[1])
-			doneVertex[s[1]] = struct{}{}
-		}
-		err := g.AddEdge(resourceNameHash(s[0]), resourceNameHash(s[1]))
-		if err != nil {
-			return nil, err
-		}
+	ordered, predecessorsMap, ok := getSortedResourceAndPredecessors(m)
+	if !ok {
+		klog.V(1).Infof("Error the graph is not acyclic")
+		return nil, fmt.Errorf("Error the graph is not acyclic")
 	}
 
-	predecessorsMap, err := g.PredecessorMap()
-	if err != nil {
-		klog.V(1).Infof("Error with Predescessor: %v", err)
-		return nil, err
-	}
-
-	ordered, err := graph.TopologicalSort(g)
-	if err != nil {
-		klog.V(1).Infof("Error with TopologicalSort: %v", err)
-		return nil, err
-	}
-
-	// Check that no node of the graph has more than 1 predecessor
+	// Check that no resourceNode of the graph has more than 1 predecessor
 	for k, v := range predecessorsMap {
 		if len(v) > 1 {
 			klog.V(1).Infof("Resource '%s' has more that one predecessor for value computation", k)
@@ -193,14 +165,85 @@ func getMaintainedRatiosCalculationOrder(m [][2]apiv1.ResourceName) ([][2]apiv1.
 	// this list will tell us in which order we should compute resources
 	for _, resource := range ordered {
 		m := predecessorsMap[resource]
-		var predecessor string
+		var predecessor apiv1.ResourceName
 		if len(m) == 0 {
 			continue
 		}
 		for k := range m { // we are sure that there is only one element here
 			predecessor = k
 		}
-		orderedResult = append(orderedResult, [2]apiv1.ResourceName{apiv1.ResourceName(predecessor), apiv1.ResourceName(resource)})
+		orderedResult = append(orderedResult, [2]apiv1.ResourceName{predecessor, resource})
 	}
-	return orderedResult, err
+	return orderedResult, nil
+
+}
+
+// getSortedResourceAndPredecessors returns an ordered list of nodes (from root to leaves) and also checks that the defined graph is acyclic
+func getSortedResourceAndPredecessors(edges [][2]apiv1.ResourceName) ([]apiv1.ResourceName, map[apiv1.ResourceName]map[apiv1.ResourceName]struct{}, bool) {
+	g := resourceGraph{nodes: map[apiv1.ResourceName]*resourceNode{}}
+	for _, edge := range edges {
+		g.addEdge(edge[0], edge[1])
+	}
+	return g.getOrderedListAndPredecessors()
+}
+
+type resourceGraph struct {
+	nodes map[apiv1.ResourceName]*resourceNode
+}
+
+type resourceNode struct {
+	key              apiv1.ResourceName
+	children, parent map[*resourceNode]struct{}
+}
+
+func (g *resourceGraph) addEdge(from, to apiv1.ResourceName) {
+	var nodeFrom, nodeTo *resourceNode
+	var ok bool
+	if nodeTo, ok = g.nodes[to]; !ok {
+		nodeTo = &resourceNode{key: to, parent: map[*resourceNode]struct{}{}, children: map[*resourceNode]struct{}{}}
+		g.nodes[to] = nodeTo
+	}
+
+	if nodeFrom, ok = g.nodes[from]; !ok {
+		nodeFrom = &resourceNode{key: from, parent: map[*resourceNode]struct{}{}, children: map[*resourceNode]struct{}{}}
+		g.nodes[from] = nodeFrom
+	}
+
+	nodeFrom.children[nodeTo] = struct{}{}
+	nodeTo.parent[nodeFrom] = struct{}{}
+}
+
+// getOrderedListAndPredecessors check that the graph is acyclic and build output like ordered list of resourceNode from root to leaves
+// To test a graph for being acyclic:
+// 1 - If the graph has no nodes, stop. The graph is acyclic.
+// 2 - If the graph has no leaf, stop. The graph is cyclic.
+// 3 - Choose a leaf of the graph. Remove this leaf and all arcs going into the leaf to get a new graph.
+// Go to 1.
+func (g *resourceGraph) getOrderedListAndPredecessors() (orderedList []apiv1.ResourceName, predecessors map[apiv1.ResourceName]map[apiv1.ResourceName]struct{}, acyclic bool) {
+	predecessors = map[apiv1.ResourceName]map[apiv1.ResourceName]struct{}{}
+
+	for len(g.nodes) > 0 {
+		oneLeafFound := false
+		for _, n := range g.nodes {
+			if len(n.children) == 0 {
+				orderedList = append([]apiv1.ResourceName{n.key}, orderedList...)
+				parentKeys := map[apiv1.ResourceName]struct{}{}
+				for p := range n.parent {
+					parentKeys[p.key] = struct{}{}
+					delete(p.children, n)
+				}
+				predecessors[n.key] = parentKeys
+				oneLeafFound = true
+				delete(g.nodes, n.key)
+				break
+			}
+		}
+		if !oneLeafFound {
+			break
+		}
+	}
+	if len(g.nodes) > 0 {
+		return nil, nil, false
+	}
+	return orderedList, predecessors, true
 }

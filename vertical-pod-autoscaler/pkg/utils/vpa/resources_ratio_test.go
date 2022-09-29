@@ -93,19 +93,21 @@ func Test_getMaintainedRatiosCalculationOrder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getMaintainedRatiosCalculationOrder(tt.input)
-			assert.Equalf(t, tt.wantErr, err != nil, "Error is not the expected one: %v", err)
-			if len(tt.wantOneOf) == 0 && len(got) == 0 {
-				return
-			}
-			found := false
-			for _, option := range tt.wantOneOf {
-				if assert.ObjectsAreEqual(option, got) {
-					found = true
-					continue
+			{
+				got, err := getMaintainedRatiosCalculationOrder(tt.input)
+				assert.Equalf(t, tt.wantErr, err != nil, "Error is not the expected one: %v", err)
+				if len(tt.wantOneOf) == 0 && len(got) == 0 {
+					return
 				}
+				found := false
+				for _, option := range tt.wantOneOf {
+					if assert.ObjectsAreEqual(option, got) {
+						found = true
+						continue
+					}
+				}
+				assert.Truef(t, found, "getMaintainedRatiosCalculationOrder(%v)  =>  %v", tt.input, got)
 			}
-			assert.Truef(t, found, "getMaintainedRatiosCalculationOrder(%v)  =>  %v", tt.input, got)
 		})
 	}
 }
