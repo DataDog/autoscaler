@@ -117,7 +117,7 @@ func aggregateResourceData(values map[string][]datadog.MetricsQueryMetadata, res
 	dest *containerResourceData) {
 	for containerName, ress := range values {
 		for _, res := range ress {
-			for rowIdx, row := range *res.Pointlist {
+			for rowIdx, row := range res.Pointlist {
 				if len(row) > 1 && row[0] != nil && row[1] != nil {
 					timestamp := *row[0]
 					value := transform(res, *row[1])
@@ -392,6 +392,7 @@ func (c clientWrapper) QueryMetrics(context context.Context, interval time.Durat
 	return resp, http, err
 }
 
+// NewDatadogClient creates a Datadog API client and wraps it up as a PodMetricsesGetter.
 func NewDatadogClient(queryInterval time.Duration, cluster string, clientApiSecrets string, extraTags []string) resourceclient.PodMetricsesGetter {
 	var wrapFn = func(configuration *datadog.Configuration) baseClient {
 		return &clientWrapper{ApiClient: *datadog.NewAPIClient(configuration)}

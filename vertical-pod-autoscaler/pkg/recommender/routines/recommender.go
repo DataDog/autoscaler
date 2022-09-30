@@ -55,7 +55,7 @@ var (
 	memorySaver             = flag.Bool("memory-saver", false, `If true, only track pods which have an associated VPA`)
 )
 
-type RecommenderOptions struct {
+type recommenderOptions struct {
 	// Round CPU Requests up to the next integer.
 	cpuQos bool
 	// Which percentile to use.  Default is 95.
@@ -89,7 +89,7 @@ type recommender struct {
 	podResourceRecommender        logic.PodResourceRecommender
 	useCheckpoints                bool
 	lastAggregateContainerStateGC time.Time
-	recOptions                    RecommenderOptions
+	recOptions                    recommenderOptions
 }
 
 func (r *recommender) GetClusterState() *model.ClusterState {
@@ -151,7 +151,7 @@ func (r *recommender) UpdateVPAs() {
 // and if necessary, capping the Target, LowerBound and UpperBound according
 // to the ResourcePolicy.
 func getCappedRecommendation(vpaID model.VpaID, resources logic.RecommendedPodResources,
-	policy *vpa_types.PodResourcePolicy, options RecommenderOptions) *vpa_types.RecommendedPodResources {
+	policy *vpa_types.PodResourcePolicy, options recommenderOptions) *vpa_types.RecommendedPodResources {
 	containerResources := make([]vpa_types.RecommendedContainerResources, 0, len(resources))
 	for containerName, res := range resources {
 		containerResources = append(containerResources, vpa_types.RecommendedContainerResources{
@@ -261,7 +261,7 @@ type RecommenderFactory struct {
 
 	CheckpointsGCInterval time.Duration
 	UseCheckpoints        bool
-	Options               RecommenderOptions
+	Options               recommenderOptions
 }
 
 // Make creates a new recommender instance,
@@ -293,7 +293,7 @@ func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, us
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	factory := informers.NewSharedInformerFactoryWithOptions(kubeClient, defaultResyncPeriod, informers.WithNamespace(namespace))
 	controllerFetcher := controllerfetcher.NewControllerFetcher(config, kubeClient, factory, scaleCacheEntryFreshnessTime, scaleCacheEntryLifetime, scaleCacheEntryJitterFactor)
-	options := RecommenderOptions{cpuQos: cpuQos, percentile: percentile / 100.0}
+	options := recommenderOptions{cpuQos: cpuQos, percentile: percentile / 100.0}
 	return RecommenderFactory{
 		ClusterState:           clusterState,
 		ClusterStateFeeder:     input.NewClusterStateFeeder(config, clusterState, *memorySaver, namespace, metricsClient),

@@ -25,8 +25,7 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 )
 
-// TODO: Split the estimator to have a separate estimator object for CPU and memory.
-
+// ResourceEstimatorOptions configures what extensions are enabled on the estimator.
 type ResourceEstimatorOptions struct {
 	Extensions annotations.DatadogExtensions
 }
@@ -98,6 +97,7 @@ func WithConfidenceMultiplier(multiplier, exponent float64, baseEstimator Resour
 	return &confidenceMultiplier{multiplier, exponent, baseEstimator}
 }
 
+// WithQosRoundingEstimator returns a given ResourceEstimator with QoS rounding applied.
 func WithQosRoundingEstimator(baseEstimator ResourceEstimator) ResourceEstimator {
 	return &qosRoundingEstimator{baseEstimator}
 }
@@ -135,7 +135,9 @@ func getConfidence(s *model.AggregateContainerState) float64 {
 // GetResourceEstimation returns resources computed by the underlying estimator, scaled based on the
 // confidence metric, which depends on the amount of available historical data.
 // Each resource is transformed as follows:
-//     scaledResource = originalResource * (1 + 1/confidence)^exponent.
+//
+//	scaledResource = originalResource * (1 + 1/confidence)^exponent.
+//
 // This can be used to widen or narrow the gap between the lower and upper bound
 // estimators depending on how much input data is available to the estimators.
 func (e *confidenceMultiplier) GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources {

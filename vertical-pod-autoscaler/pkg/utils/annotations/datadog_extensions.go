@@ -34,6 +34,7 @@ type DatadogExtensions struct {
 	RamPerCore           resource.Quantity
 }
 
+// ParseDatadogExtensions looks at annotations and derives a DatadogExtensions from them.
 func ParseDatadogExtensions(annotations map[string]string) (DatadogExtensions, error) {
 	result := DatadogExtensions{
 		ObjectTypeSpecified:  false,

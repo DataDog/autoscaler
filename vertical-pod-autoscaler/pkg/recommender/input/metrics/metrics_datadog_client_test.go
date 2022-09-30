@@ -3,7 +3,6 @@ package metrics
 import (
 	_context "context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/DataDog/datadog-api-client-go/api/v1/datadog"
 	assert "github.com/stretchr/testify/assert"
@@ -178,7 +177,7 @@ func (tc *testClient) addMetricsElement(start int64, mean float64, scale float64
 
 	var result datadog.MetricsQueryResponse
 
-	blank.TagSet = &tagSet
+	blank.TagSet = tagSet
 	// Generate values for each series, then embed them into the result object for return.
 
 	pointList := make([][]*float64, 0, nrSamples)
@@ -190,7 +189,7 @@ func (tc *testClient) addMetricsElement(start int64, mean float64, scale float64
 		*m = boundedRandom(mean) * scale
 		pointList = append(pointList, []*float64{t, m})
 	}
-	blank.Pointlist = &pointList
+	blank.Pointlist = pointList
 	err := json.Unmarshal(resultTemplate, &result)
 	if err != nil {
 		return -1, err
@@ -200,7 +199,7 @@ func (tc *testClient) addMetricsElement(start int64, mean float64, scale float64
 	}
 	resultSeries := make([]datadog.MetricsQueryMetadata, 0, 1)
 	resultSeries = append(resultSeries, blank)
-	result.Series = &resultSeries
+	result.Series = resultSeries
 	result.FromDate = new(int64)
 	*result.FromDate = start * 1000 // Dates are in milliseconds
 	result.ToDate = new(int64)
@@ -213,8 +212,8 @@ func (tc *testClient) addMetricsElement(start int64, mean float64, scale float64
 func (tc testClient) QueryMetrics(context _context.Context, interval time.Duration, query string) (datadog.MetricsQueryResponse, *http.Response, error) {
 	for _, s := range tc.requiredSubstrings {
 		if !strings.Contains(query, s) {
-			return datadog.MetricsQueryResponse{}, nil, errors.New(
-				fmt.Sprintf("Required value %v not in query %v", s, query))
+			return datadog.MetricsQueryResponse{}, nil,
+				fmt.Errorf("Required value %v not in query %v", s, query)
 		}
 	}
 	if strings.HasPrefix(query, "kubernetes.cpu.usage") {
@@ -235,17 +234,17 @@ func (tc testClient) QueryMetrics(context _context.Context, interval time.Durati
 		}
 
 	} else {
-		return datadog.MetricsQueryResponse{}, nil, errors.New(
-			fmt.Sprintf("Unknown Query %v in QueryMetrics", query))
+		return datadog.MetricsQueryResponse{}, nil,
+			fmt.Errorf("Unknown Query %v in QueryMetrics", query)
 	}
-	return datadog.MetricsQueryResponse{}, nil, errors.New(
-		fmt.Sprintf("Couldn't find a match for query (idx 2) in arg pack (%v,%v,%v).  Keys: %v", context, interval, query, tc.cpuIndex))
+	return datadog.MetricsQueryResponse{}, nil,
+		fmt.Errorf("Couldn't find a match for query (idx 2) in arg pack (%v,%v,%v).  Keys: %v", context, interval, query, tc.cpuIndex)
 }
 
 // Plan: verify that QueryMetrics is called appropriately for each query function we invoke.  Then make sure the
 // resulting data is aggregated/split appropriately.
 func TestDdclientPodMetrics_Get(t *testing.T) {
-	assert := assert.New(t)
+	doAssert := assert.New(t)
 	client := testClient{}
 	var err error
 	client.addMetrics("banana", 100, 1.0, 1024, 5, map[string]string{
@@ -269,25 +268,25 @@ func TestDdclientPodMetrics_Get(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed getting pod metrics for pod 'banana': %v", err)
 	}
-	assert.Equal("banana", result.Name)
-	assert.Equal("foo", result.Namespace)
-	assert.Equal(1, len(result.Containers))
+	doAssert.Equal("banana", result.Name)
+	doAssert.Equal("foo", result.Namespace)
+	doAssert.Equal(1, len(result.Containers))
 	cpu := result.Containers[0].Usage.Cpu().ScaledValue(resource.Milli)
-	assert.InDelta(cpu, 900, 1100)
+	doAssert.InDelta(cpu, 900, 1100)
 	mem := result.Containers[0].Usage.Memory().ScaledValue(resource.Mega)
-	assert.InDelta(mem, 500, 1500)
+	doAssert.InDelta(mem, 500, 1500)
 
 	result, err = metrics.Get(context.TODO(), "apple", v1.GetOptions{})
 	if err != nil {
 		t.Errorf("Failed getting pod metrics for pod 'banana': %v", err)
 	}
-	assert.Equal("apple", result.Name)
-	assert.Equal("foo", result.Namespace)
-	assert.Equal(1, len(result.Containers))
+	doAssert.Equal("apple", result.Name)
+	doAssert.Equal("foo", result.Namespace)
+	doAssert.Equal(1, len(result.Containers))
 	cpu = result.Containers[0].Usage.Cpu().ScaledValue(resource.Milli)
-	assert.InDelta(cpu, 1300, 1800)
+	doAssert.InDelta(cpu, 1300, 1800)
 	mem = result.Containers[0].Usage.Memory().ScaledValue(resource.Mega)
-	assert.InDelta(mem, 1500, 2500)
+	doAssert.InDelta(mem, 1500, 2500)
 }
 
 type storedResults struct {
@@ -303,7 +302,7 @@ func (res *storedResults) QueryMetrics(context context.Context, interval time.Du
 	} else if keywords[1] == "memory" {
 		return res.Mem, nil, nil
 	} else {
-		return datadog.MetricsQueryResponse{}, nil, errors.New(fmt.Sprintf("No match for %v", keywords[1]))
+		return datadog.MetricsQueryResponse{}, nil, fmt.Errorf("No match for %v", keywords[1])
 	}
 }
 

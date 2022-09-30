@@ -179,14 +179,17 @@ func StartScan() {
 	podKeys = make(map[string][]string)
 }
 
+// RecordUnmatchedPod records that a pod with the given labels wasn't matched.
 func RecordUnmatchedPod(spec labels.Set) {
 	unmatchedPods[saveLabels(spec)] += 1
 }
 
+// RecordMatchedPod records that a pod with the given labels was matched.
 func RecordMatchedPod(spec labels.Set, vpa labels.Set) {
 	matchedPods[saveLabels(concatLabels(spec, vpa))] += 1
 }
 
+// RecordPodRequestDiff records a pod's difference between its requests and the recommendation target.
 func RecordPodRequestDiff(podNS string, podName string, podLabels labels.Labels,
 	vpaLabels labels.Labels, target map[string]v12.ResourceList, request map[string]v12.ResourceList) {
 	extraMetadata := map[string]string{
@@ -213,6 +216,7 @@ func RecordPodRequestDiff(podNS string, podName string, podLabels labels.Labels,
 	}
 }
 
+// RecordContainerRequestDiff records a container's difference between its requests and the recommendation target.
 func RecordContainerRequestDiff(containerName string, podNS string, podName string,
 	podLabels labels.Labels, vpaLabels labels.Labels, target v12.ResourceList, request v12.ResourceList) {
 	extraMetadata := map[string]string{

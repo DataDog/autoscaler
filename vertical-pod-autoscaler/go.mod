@@ -3,8 +3,7 @@ module k8s.io/autoscaler/vertical-pod-autoscaler
 go 1.17
 
 require (
-	github.com/DataDog/datadog-api-client-go v1.11.0
-	github.com/DataDog/datadog-go v4.8.3+incompatible
+	github.com/DataDog/datadog-api-client-go v1.16.0
 	github.com/DataDog/datadog-go/v5 v5.1.1
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -14,7 +13,7 @@ require (
 	github.com/prometheus/procfs v0.0.5 // indirect
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/crypto v0.0.0-20200221231518-2aa609cf4a9d // indirect
-	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	k8s.io/api v0.18.3
 	k8s.io/apimachinery v0.18.3
@@ -26,14 +25,12 @@ require (
 	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
 )
 
-require github.com/DataDog/datadog-api-client-go v1.16.0
-
 require (
 	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/blang/semver v3.5.0+incompatible // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/evanphx/json-patch v4.2.0+incompatible // indirect
-	github.com/go-logr/logr v0.4.0 // indirect
+	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903 // indirect
 	github.com/golang/protobuf v1.3.2 // indirect
@@ -50,14 +47,13 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
-	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9 // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
-	golang.org/x/sys v0.0.0-20191022100944-742c48ecaeb7 // indirect
-	golang.org/x/text v0.3.2 // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
+	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/appengine v1.5.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
-	k8s.io/klog v1.0.0 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 	k8s.io/kube-openapi v0.0.0-20200410145947-61e04a5be9a6 // indirect
 	sigs.k8s.io/structured-merge-diff/v3 v3.0.0 // indirect
 	sigs.k8s.io/yaml v1.2.0 // indirect

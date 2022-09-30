@@ -43,9 +43,8 @@ func NeedsQoS(datadogExtensions annotations.DatadogExtensions) bool {
 	}
 	if datadogExtensions.QoSSpecified {
 		return datadogExtensions.QoSEnable
-	} else {
-		return kindBasedQoS
 	}
+	return kindBasedQoS
 }
 
 // roundCoresToPolicy takes a basic core amount and rounds up to fit the QoS policy.
@@ -57,17 +56,17 @@ func roundCoresToPolicy(datadogExtensions annotations.DatadogExtensions, cores m
 			modulus := int(integerCores) % divisorMilliCores
 			if modulus > 0 {
 				return model.ResourceAmount(integerCores + float64(divisorMilliCores-modulus))
-			} else {
-				return model.ResourceAmount(integerCores)
 			}
-		} else {
 			return model.ResourceAmount(integerCores)
+
 		}
-	} else {
-		return cores
+		return model.ResourceAmount(integerCores)
+
 	}
+	return cores
 }
 
+// RoundResourcesToPolicy applies the rounding policies in the given extensions to the given resources.
 func RoundResourcesToPolicy(extensions annotations.DatadogExtensions, originalResources model.Resources) model.Resources {
 	// First look for a RAM per core policy to dominate our calculations.
 	memoryAmount, hasMemoryAmount := originalResources[model.ResourceMemory]

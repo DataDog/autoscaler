@@ -60,10 +60,10 @@ type RecommendedContainerResources struct {
 	UpperBound model.Resources
 }
 
-type AnnotationsPredicate func(map[string]string) bool
+type annotationsPredicate func(map[string]string) bool
 
 type podResourceRecommenderEntry struct {
-	predicate           AnnotationsPredicate
+	predicate           annotationsPredicate
 	targetEstimator     ResourceEstimator
 	lowerBoundEstimator ResourceEstimator
 	upperBoundEstimator ResourceEstimator
