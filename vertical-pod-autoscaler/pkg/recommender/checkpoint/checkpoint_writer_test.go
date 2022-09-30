@@ -68,7 +68,7 @@ func addVpa(t *testing.T, cluster *model.ClusterState, vpaID model.VpaID, select
 
 func TestMergeContainerStateForCheckpointDropsRecentMemoryPeak(t *testing.T) {
 	cluster := model.NewClusterState(testGcPeriod)
-	cluster.AddOrUpdatePod(testPodID1, testLabels, v1.PodRunning)
+	cluster.AddOrUpdatePod(testPodID1, testLabels, v1.PodRunning, nil)
 	assert.NoError(t, cluster.AddOrUpdateContainer(testContainerID1, testRequest))
 	container := cluster.GetContainer(testContainerID1)
 

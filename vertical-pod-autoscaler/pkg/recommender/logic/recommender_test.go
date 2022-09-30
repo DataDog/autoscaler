@@ -29,15 +29,16 @@ func TestMinResourcesApplied(t *testing.T) {
 		model.ResourceMemory: model.MemoryAmountFromBytes(1e6),
 	})
 	recommender := podResourceRecommender{
-		constEstimator,
-		constEstimator,
-		constEstimator}
+		[]podResourceRecommenderEntry{{acceptAll, constEstimator,
+			constEstimator,
+			constEstimator}},
+	}
 
 	containerNameToAggregateStateMap := model.ContainerNameToAggregateStateMap{
 		"container-1": &model.AggregateContainerState{},
 	}
 
-	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap)
+	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap, nil)
 	assert.Equal(t, model.CPUAmountFromCores(*podMinCPUMillicores/1000), recommendedResources["container-1"].Target[model.ResourceCPU])
 	assert.Equal(t, model.MemoryAmountFromBytes(*podMinMemoryMb*1024*1024), recommendedResources["container-1"].Target[model.ResourceMemory])
 }
@@ -48,16 +49,17 @@ func TestMinResourcesSplitAcrossContainers(t *testing.T) {
 		model.ResourceMemory: model.MemoryAmountFromBytes(1e6),
 	})
 	recommender := podResourceRecommender{
-		constEstimator,
-		constEstimator,
-		constEstimator}
+		[]podResourceRecommenderEntry{{acceptAll, constEstimator,
+			constEstimator,
+			constEstimator}},
+	}
 
 	containerNameToAggregateStateMap := model.ContainerNameToAggregateStateMap{
 		"container-1": &model.AggregateContainerState{},
 		"container-2": &model.AggregateContainerState{},
 	}
 
-	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap)
+	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap, nil)
 	assert.Equal(t, model.CPUAmountFromCores((*podMinCPUMillicores/1000)/2), recommendedResources["container-1"].Target[model.ResourceCPU])
 	assert.Equal(t, model.CPUAmountFromCores((*podMinCPUMillicores/1000)/2), recommendedResources["container-2"].Target[model.ResourceCPU])
 	assert.Equal(t, model.MemoryAmountFromBytes((*podMinMemoryMb*1024*1024)/2), recommendedResources["container-1"].Target[model.ResourceMemory])
@@ -70,9 +72,10 @@ func TestControlledResourcesFiltered(t *testing.T) {
 		model.ResourceMemory: model.MemoryAmountFromBytes(1e6),
 	})
 	recommender := podResourceRecommender{
-		constEstimator,
-		constEstimator,
-		constEstimator}
+		[]podResourceRecommenderEntry{{acceptAll, constEstimator,
+			constEstimator,
+			constEstimator}},
+	}
 
 	containerName := "container-1"
 	containerNameToAggregateStateMap := model.ContainerNameToAggregateStateMap{
@@ -81,7 +84,7 @@ func TestControlledResourcesFiltered(t *testing.T) {
 		},
 	}
 
-	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap)
+	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap, nil)
 	assert.Contains(t, recommendedResources[containerName].Target, model.ResourceMemory)
 	assert.Contains(t, recommendedResources[containerName].LowerBound, model.ResourceMemory)
 	assert.Contains(t, recommendedResources[containerName].UpperBound, model.ResourceMemory)
@@ -96,9 +99,10 @@ func TestControlledResourcesFilteredDefault(t *testing.T) {
 		model.ResourceMemory: model.MemoryAmountFromBytes(1e6),
 	})
 	recommender := podResourceRecommender{
-		constEstimator,
-		constEstimator,
-		constEstimator}
+		[]podResourceRecommenderEntry{{acceptAll, constEstimator,
+			constEstimator,
+			constEstimator}},
+	}
 
 	containerName := "container-1"
 	containerNameToAggregateStateMap := model.ContainerNameToAggregateStateMap{
@@ -107,7 +111,7 @@ func TestControlledResourcesFilteredDefault(t *testing.T) {
 		},
 	}
 
-	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap)
+	recommendedResources := recommender.GetRecommendedPodResources(containerNameToAggregateStateMap, nil)
 	assert.Contains(t, recommendedResources[containerName].Target, model.ResourceMemory)
 	assert.Contains(t, recommendedResources[containerName].LowerBound, model.ResourceMemory)
 	assert.Contains(t, recommendedResources[containerName].UpperBound, model.ResourceMemory)

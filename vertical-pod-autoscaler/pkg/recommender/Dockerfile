@@ -12,11 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/distroless/static:latest
-MAINTAINER Krzysztof Grygiel "kgrygiel@google.com"
+#FROM gcr.io/distroless/static:latest
+#MAINTAINER Krzysztof Grygiel "kgrygiel@google.com"
+FROM golang:1.16.6
+
+# Add Delve
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
 ARG ARCH
 COPY recommender-$ARCH /recommender
 
-ENTRYPOINT ["/recommender"]
-CMD ["--v=4", "--stderrthreshold=info", "--prometheus-address=http://prometheus.monitoring.svc"]
+EXPOSE 8000 40000
+
+CMD ["/go/bin/dlv", "--listen=:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/recommender", "--v=4", "--stderrthreshold=info", "--prometheus-address=http://prometheus.monitoring.svc", "--dd-cluster-name", "snowver", "--source", "datadog"]
+#ENTRYPOINT ["/recommender"]
+
+#CMD ["--v=4", "--stderrthreshold=info", "--prometheus-address=http://prometheus.monitoring.svc"]

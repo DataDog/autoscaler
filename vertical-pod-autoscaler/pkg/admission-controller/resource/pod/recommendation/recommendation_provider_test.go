@@ -17,11 +17,15 @@ limitations under the License.
 package recommendation
 
 import (
+	"flag"
 	"fmt"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/annotations"
 	"math"
+	"strconv"
 	"testing"
 
 	apiv1 "k8s.io/api/core/v1"
+	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/limitrange"
@@ -235,7 +239,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 			expectedMem:    resource.MustParse("200Mi"),
 		},
 		{
-			name:           "disabled limit scaling - requests capped at limit",
+			name:           "disabled limit scaling - Requests capped at limit",
 			pod:            podWithDoubleLimit,
 			vpa:            resourceRequestsOnlyVPAHighTarget,
 			expectedAction: true,
@@ -354,5 +358,226 @@ func TestUpdateResourceRequests(t *testing.T) {
 
 		})
 
+	}
+}
+
+func makeResourceList(millicores, mib int64) apiv1.ResourceList {
+	cores := resource.NewMilliQuantity(millicores, resource.DecimalSI)
+	mem := resource.NewQuantity(mib*1048576, resource.DecimalSI)
+	return apiv1.ResourceList{apiv1.ResourceCPU: *cores, apiv1.ResourceMemory: *mem}
+}
+
+func Test_percentageToTarget(t *testing.T) {
+	type args struct {
+		requests   apiv1.ResourceList
+		target     apiv1.ResourceList
+		proportion float64
+		inQoS      bool
+	}
+	tests := []struct {
+		name string
+		args args
+		want apiv1.ResourceList
+	}{
+		{"Negative", args{makeResourceList(1000, 1024), makeResourceList(500, 512), .50, false},
+			makeResourceList(750, 768)},
+		{"Half", args{makeResourceList(500, 512), makeResourceList(1000, 1024), .50, false},
+			makeResourceList(750, 768)},
+		{"No Scaling", args{makeResourceList(500, 512), makeResourceList(1000, 1024), 0.0, false},
+			makeResourceList(500, 512)},
+		{"All the Way", args{makeResourceList(500, 512), makeResourceList(1000, 1024), 1.0, false},
+			makeResourceList(1000, 1024)},
+		{"Negative QoS Tight  - Early", args{makeResourceList(4200, 1024), makeResourceList(4000, 1024), 0.0, true},
+			makeResourceList(4000, 1024)},
+		{"Negative QoS Tight - Late", args{makeResourceList(4200, 1024), makeResourceList(4000, 1024), .95, true},
+			makeResourceList(4000, 1024)},
+		{"QoS Wide - Start", args{makeResourceList(500, 1024), makeResourceList(6000, 1024), .00, true},
+			makeResourceList(1000, 1024)},
+		{"QoS Wide - Early", args{makeResourceList(500, 1024), makeResourceList(6000, 1024), .01, true},
+			makeResourceList(1000, 1024)},
+		{"QoS Wide - Mid", args{makeResourceList(500, 1024), makeResourceList(6000, 1024), .65, true},
+			makeResourceList(4000, 1024)},
+		{"QoS Wide - Late", args{makeResourceList(500, 1024), makeResourceList(6000, 1024), .98, true},
+			makeResourceList(6000, 1024)},
+		{"QoS Wide - End", args{makeResourceList(500, 1024), makeResourceList(6000, 1024), 1.0, true},
+			makeResourceList(6000, 1024)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, percentageToTarget(tt.args.requests, tt.args.target, tt.args.proportion), "percentageToTarget(%v, %v)", tt.args.requests, tt.args.target)
+		})
+	}
+}
+
+type containerSpec struct {
+	Name string
+	// cpu then RAM
+	Requests []string
+	Limits   []string
+}
+
+func cspec(name, cpuReq, memReq, cpuLim, memLim string) containerSpec {
+	return containerSpec{name, []string{cpuReq, memReq}, []string{cpuLim, memLim}}
+}
+
+// cpuFix forces the Quantity's scale to -3.
+func cpuFix(qty resource.Quantity) resource.Quantity {
+	mills := qty.MilliValue()
+	return *resource.NewMilliQuantity(mills, resource.DecimalSI)
+}
+
+func strip(qty resource.Quantity) resource.Quantity {
+	// This invalidates the 's' property of the Quantity
+	qty.Neg()
+	qty.Neg()
+	return qty
+}
+
+func res(cpu, mem string) core.ResourceList {
+	return core.ResourceList{
+		core.ResourceCPU:    strip(cpuFix(resource.MustParse(cpu))),
+		core.ResourceMemory: strip(resource.MustParse(mem)),
+	}
+}
+
+func podWithContainers(containers []containerSpec) *core.Pod {
+	builtContainers := make([]core.Container, len(containers))
+	for i, c := range containers {
+		builtContainers[i] = core.Container{
+			Name: c.Name,
+			Resources: core.ResourceRequirements{
+				Limits:   res(c.Limits[0], c.Limits[1]),
+				Requests: res(c.Requests[0], c.Requests[1]),
+			},
+		}
+	}
+
+	return &core.Pod{
+		Spec: core.PodSpec{Containers: builtContainers}}
+}
+
+func vpaMode(qos bool, coreRound int64, ramPerCore string) map[string]string {
+	result := map[string]string{annotations.AnnotationQosEnable: strconv.FormatBool(qos),
+		annotations.AnnotationCoreDivisor: strconv.FormatInt(coreRound, 10)}
+
+	if len(ramPerCore) > 0 {
+		qty := resource.MustParse(ramPerCore)
+		result[annotations.AnnotationRamPerCore] = qty.String()
+	}
+	return result
+}
+
+func rec(nameCpuMem ...string) vpa_types.RecommendedPodResources {
+	var result vpa_types.RecommendedPodResources
+
+	for i := 0; i+2 < len(nameCpuMem); i += 3 {
+		name := nameCpuMem[i]
+		cpu := nameCpuMem[i+1]
+		mem := nameCpuMem[i+2]
+		result.ContainerRecommendations = append(result.ContainerRecommendations,
+			vpa_types.RecommendedContainerResources{
+				ContainerName: name,
+				Target:        res(cpu, mem),
+			})
+	}
+
+	return result
+}
+
+func resources(reqCpuMemLimCpuMem ...string) []vpa_api_util.ContainerResources {
+	var result []vpa_api_util.ContainerResources
+
+	for i := 0; i+3 < len(reqCpuMemLimCpuMem); i += 4 {
+		reqCpu := reqCpuMemLimCpuMem[i+0]
+		reqMem := reqCpuMemLimCpuMem[i+1]
+		limCpu := reqCpuMemLimCpuMem[i+2]
+		limMem := reqCpuMemLimCpuMem[i+3]
+		result = append(result, vpa_api_util.ContainerResources{
+			Requests: res(reqCpu, reqMem),
+			Limits:   res(limCpu, limMem),
+		})
+	}
+	return result
+}
+
+func TestGetContainersResources(t *testing.T) {
+	type args struct {
+		pod               *core.Pod
+		vpaResourcePolicy *vpa_types.PodResourcePolicy
+		podRecommendation vpa_types.RecommendedPodResources
+		limitRange        *core.LimitRangeItem
+		vpaAnnotations    map[string]string
+		enableQoS         bool
+	}
+	emptyAnnotations := make(vpa_api_util.ContainerToAnnotationsMap)
+	// Use the full target for recommendations.
+	flag.Set("percentage", "100")
+	tests := []struct {
+		name string
+		args args
+		want []vpa_api_util.ContainerResources
+	}{
+		{name: "NonQoS", args: args{
+			pod:               podWithContainers([]containerSpec{cspec("foo", "1", "100Mi", "2", "200Mi")}),
+			podRecommendation: rec("foo", "1.5", "128Mi"),
+			vpaAnnotations:    vpaMode(false, 1, ""),
+		},
+			want: resources("1.5", "128Mi", "3", "256Mi")},
+		{name: "BasicQoS", args: args{
+			pod:               podWithContainers([]containerSpec{cspec("foo", "1", "100Mi", "2", "200Mi")}),
+			podRecommendation: rec("foo", "1.5", "128Mi"),
+			vpaAnnotations:    vpaMode(true, 1, ""),
+			enableQoS:         true,
+		},
+			want: resources("2", "128Mi", "2", "128Mi")},
+		{name: "MoreCoresQoS", args: args{
+			pod:               podWithContainers([]containerSpec{cspec("foo", "1", "100Mi", "2", "200Mi")}),
+			podRecommendation: rec("foo", "1.5", "128Mi"),
+			vpaAnnotations:    vpaMode(true, 4, ""),
+			enableQoS:         true,
+		},
+			want: resources("4", "128Mi", "4", "128Mi")},
+		{name: "RamPerCoreQoS", args: args{
+			pod:               podWithContainers([]containerSpec{cspec("foo", "1", "100Mi", "2", "200Mi")}),
+			podRecommendation: rec("foo", "1.5", "128Mi"),
+			vpaAnnotations:    vpaMode(true, 1, "32Mi"),
+			enableQoS:         true,
+		},
+			want: resources("4", "128Mi", "4", "128Mi")},
+		{name: "RamPerManyCoresQoS", args: args{
+			pod:               podWithContainers([]containerSpec{cspec("foo", "1", "100Mi", "2", "200Mi")}),
+			podRecommendation: rec("foo", "1.5", "128Mi"),
+			vpaAnnotations:    vpaMode(true, 4, "64Mi"),
+			enableQoS:         true,
+		},
+			want: resources("4", "256Mi", "4", "256Mi")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, GetContainersResources(tt.args.pod, tt.args.vpaResourcePolicy, tt.args.podRecommendation, tt.args.limitRange, true, emptyAnnotations, tt.args.vpaAnnotations, tt.args.enableQoS), "GetContainersResources(%v, %v, %v, %v, false, [],  %v, %v)", tt.args.pod, tt.args.vpaResourcePolicy, tt.args.podRecommendation, tt.args.limitRange, tt.args.vpaAnnotations, tt.args.enableQoS)
+		})
+	}
+}
+
+func Test_percentageToTarget1(t *testing.T) {
+	type args struct {
+		requests   apiv1.ResourceList
+		target     apiv1.ResourceList
+		proportion float64
+	}
+	tests := []struct {
+		name string
+		args args
+		want apiv1.ResourceList
+	}{
+		{"zero", args{res("0.5", "128Mi"), res("1", "128Mi"), 0}, res("0.5", "128Mi")},
+		{"half", args{res("0.5", "1Gi"), res("1", "3Gi"), 0.5}, res("0.75", "2Gi")},
+		{"full", args{res("0.5", "1Gi"), res("1", "3Gi"), 1}, res("1", "3Gi")},
+		{"neg-half", args{res("1", "3Gi"), res("0.5", "1Gi"), 0.5}, res("0.75", "2Gi")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, percentageToTarget(tt.args.requests, tt.args.target, tt.args.proportion), "percentageToTarget(%v, %v, %v)", tt.args.requests, tt.args.target, tt.args.proportion)
+		})
 	}
 }
