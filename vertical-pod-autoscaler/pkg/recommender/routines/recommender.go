@@ -19,6 +19,8 @@ package routines
 import (
 	"context"
 	"flag"
+	v12 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"time"
 
@@ -53,6 +55,13 @@ var (
 	memorySaver             = flag.Bool("memory-saver", false, `If true, only track pods which have an associated VPA`)
 )
 
+type recommenderOptions struct {
+	// Round CPU Requests up to the next integer.
+	cpuQos bool
+	// Which percentile to use.  Default is 95.
+	percentile float64
+}
+
 // Recommender recommend resources for certain containers, based on utilization periodically got from metrics api.
 type Recommender interface {
 	// RunOnce performs one iteration of recommender duties followed by update of recommendations in VPA objects.
@@ -80,6 +89,7 @@ type recommender struct {
 	podResourceRecommender        logic.PodResourceRecommender
 	useCheckpoints                bool
 	lastAggregateContainerStateGC time.Time
+	recOptions                    recommenderOptions
 }
 
 func (r *recommender) GetClusterState() *model.ClusterState {
@@ -105,9 +115,9 @@ func (r *recommender) UpdateVPAs() {
 		if !found {
 			continue
 		}
-		resources := r.podResourceRecommender.GetRecommendedPodResources(GetContainerNameToAggregateStateMap(vpa))
+		resources := r.podResourceRecommender.GetRecommendedPodResources(GetContainerNameToAggregateStateMap(vpa), observedVpa.Annotations)
 		had := vpa.HasRecommendation()
-		vpa.UpdateRecommendation(getCappedRecommendation(vpa.ID, resources, observedVpa.Spec.ResourcePolicy))
+		vpa.UpdateRecommendation(getCappedRecommendation(vpa.ID, resources, observedVpa.Spec.ResourcePolicy, r.recOptions))
 		if vpa.HasRecommendation() && !had {
 			metrics_recommender.ObserveRecommendationLatency(vpa.Created)
 		}
@@ -125,7 +135,7 @@ func (r *recommender) UpdateVPAs() {
 				klog.Errorf("ClusterState pod count and matching pods disagree for vpa %v/%v", vpa.ID.Namespace, vpa.ID.VpaName)
 			}
 		}
-		cnt.Add(vpa)
+		cnt.Add(vpa.UpdateMode, vpa.IsV1Beta1API, vpa.HasRecommendation(), vpa.HasMatchedPods(), vpa.Conditions.ConditionActive(vpa_types.ConfigUnsupported))
 
 		_, err := vpa_utils.UpdateVpaStatusIfNeeded(
 			r.vpaClient.VerticalPodAutoscalers(vpa.ID.Namespace), vpa.ID.VpaName, vpa.AsStatus(), &observedVpa.Status)
@@ -141,7 +151,7 @@ func (r *recommender) UpdateVPAs() {
 // and if necessary, capping the Target, LowerBound and UpperBound according
 // to the ResourcePolicy.
 func getCappedRecommendation(vpaID model.VpaID, resources logic.RecommendedPodResources,
-	policy *vpa_types.PodResourcePolicy) *vpa_types.RecommendedPodResources {
+	policy *vpa_types.PodResourcePolicy, options recommenderOptions) *vpa_types.RecommendedPodResources {
 	containerResources := make([]vpa_types.RecommendedContainerResources, 0, len(resources))
 	for containerName, res := range resources {
 		containerResources = append(containerResources, vpa_types.RecommendedContainerResources{
@@ -176,6 +186,35 @@ func (r *recommender) MaintainCheckpoints(ctx context.Context, minCheckpointsPer
 	}
 }
 
+func (r *recommender) UpdateMetrics() {
+	metrics_recommender.StartScan()
+	for _, podState := range r.clusterState.Pods {
+		requests := make(map[string]v12.ResourceList)
+		for containerName, container := range podState.Containers {
+			requests[containerName] = model.ResourcesAsResourceList(container.Request)
+		}
+
+		if podState.Vpas != nil {
+			for _, vpaID := range podState.Vpas {
+				vpa := r.clusterState.Vpas[vpaID]
+				targets := make(map[string]v12.ResourceList)
+				var podLabels labels.Labels
+				if vpa != nil && vpa.Recommendation != nil {
+					for _, rec := range vpa.Recommendation.ContainerRecommendations {
+						aggKey := r.clusterState.MakeAggregateStateKey(podState, rec.ContainerName)
+						targets[rec.ContainerName] = rec.Target
+						podLabels = aggKey.Labels()
+						metrics_recommender.RecordContainerRequestDiff(rec.ContainerName, podState.ID.Namespace, podState.ID.PodName, podLabels, aggKey.Labels(),
+							rec.Target, requests[rec.ContainerName])
+					}
+					metrics_recommender.RecordPodRequestDiff(podState.ID.Namespace, podState.ID.PodName, podLabels, labels.Set(vpa.Annotations), targets, requests)
+				}
+			}
+		}
+	}
+	metrics_recommender.FinishScan()
+}
+
 func (r *recommender) RunOnce() {
 	timer := metrics_recommender.NewExecutionTimer()
 	defer timer.ObserveTotal()
@@ -199,6 +238,9 @@ func (r *recommender) RunOnce() {
 	r.UpdateVPAs()
 	timer.ObserveStep("UpdateVPAs")
 
+	r.UpdateMetrics()
+	timer.ObserveStep("UpdateMetrics")
+
 	r.MaintainCheckpoints(ctx, *minCheckpointsPerRun)
 	timer.ObserveStep("MaintainCheckpoints")
 
@@ -219,6 +261,7 @@ type RecommenderFactory struct {
 
 	CheckpointsGCInterval time.Duration
 	UseCheckpoints        bool
+	Options               recommenderOptions
 }
 
 // Make creates a new recommender instance,
@@ -235,6 +278,7 @@ func (c RecommenderFactory) Make() Recommender {
 		podResourceRecommender:        c.PodResourceRecommender,
 		lastAggregateContainerStateGC: time.Now(),
 		lastCheckpointGC:              time.Now(),
+		recOptions:                    c.Options,
 	}
 	klog.V(3).Infof("New Recommender created %+v", recommender)
 	return recommender
@@ -243,19 +287,22 @@ func (c RecommenderFactory) Make() Recommender {
 // NewRecommender creates a new recommender instance.
 // Dependencies are created automatically.
 // Deprecated; use RecommenderFactory instead.
-func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, useCheckpoints bool, namespace string, metricsClient metrics.MetricsClient) Recommender {
+func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, useCheckpoints bool, namespace string,
+	cpuQos bool, percentile float64, metricsClient metrics.MetricsClient) Recommender {
 	clusterState := model.NewClusterState(AggregateContainerStateGCInterval)
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	factory := informers.NewSharedInformerFactoryWithOptions(kubeClient, defaultResyncPeriod, informers.WithNamespace(namespace))
 	controllerFetcher := controllerfetcher.NewControllerFetcher(config, kubeClient, factory, scaleCacheEntryFreshnessTime, scaleCacheEntryLifetime, scaleCacheEntryJitterFactor)
+	options := recommenderOptions{cpuQos: cpuQos, percentile: percentile / 100.0}
 	return RecommenderFactory{
 		ClusterState:           clusterState,
 		ClusterStateFeeder:     input.NewClusterStateFeeder(config, clusterState, *memorySaver, namespace, metricsClient),
 		ControllerFetcher:      controllerFetcher,
 		CheckpointWriter:       checkpoint.NewCheckpointWriter(clusterState, vpa_clientset.NewForConfigOrDie(config).AutoscalingV1()),
 		VpaClient:              vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
-		PodResourceRecommender: logic.CreatePodResourceRecommender(),
+		PodResourceRecommender: logic.CreatePodResourceRecommender(cpuQos, percentile),
 		CheckpointsGCInterval:  checkpointsGCInterval,
 		UseCheckpoints:         useCheckpoints,
+		Options:                options,
 	}.Make()
 }

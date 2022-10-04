@@ -28,3 +28,6 @@
 Session.vim
 .netrwhist
 
+# vendor stuff.
+vendor/
+

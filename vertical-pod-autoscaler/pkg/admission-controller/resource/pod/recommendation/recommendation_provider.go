@@ -17,13 +17,21 @@ limitations under the License.
 package recommendation
 
 import (
+	"flag"
 	"fmt"
-
 	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	vpa_annotations "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/annotations"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/limitrange"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/qos"
 	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
 	"k8s.io/klog/v2"
+)
+
+var (
+	percentageFlag      = flag.Int("percentage", 0, "Percent (int, 0-100) of recommendation to use over original request.")
+	percentErrorPrinted = false
 )
 
 // Provider gets current recommendation, annotations and vpaName for the given pod.
@@ -34,33 +42,66 @@ type Provider interface {
 type recommendationProvider struct {
 	limitsRangeCalculator   limitrange.LimitRangeCalculator
 	recommendationProcessor vpa_api_util.RecommendationProcessor
+	enableQoS               bool
 }
 
 // NewProvider constructs the recommendation provider that can be used to determine recommendations for pods.
 func NewProvider(calculator limitrange.LimitRangeCalculator,
-	recommendationProcessor vpa_api_util.RecommendationProcessor) Provider {
+	recommendationProcessor vpa_api_util.RecommendationProcessor, enableQoS bool) Provider {
 	return &recommendationProvider{
 		limitsRangeCalculator:   calculator,
 		recommendationProcessor: recommendationProcessor,
+		enableQoS:               enableQoS,
 	}
 }
 
+// percentageToTarget returns an interpolated value between Requests and target, where a proportion of 0 is Requests, and 1.0 is target.
+func percentageToTarget(requests core.ResourceList, target core.ResourceList, proportion float64) core.ResourceList {
+	reqMem, okReq := requests.Memory().AsInt64()
+	targetMem, okTarget := target.Memory().AsInt64()
+	if !okReq || !okTarget {
+		return requests
+	}
+	cpuDiff := target.Cpu().MilliValue() - requests.Cpu().MilliValue()
+	memDiff := targetMem - reqMem
+
+	// For QoS'd workloads, where the target core count is an integer, round the proportion to an integer too.
+	cpuQuantity := requests.Cpu().MilliValue() + int64(float64(cpuDiff)*proportion)
+	result := core.ResourceList{
+		core.ResourceCPU:    *resource.NewMilliQuantity(cpuQuantity, target.Cpu().Format),
+		core.ResourceMemory: *resource.NewQuantity(reqMem+int64(float64(memDiff)*proportion), target.Memory().Format),
+	}
+	return result
+}
+
 // GetContainersResources returns the recommended resources for each container in the given pod in the same order they are specified in the pod.Spec.
-// If addAll is set to true, containers w/o a recommendation are also added to the list, otherwise they're skipped (default behaviour).
+// If addAll is set to true, containers w/o a recommendation are also added to the list, otherwise they're skipped (default behaviour).  If enableQos
+// is set to true, turn QoS Guaranteed (Limits=cores) when the VPA annotations are right and the core count is integral.
 func GetContainersResources(pod *core.Pod, vpaResourcePolicy *vpa_types.PodResourcePolicy, podRecommendation vpa_types.RecommendedPodResources, limitRange *core.LimitRangeItem,
-	addAll bool, annotations vpa_api_util.ContainerToAnnotationsMap) []vpa_api_util.ContainerResources {
+	addAll bool, annotations vpa_api_util.ContainerToAnnotationsMap, vpaAnnotations map[string]string, enableQoS bool) []vpa_api_util.ContainerResources {
+	var proportion = float64(*percentageFlag) / 100.0
+	if (proportion < 0 || proportion > 1.0) && !percentErrorPrinted {
+		klog.Errorf("Invalid value for --percentage.  Treating as 100%.")
+		proportion = 1.0
+		percentErrorPrinted = true
+	}
 	resources := make([]vpa_api_util.ContainerResources, len(pod.Spec.Containers))
+	options, _ := vpa_annotations.ParseDatadogExtensions(vpaAnnotations)
+	inQoS := enableQoS && qos.NeedsQoS(options)
 	for i, container := range pod.Spec.Containers {
 		recommendation := vpa_api_util.GetRecommendationForContainer(container.Name, &podRecommendation)
 		if recommendation == nil {
 			if !addAll {
-				klog.V(2).Infof("no matching recommendation found for container %s, skipping", container.Name)
+				klog.V(2).Infof("%v/%v: no matching recommendation found for container %s, skipping", pod.Namespace, pod.Name, container.Name)
 				continue
 			}
-			klog.V(2).Infof("no matching recommendation found for container %s, using Pod request", container.Name)
+			klog.V(2).Infof("%v/%v: no matching recommendation found for container %s, using its request", pod.Namespace, pod.Name, container.Name)
 			resources[i].Requests = container.Resources.Requests
 		} else {
-			resources[i].Requests = recommendation.Target
+			scaledResources := percentageToTarget(container.Resources.Requests, recommendation.Target, proportion)
+			resources[i].Requests = qos.RoundResourceListToPolicy(options, scaledResources)
+			klog.V(2).Infof("%v/%v:%v: With --percentage %v, requests %+v, target %+v, scaled to %+v, setting new requests to %+v",
+				pod.Namespace, pod.Name, container.Name, *percentageFlag, container.Resources.Requests, recommendation.Target, scaledResources, resources[i].Requests)
 		}
 		defaultLimit := core.ResourceList{}
 		if limitRange != nil {
@@ -68,7 +109,13 @@ func GetContainersResources(pod *core.Pod, vpaResourcePolicy *vpa_types.PodResou
 		}
 		containerControlledValues := vpa_api_util.GetContainerControlledValues(container.Name, vpaResourcePolicy)
 		if containerControlledValues == vpa_types.ContainerControlledValuesRequestsAndLimits {
-			proportionalLimits, limitAnnotations := vpa_api_util.GetProportionalLimit(container.Resources.Limits, container.Resources.Requests, resources[i].Requests, defaultLimit)
+			var proportionalLimits core.ResourceList
+			var limitAnnotations []string
+			if inQoS {
+				proportionalLimits, limitAnnotations = vpa_api_util.GetQoSLimit(container.Resources.Limits, container.Resources.Requests, resources[i].Requests, defaultLimit)
+			} else {
+				proportionalLimits, limitAnnotations = vpa_api_util.GetProportionalLimit(container.Resources.Limits, container.Resources.Requests, resources[i].Requests, defaultLimit)
+			}
 			if proportionalLimits != nil {
 				resources[i].Limits = proportionalLimits
 				if len(limitAnnotations) > 0 {
@@ -108,6 +155,6 @@ func (p *recommendationProvider) GetContainersResourcesForPod(pod *core.Pod, vpa
 	if vpa.Spec.UpdatePolicy == nil || vpa.Spec.UpdatePolicy.UpdateMode == nil || *vpa.Spec.UpdatePolicy.UpdateMode != vpa_types.UpdateModeOff {
 		resourcePolicy = vpa.Spec.ResourcePolicy
 	}
-	containerResources := GetContainersResources(pod, resourcePolicy, *recommendedPodResources, containerLimitRange, false, annotations)
+	containerResources := GetContainersResources(pod, resourcePolicy, *recommendedPodResources, containerLimitRange, false, annotations, vpa.GetAnnotations(), p.enableQoS)
 	return containerResources, annotations, nil
 }

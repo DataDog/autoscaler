@@ -18,6 +18,7 @@ package model
 
 import (
 	"fmt"
+	metrics_recommender "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/recommender"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -93,6 +94,8 @@ type PodState struct {
 	Containers map[string]*ContainerState
 	// PodPhase describing current life cycle phase of the Pod.
 	Phase apiv1.PodPhase
+	// An associated VPA, if any.
+	Vpas []VpaID
 }
 
 // NewClusterState returns a new ClusterState with no pods.
@@ -120,7 +123,7 @@ type ContainerUsageSampleWithKey struct {
 // the Cluster object.
 // If the labels of the pod have changed, it updates the links between the containers
 // and the aggregations.
-func (cluster *ClusterState) AddOrUpdatePod(podID PodID, newLabels labels.Set, phase apiv1.PodPhase) {
+func (cluster *ClusterState) AddOrUpdatePod(podID PodID, newLabels labels.Set, phase apiv1.PodPhase, spec *labels.Set) {
 	pod, podExists := cluster.Pods[podID]
 	if !podExists {
 		pod = newPod(podID)
@@ -140,18 +143,27 @@ func (cluster *ClusterState) AddOrUpdatePod(podID PodID, newLabels labels.Set, p
 			container.aggregator = cluster.findOrCreateAggregateContainerState(containerID)
 		}
 
-		cluster.addPodToItsVpa(pod)
+		cluster.addPodToItsVpa(pod, spec)
 	}
 	pod.Phase = phase
 }
 
 // addPodToItsVpa increases the count of Pods associated with a VPA object.
 // Does a scan similar to findOrCreateAggregateContainerState so could be optimized if needed.
-func (cluster *ClusterState) addPodToItsVpa(pod *PodState) {
+func (cluster *ClusterState) addPodToItsVpa(pod *PodState, spec *labels.Set) {
+	podVpas := make([]VpaID, 1)
 	for _, vpa := range cluster.Vpas {
 		if vpa_utils.PodLabelsMatchVPA(pod.ID.Namespace, cluster.labelSetMap[pod.labelSetKey], vpa.ID.Namespace, vpa.PodSelector) {
 			vpa.PodCount++
+			podVpas = append(podVpas, vpa.ID)
+			if spec != nil {
+				metrics_recommender.RecordMatchedPod(*spec, labels.Set(vpa.Annotations))
+			}
 		}
+	}
+	pod.Vpas = podVpas
+	if len(podVpas) == 0 && spec != nil {
+		metrics_recommender.RecordUnmatchedPod(*spec)
 	}
 }
 
@@ -160,6 +172,7 @@ func (cluster *ClusterState) removePodFromItsVpa(pod *PodState) {
 	for _, vpa := range cluster.Vpas {
 		if vpa_utils.PodLabelsMatchVPA(pod.ID.Namespace, cluster.labelSetMap[pod.labelSetKey], vpa.ID.Namespace, vpa.PodSelector) {
 			vpa.PodCount--
+			pod.Vpas = nil
 		}
 	}
 }
@@ -364,7 +377,7 @@ func (cluster *ClusterState) garbageCollectAggregateCollectionStates(now time.Ti
 		isKeyContributive := contributiveKeys[key]
 		if !isKeyContributive && aggregateContainerState.isEmpty() {
 			keysToDelete = append(keysToDelete, key)
-			klog.V(1).Infof("Removing empty and not contributive AggregateCollectionState for %+v", key)
+			// klog.V(1).Infof("Removing empty and not contributive AggregateCollectionState for %+v", key)
 			continue
 		}
 		if aggregateContainerState.isExpired(now) {

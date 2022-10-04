@@ -18,6 +18,7 @@ package patch
 
 import (
 	"fmt"
+	"k8s.io/klog/v2"
 	"strings"
 
 	core "k8s.io/api/core/v1"
@@ -48,7 +49,6 @@ func NewResourceUpdatesCalculator(recommendationProvider recommendation.Provider
 
 func (c *resourcesUpdatesPatchCalculator) CalculatePatches(pod *core.Pod, vpa *vpa_types.VerticalPodAutoscaler) ([]resource_admission.PatchRecord, error) {
 	result := []resource_admission.PatchRecord{}
-
 	containersResources, annotationsPerContainer, err := c.recommendationProvider.GetContainersResourcesForPod(pod, vpa)
 	if err != nil {
 		return []resource_admission.PatchRecord{}, fmt.Errorf("Failed to calculate resource patch for pod %v/%v: %v", pod.Namespace, pod.Name, err)
@@ -69,6 +69,7 @@ func (c *resourcesUpdatesPatchCalculator) CalculatePatches(pod *core.Pod, vpa *v
 		vpaAnnotationValue := fmt.Sprintf("Pod resources updated by %s: %s", vpa.Name, strings.Join(updatesAnnotation, "; "))
 		result = append(result, GetAddAnnotationPatch(ResourceUpdatesAnnotation, vpaAnnotationValue))
 	}
+	klog.V(2).Infof("Calculating patches for %v/%v: %+v", pod.Namespace, pod.Name, result)
 	return result, nil
 }
 

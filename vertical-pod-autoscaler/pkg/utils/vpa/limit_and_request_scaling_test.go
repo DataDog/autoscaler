@@ -192,3 +192,27 @@ func TestGetProportionalResourceLimitMem(t *testing.T) {
 		})
 	}
 }
+
+func TestGetQoSLimit(t *testing.T) {
+	type args struct {
+		originalLimit   core.ResourceList
+		originalRequest core.ResourceList
+		recommendation  core.ResourceList
+		defaultLimit    core.ResourceList
+	}
+	tests := []struct {
+		name  string
+		args  args
+		want  core.ResourceList
+		want1 []string
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := GetQoSLimit(tt.args.originalLimit, tt.args.originalRequest, tt.args.recommendation, tt.args.defaultLimit)
+			assert.Equalf(t, tt.want, got, "GetQoSLimit(%v, %v, %v, %v)", tt.args.originalLimit, tt.args.originalRequest, tt.args.recommendation, tt.args.defaultLimit)
+			assert.Equalf(t, tt.want1, got1, "GetQoSLimit(%v, %v, %v, %v)", tt.args.originalLimit, tt.args.originalRequest, tt.args.recommendation, tt.args.defaultLimit)
+		})
+	}
+}

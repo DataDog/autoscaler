@@ -17,19 +17,24 @@ limitations under the License.
 package logic
 
 import (
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/annotations"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/qos"
 	"math"
 	"time"
 
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 )
 
-// TODO: Split the estimator to have a separate estimator object for CPU and memory.
+// ResourceEstimatorOptions configures what extensions are enabled on the estimator.
+type ResourceEstimatorOptions struct {
+	Extensions annotations.DatadogExtensions
+}
 
 // ResourceEstimator is a function from AggregateContainerState to
 // model.Resources, e.g. a prediction of resources needed by a group of
 // containers.
 type ResourceEstimator interface {
-	GetResourceEstimation(s *model.AggregateContainerState) model.Resources
+	GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources
 }
 
 // Implementation of ResourceEstimator that returns constant amount of
@@ -61,6 +66,10 @@ type confidenceMultiplier struct {
 	baseEstimator ResourceEstimator
 }
 
+type qosRoundingEstimator struct {
+	baseEstimator ResourceEstimator
+}
+
 // NewConstEstimator returns a new constEstimator with given resources.
 func NewConstEstimator(resources model.Resources) ResourceEstimator {
 	return &constEstimator{resources}
@@ -88,13 +97,18 @@ func WithConfidenceMultiplier(multiplier, exponent float64, baseEstimator Resour
 	return &confidenceMultiplier{multiplier, exponent, baseEstimator}
 }
 
+// WithQosRoundingEstimator returns a given ResourceEstimator with QoS rounding applied.
+func WithQosRoundingEstimator(baseEstimator ResourceEstimator) ResourceEstimator {
+	return &qosRoundingEstimator{baseEstimator}
+}
+
 // Returns a constant amount of resources.
-func (e *constEstimator) GetResourceEstimation(s *model.AggregateContainerState) model.Resources {
+func (e *constEstimator) GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources {
 	return e.resources
 }
 
 // Returns specific percentiles of CPU and memory peaks distributions.
-func (e *percentileEstimator) GetResourceEstimation(s *model.AggregateContainerState) model.Resources {
+func (e *percentileEstimator) GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources {
 	return model.Resources{
 		model.ResourceCPU: model.CPUAmountFromCores(
 			s.AggregateCPUUsage.Percentile(e.cpuPercentile)),
@@ -118,15 +132,17 @@ func getConfidence(s *model.AggregateContainerState) float64 {
 	return math.Min(lifespanInDays, samplesAmount)
 }
 
-// Returns resources computed by the underlying estimator, scaled based on the
+// GetResourceEstimation returns resources computed by the underlying estimator, scaled based on the
 // confidence metric, which depends on the amount of available historical data.
 // Each resource is transformed as follows:
-//     scaledResource = originalResource * (1 + 1/confidence)^exponent.
+//
+//	scaledResource = originalResource * (1 + 1/confidence)^exponent.
+//
 // This can be used to widen or narrow the gap between the lower and upper bound
 // estimators depending on how much input data is available to the estimators.
-func (e *confidenceMultiplier) GetResourceEstimation(s *model.AggregateContainerState) model.Resources {
+func (e *confidenceMultiplier) GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources {
 	confidence := getConfidence(s)
-	originalResources := e.baseEstimator.GetResourceEstimation(s)
+	originalResources := e.baseEstimator.GetResourceEstimation(s, options)
 	scaledResources := make(model.Resources)
 	for resource, resourceAmount := range originalResources {
 		scaledResources[resource] = model.ScaleResource(
@@ -135,8 +151,8 @@ func (e *confidenceMultiplier) GetResourceEstimation(s *model.AggregateContainer
 	return scaledResources
 }
 
-func (e *marginEstimator) GetResourceEstimation(s *model.AggregateContainerState) model.Resources {
-	originalResources := e.baseEstimator.GetResourceEstimation(s)
+func (e *marginEstimator) GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources {
+	originalResources := e.baseEstimator.GetResourceEstimation(s, options)
 	newResources := make(model.Resources)
 	for resource, resourceAmount := range originalResources {
 		margin := model.ScaleResource(resourceAmount, e.marginFraction)
@@ -145,8 +161,8 @@ func (e *marginEstimator) GetResourceEstimation(s *model.AggregateContainerState
 	return newResources
 }
 
-func (e *minResourcesEstimator) GetResourceEstimation(s *model.AggregateContainerState) model.Resources {
-	originalResources := e.baseEstimator.GetResourceEstimation(s)
+func (e *minResourcesEstimator) GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources {
+	originalResources := e.baseEstimator.GetResourceEstimation(s, options)
 	newResources := make(model.Resources)
 	for resource, resourceAmount := range originalResources {
 		if resourceAmount < e.minResources[resource] {
@@ -155,4 +171,9 @@ func (e *minResourcesEstimator) GetResourceEstimation(s *model.AggregateContaine
 		newResources[resource] = resourceAmount
 	}
 	return newResources
+}
+
+func (e *qosRoundingEstimator) GetResourceEstimation(s *model.AggregateContainerState, options ResourceEstimatorOptions) model.Resources {
+	originalResources := e.baseEstimator.GetResourceEstimation(s, options)
+	return qos.RoundResourcesToPolicy(options.Extensions, originalResources)
 }
