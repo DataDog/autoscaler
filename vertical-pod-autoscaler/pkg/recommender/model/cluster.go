@@ -244,7 +244,7 @@ func (cluster *ClusterState) RecordOOM(containerID ContainerID, timestamp time.T
 // didn't yet exist. If the VPA already existed but had a different pod
 // selector, the pod selector is updated. Updates the links between the VPA and
 // all aggregations it matches.
-func (cluster *ClusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAutoscaler, selector labels.Selector) error {
+func (cluster *ClusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAutoscaler, selector labels.Selector, podTemplate *apiv1.PodTemplateSpec) error {
 	vpaID := VpaID{Namespace: apiObject.Namespace, VpaName: apiObject.Name}
 	annotationsMap := apiObject.Annotations
 	conditionsMap := make(vpaConditionsMap)
@@ -266,7 +266,7 @@ func (cluster *ClusterState) AddOrUpdateVpa(apiObject *vpa_types.VerticalPodAuto
 		vpaExists = false
 	}
 	if !vpaExists {
-		vpa = NewVpa(vpaID, selector, apiObject.CreationTimestamp.Time)
+		vpa = NewVpa(vpaID, selector, podTemplate, apiObject.CreationTimestamp.Time)
 		cluster.Vpas[vpaID] = vpa
 		for aggregationKey, aggregation := range cluster.aggregateStateMap {
 			vpa.UseAggregationIfMatching(aggregationKey, aggregation)

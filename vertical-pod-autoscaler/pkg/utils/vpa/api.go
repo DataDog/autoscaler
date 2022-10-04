@@ -94,12 +94,12 @@ func NewVpasLister(vpaClient *vpa_clientset.Clientset, stopChannel <-chan struct
 	return vpaLister
 }
 
-// PodMatchesVPA returns true iff the vpaWithSelector matches the Pod.
+// PodMatchesVPA returns true if the vpaWithSelector matches the Pod.
 func PodMatchesVPA(pod *core.Pod, vpaWithSelector *VpaWithSelector) bool {
 	return PodLabelsMatchVPA(pod.Namespace, labels.Set(pod.GetLabels()), vpaWithSelector.Vpa.Namespace, vpaWithSelector.Selector)
 }
 
-// PodLabelsMatchVPA returns true iff the vpaWithSelector matches the pod labels.
+// PodLabelsMatchVPA returns true if the vpaWithSelector matches the pod labels.
 func PodLabelsMatchVPA(podNamespace string, labels labels.Set, vpaNamespace string, vpaSelector labels.Selector) bool {
 	if podNamespace != vpaNamespace {
 		return false

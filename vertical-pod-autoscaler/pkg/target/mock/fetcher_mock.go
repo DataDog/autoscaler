@@ -18,8 +18,10 @@ package mocktarget
 
 import (
 	gomock "github.com/golang/mock/gomock"
+	apiv1 "k8s.io/api/core/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target"
 )
 
 // MockVpaTargetSelectorFetcher is a mock of VpaTargetSelectorFetcher interface
@@ -27,6 +29,8 @@ type MockVpaTargetSelectorFetcher struct {
 	ctrl     *gomock.Controller
 	recorder *_MockVpaTargetSelectorFetcherRecorder
 }
+
+var _ target.VpaTargetSelectorFetcher = &MockVpaTargetSelectorFetcher{}
 
 // Recorder for MockVpaTargetSelectorFetcher (not exported)
 type _MockVpaTargetSelectorFetcherRecorder struct {
@@ -53,6 +57,18 @@ func (_m *MockVpaTargetSelectorFetcher) Fetch(vpa *vpa_types.VerticalPodAutoscal
 	return ret0, ret1
 }
 
+// GetPodTemplate return PodTemplate of the target associated with VPA
+func (_m *MockVpaTargetSelectorFetcher) GetPodTemplate(vpa *vpa_types.VerticalPodAutoscaler) (*apiv1.PodTemplateSpec, error) {
+	ret := _m.ctrl.Call(_m, "GetPodTemplate", vpa)
+	ret0, _ := ret[0].(*apiv1.PodTemplateSpec)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+
+}
+
 func (_mr *_MockVpaTargetSelectorFetcherRecorder) Fetch(arg0 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Fetch", arg0)
+}
+func (_mr *_MockVpaTargetSelectorFetcherRecorder) GetPodTemplate(arg0 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "GetPodTemplate", arg0)
 }

@@ -37,7 +37,7 @@ type resourceRatioRecommendationProcessor struct {
 var _ RecommendationProcessor = &resourceRatioRecommendationProcessor{}
 
 // Apply returns a recommendation for the given pod, adjusted to obey maintainedRatio policy
-func (r resourceRatioRecommendationProcessor) Apply(
+func (r *resourceRatioRecommendationProcessor) Apply(
 	podRecommendation *vpa_types.RecommendedPodResources,
 	policy *vpa_types.PodResourcePolicy,
 	conditions []vpa_types.VerticalPodAutoscalerCondition,
@@ -75,6 +75,13 @@ func (r resourceRatioRecommendationProcessor) Apply(
 	}
 
 	return &vpa_types.RecommendedPodResources{ContainerRecommendations: updatedRecommendations}, containerToAnnotationsMap, nil
+}
+
+func NewPodFromTemplate(template *apiv1.PodTemplateSpec) *apiv1.Pod {
+	return &apiv1.Pod{
+		ObjectMeta: *template.ObjectMeta.DeepCopy(),
+		Spec:       *template.Spec.DeepCopy(),
+	}
 }
 
 // getRecommendationForContainerWithRatioApplied returns a recommendation for the given container, adjusted to obey maintainedRatios policy

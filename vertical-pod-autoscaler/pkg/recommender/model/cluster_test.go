@@ -336,7 +336,7 @@ func addVpa(cluster *ClusterState, id VpaID, annotations vpaAnnotationsMap, sele
 func addVpaObject(cluster *ClusterState, id VpaID, vpa *vpa_types.VerticalPodAutoscaler, selector string) *Vpa {
 	labelSelector, _ := metav1.ParseToLabelSelector(selector)
 	parsedSelector, _ := metav1.LabelSelectorAsSelector(labelSelector)
-	err := cluster.AddOrUpdateVpa(vpa, parsedSelector)
+	err := cluster.AddOrUpdateVpa(vpa, parsedSelector, nil)
 	if err != nil {
 		klog.Fatalf("AddOrUpdateVpa() failed: %v", err)
 	}

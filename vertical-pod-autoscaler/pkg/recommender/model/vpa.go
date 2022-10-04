@@ -84,6 +84,8 @@ type Vpa struct {
 	// Labels selector that determines which Pods are controlled by this VPA
 	// object. Can be nil, in which case no Pod is matched.
 	PodSelector labels.Selector
+	// PodTemplateSpec of the pods controlled by the Vpa. This is use by recommendation Post Processors (Ratio for example)
+	PodTemplate *apiv1.PodTemplateSpec
 	// Map of the object annotations (key-value pairs).
 	Annotations vpaAnnotationsMap
 	// Map of the status conditions (keys are condition types).
@@ -114,10 +116,11 @@ type Vpa struct {
 
 // NewVpa returns a new Vpa with a given ID and pod selector. Doesn't set the
 // links to the matched aggregations.
-func NewVpa(id VpaID, selector labels.Selector, created time.Time) *Vpa {
+func NewVpa(id VpaID, selector labels.Selector, podTemplate *apiv1.PodTemplateSpec, created time.Time) *Vpa {
 	vpa := &Vpa{
 		ID:                              id,
 		PodSelector:                     selector,
+		PodTemplate:                     podTemplate,
 		aggregateContainerStates:        make(aggregateContainerStatesMap),
 		ContainersInitialAggregateState: make(ContainerNameToAggregateStateMap),
 		Created:                         created,
