@@ -29,6 +29,8 @@ type KnownPostProcessors string
 const (
 	// Capping is post-processor name to ensure that recommendation stays within [MinAllowed-MaxAllowed] range
 	Capping KnownPostProcessors = "capping"
+	// IntegerCPU is post-processor name to ensure that CPU is an integer. This allows application that are using static CPU allocation to use VPA
+	IntegerCPU KnownPostProcessors = "integerCPU"
 )
 
 // RecommendationPostProcessor can amend the recommendation according to the defined policies
@@ -57,6 +59,8 @@ func (f *RecommendationPostProcessorFactory) Build() ([]RecommendationPostProces
 		switch name {
 		case Capping:
 			processors = append(processors, &cappingPostProcessor{})
+		case IntegerCPU:
+			processors = append(processors, &integerCPUPostProcessor{})
 		default:
 			return nil, fmt.Errorf("unknown Post Processor: %s", name)
 		}
