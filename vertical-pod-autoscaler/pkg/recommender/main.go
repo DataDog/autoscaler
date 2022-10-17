@@ -57,6 +57,9 @@ var (
 	ctrPodNameLabel     = flag.String("container-pod-name-label", "pod_name", `Label name to look for container pod names`)
 	ctrNameLabel        = flag.String("container-name-label", "name", `Label name to look for container names`)
 	vpaObjectNamespace  = flag.String("vpa-object-namespace", apiv1.NamespaceAll, "Namespace to search for VPA objects and pod stats. Empty means all namespaces will be used.")
+
+	// recommendation post processor flags
+	postProcessorCPUasInteger = flag.Bool("recommendation-post-processor-cpu-as-integer-enabled", false, `Enable recommendation post process to have CPU as integer if requested by user in VPA object`)
 )
 
 // Aggregation configuration flags
@@ -84,6 +87,10 @@ func main() {
 	useCheckpoints := *storage != "prometheus"
 
 	var postProcessorsNames []routines.KnownPostProcessors
+	if *postProcessorCPUasInteger {
+		postProcessorsNames = append(postProcessorsNames, routines.IntegerCPU)
+	}
+	// Capping should stay in the last position, and always enabled
 	postProcessorsNames = append(postProcessorsNames, routines.Capping)
 
 	postProcessorFactory := routines.RecommendationPostProcessorFactory{PostProcessorsNames: postProcessorsNames}
