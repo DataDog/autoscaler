@@ -118,7 +118,7 @@ func (m ClusterStateFeederFactory) Make() *clusterStateFeeder {
 
 // NewClusterStateFeeder creates new ClusterStateFeeder with internal data providers, based on kube client config.
 // Deprecated; Use ClusterStateFeederFactory instead.
-func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState, memorySave bool, namespace, metricsClientName string, recommenderName string) ClusterStateFeeder {
+func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState, memorySave bool, namespace, metricsClientName string, recommenderName string, externalClientOptions *metrics.ExternalClientOptions) ClusterStateFeeder {
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	podLister, oomObserver := NewPodListerAndOOMObserver(kubeClient, namespace)
 	factory := informers.NewSharedInformerFactoryWithOptions(kubeClient, defaultResyncPeriod, informers.WithNamespace(namespace))
@@ -128,7 +128,7 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 		PodLister:           podLister,
 		OOMObserver:         oomObserver,
 		KubeClient:          kubeClient,
-		MetricsClient:       newMetricsClient(config, namespace, metricsClientName),
+		MetricsClient:       newMetricsClient(config, namespace, metricsClientName, externalClientOptions),
 		VpaCheckpointClient: vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
 		VpaLister:           vpa_api_util.NewVpasLister(vpa_clientset.NewForConfigOrDie(config), make(chan struct{}), namespace),
 		ClusterState:        clusterState,
@@ -139,9 +139,14 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 	}.Make()
 }
 
-func newMetricsClient(config *rest.Config, namespace, clientName string) metrics.MetricsClient {
-	metricsGetter := resourceclient.NewForConfigOrDie(config)
-	return metrics.NewMetricsClient(metricsGetter, namespace, clientName)
+func newMetricsClient(config *rest.Config, namespace, clientName string, externalClientOptions *metrics.ExternalClientOptions) metrics.MetricsClient {
+	if externalClientOptions != nil {
+		externalSource := metrics.NewExternalClient(config, *externalClientOptions)
+		return metrics.NewMetricsClient(externalSource, namespace, clientName)
+	} else {
+		metricsGetter := resourceclient.NewForConfigOrDie(config)
+		return metrics.NewMetricsClient(metrics.NewPodMetricsesSource(metricsGetter), namespace, clientName)
+	}
 }
 
 // WatchEvictionEventsWithRetries watches new Events with reason=Evicted and passes them to the observer.
@@ -454,7 +459,7 @@ func (feeder *clusterStateFeeder) LoadPods() {
 }
 
 func (feeder *clusterStateFeeder) LoadRealTimeMetrics() {
-	containersMetrics, err := feeder.metricsClient.GetContainersMetrics()
+	containersMetrics, err := feeder.metricsClient.GetContainersMetrics(feeder.clusterState)
 	if err != nil {
 		klog.Errorf("Cannot get ContainerMetricsSnapshot from MetricsClient. Reason: %+v", err)
 	}

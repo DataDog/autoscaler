@@ -19,6 +19,7 @@ package routines
 import (
 	"context"
 	"flag"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"time"
 
 	vpa_clientset "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned"
@@ -225,9 +226,9 @@ func (c RecommenderFactory) Make() Recommender {
 }
 
 // NewRecommender creates a new recommender instance.
-// Dependencies are created automatically.
+// Dependencies are created automatically. Pass non-nil clientOptions to use external metrics provider.
 // Deprecated; use RecommenderFactory instead.
-func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, useCheckpoints bool, namespace string, recommenderName string, recommendationPostProcessors []RecommendationPostProcessor) Recommender {
+func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, useCheckpoints bool, namespace string, recommenderName string, recommendationPostProcessors []RecommendationPostProcessor, externalClientOptions *metrics.ExternalClientOptions) Recommender {
 	clusterState := model.NewClusterState(AggregateContainerStateGCInterval)
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	factory := informers.NewSharedInformerFactoryWithOptions(kubeClient, defaultResyncPeriod, informers.WithNamespace(namespace))
@@ -235,7 +236,7 @@ func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, us
 
 	return RecommenderFactory{
 		ClusterState:                 clusterState,
-		ClusterStateFeeder:           input.NewClusterStateFeeder(config, clusterState, *memorySaver, namespace, "default-metrics-client", recommenderName),
+		ClusterStateFeeder:           input.NewClusterStateFeeder(config, clusterState, *memorySaver, namespace, "default-metrics-client", recommenderName, externalClientOptions),
 		ControllerFetcher:            controllerFetcher,
 		CheckpointWriter:             checkpoint.NewCheckpointWriter(clusterState, vpa_clientset.NewForConfigOrDie(config).AutoscalingV1()),
 		VpaClient:                    vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
