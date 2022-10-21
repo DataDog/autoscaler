@@ -26,7 +26,7 @@ func TestGetContainersMetricsReturnsEmptyList(t *testing.T) {
 	tc := newEmptyMetricsClientTestCase()
 	emptyMetricsClient := tc.createFakeMetricsClient()
 
-	containerMetricsSnapshots, err := emptyMetricsClient.GetContainersMetrics()
+	containerMetricsSnapshots, err := emptyMetricsClient.GetContainersMetrics(nil)
 
 	assert.NoError(t, err)
 	assert.Empty(t, containerMetricsSnapshots, "should be empty for empty MetricsGetter")
@@ -36,7 +36,7 @@ func TestGetContainersMetricsReturnsResults(t *testing.T) {
 	tc := newMetricsClientTestCase()
 	fakeMetricsClient := tc.createFakeMetricsClient()
 
-	snapshots, err := fakeMetricsClient.GetContainersMetrics()
+	snapshots, err := fakeMetricsClient.GetContainersMetrics(nil)
 
 	assert.NoError(t, err)
 	assert.Len(t, snapshots, len(tc.getAllSnaps()), "It should return right number of snapshots")

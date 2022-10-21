@@ -26,7 +26,6 @@ import (
 	recommender_metrics "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/recommender"
 	klog "k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
-	resourceclient "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
 )
 
 // ContainerMetricsSnapshot contains information about usage of certain container within defined time window.
@@ -41,35 +40,34 @@ type ContainerMetricsSnapshot struct {
 	Usage model.Resources
 }
 
-// MetricsClient provides simple metrics on resources usage on containter level.
+// MetricsClient provides simple metrics on resources usage on container level.
 type MetricsClient interface {
 	// GetContainersMetrics returns an array of ContainerMetricsSnapshots,
 	// representing resource usage for every running container in the cluster
-	GetContainersMetrics() ([]*ContainerMetricsSnapshot, error)
+	GetContainersMetrics(state *model.ClusterState) ([]*ContainerMetricsSnapshot, error)
 }
 
 type metricsClient struct {
-	metricsGetter resourceclient.PodMetricsesGetter
-	namespace     string
-	clientName    string
+	source     Source
+	namespace  string
+	clientName string
 }
 
 // NewMetricsClient creates new instance of MetricsClient, which is used by recommender.
 // It requires an instance of PodMetricsesGetter, which is used for underlying communication with metrics server.
 // namespace limits queries to particular namespace, use k8sapiv1.NamespaceAll to select all namespaces.
-func NewMetricsClient(metricsGetter resourceclient.PodMetricsesGetter, namespace, clientName string) MetricsClient {
+func NewMetricsClient(source Source, namespace string, clientName string) MetricsClient {
 	return &metricsClient{
-		metricsGetter: metricsGetter,
-		namespace:     namespace,
-		clientName:    clientName,
+		source:     source,
+		namespace:  namespace,
+		clientName: clientName,
 	}
 }
 
-func (c *metricsClient) GetContainersMetrics() ([]*ContainerMetricsSnapshot, error) {
+func (c *metricsClient) GetContainersMetrics(state *model.ClusterState) ([]*ContainerMetricsSnapshot, error) {
 	var metricsSnapshots []*ContainerMetricsSnapshot
 
-	podMetricsInterface := c.metricsGetter.PodMetricses(c.namespace)
-	podMetricsList, err := podMetricsInterface.List(context.TODO(), metav1.ListOptions{})
+	podMetricsList, err := c.source.List(context.TODO(), c.namespace, state, metav1.ListOptions{})
 	recommender_metrics.RecordMetricsServerResponse(err, c.clientName)
 	if err != nil {
 		return nil, err
