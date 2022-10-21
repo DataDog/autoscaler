@@ -24,6 +24,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/common"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/history"
+	metrics2 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/routines"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics"
@@ -57,6 +58,11 @@ var (
 	ctrPodNameLabel     = flag.String("container-pod-name-label", "pod_name", `Label name to look for container pod names`)
 	ctrNameLabel        = flag.String("container-name-label", "name", `Label name to look for container names`)
 	vpaObjectNamespace  = flag.String("vpa-object-namespace", apiv1.NamespaceAll, "Namespace to search for VPA objects and pod stats. Empty means all namespaces will be used.")
+
+	// external metrics provider config
+	useExternalMetrics   = flag.Bool("use-external-metrics", false, "Use an external metrics provider instead of metrics_server.")
+	externalCpuMetric    = flag.String("external-metrics-cpu-metric", "", "Metric to use with external metrics provider for CPU usage.")
+	externalMemoryMetric = flag.String("external-metrics-memory-metric", "", "Metric to use with external metrics provider for memory usage.")
 )
 
 // Aggregation configuration flags
@@ -86,7 +92,19 @@ func main() {
 	postProcessors := []routines.RecommendationPostProcessor{
 		&routines.CappingPostProcessor{},
 	}
-	recommender := routines.NewRecommender(config, *checkpointsGCInterval, useCheckpoints, *vpaObjectNamespace, *recommenderName, postProcessors)
+
+	var externalClientOptions *metrics2.ExternalClientOptions = nil
+	if *useExternalMetrics {
+		resourceMetrics := map[apiv1.ResourceName]string{}
+		if externalCpuMetric != nil && *externalCpuMetric != "" {
+			resourceMetrics[apiv1.ResourceCPU] = *externalCpuMetric
+		}
+		if externalMemoryMetric != nil && *externalMemoryMetric != "" {
+			resourceMetrics[apiv1.ResourceMemory] = *externalMemoryMetric
+		}
+		externalClientOptions = &metrics2.ExternalClientOptions{ResourceMetrics: resourceMetrics, PodNamespaceLabel: *podNamespaceLabel, PodNameLabel: *podNameLabel, CtrNamespaceLabel: *ctrNamespaceLabel, CtrPodNameLabel: *ctrPodNameLabel, CtrNameLabel: *ctrNameLabel}
+	}
+	recommender := routines.NewRecommender(config, *checkpointsGCInterval, useCheckpoints, *vpaObjectNamespace, *recommenderName, postProcessors, externalClientOptions)
 
 	promQueryTimeout, err := time.ParseDuration(*queryTimeout)
 	if err != nil {
