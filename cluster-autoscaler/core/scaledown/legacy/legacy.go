@@ -252,7 +252,7 @@ func (sd *ScaleDown) mapNodesToStatusScaleDownNodes(nodes []*apiv1.Node, nodeGro
 // NodesToDelete selects the nodes to delete for scale down.
 func (sd *ScaleDown) NodesToDelete(currentTime time.Time, pdbs []*policyv1.PodDisruptionBudget) (empty, drain []*apiv1.Node, res status.ScaleDownResult, err errors.AutoscalerError) {
 	_, drained := sd.nodeDeletionTracker.DeletionsInProgress()
-	if len(drained) > 0 {
+	if len(drained) >= sd.context.MaxDrainParallelism {
 		return nil, nil, status.ScaleDownInProgress, nil
 	}
 
@@ -287,7 +287,15 @@ func (sd *ScaleDown) NodesToDelete(currentTime time.Time, pdbs []*policyv1.PodDi
 		candidateNames = append(candidateNames, n.Name)
 	}
 	for _, n := range nonEmpty {
-		candidateNames = append(candidateNames, n.Name)
+		nodeIsDraining := false
+		for _, draining := range drained {
+			if n.Name == draining {
+				nodeIsDraining = true
+			}
+		}
+		if !nodeIsDraining {
+			candidateNames = append(candidateNames, n.Name)
+		}
 	}
 
 	if len(candidateNames) == 0 {
