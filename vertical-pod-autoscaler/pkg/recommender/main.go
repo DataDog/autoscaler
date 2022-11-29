@@ -19,12 +19,12 @@ package main
 import (
 	"flag"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input"
-	metrics2 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/common"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/history"
+	metrics2 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/routines"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics"

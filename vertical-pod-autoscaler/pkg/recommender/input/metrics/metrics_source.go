@@ -68,6 +68,16 @@ func (s externalMetricsClient) containerId(value externalmetricsv1beta1.External
 	}
 }
 
+type podContainerResourceMap map[model.PodID]map[string]k8sapiv1.ResourceList
+
+func (s externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalMetricValueList, name k8sapiv1.ResourceName, resourceMap *podContainerResourceMap) {
+	for _, val := range list.Items {
+		if id := s.containerId(val); id != nil {
+			(*resourceMap)[id.PodID][id.ContainerName][name] = val.Value
+		}
+	}
+}
+
 func (s externalMetricsClient) List(ctx context.Context, namespace string, state *model.ClusterState, opts v1.ListOptions) (*v1beta1.PodMetricsList, error) {
 	result := v1beta1.PodMetricsList{}
 	// Get all VPAs in the namespace
@@ -76,8 +86,9 @@ func (s externalMetricsClient) List(ctx context.Context, namespace string, state
 	// - use the 'PodSelector' there as the input to the external api.
 	// Send out the queries.
 	nsClient := s.externalClient.NamespacedMetrics(namespace)
+
 	for _, vpa := range state.Vpas {
-		workloadValues := make(map[model.PodID]map[string]k8sapiv1.ResourceList)
+		workloadValues := make(podContainerResourceMap)
 		cpuMetrics, err := nsClient.List(s.options.CpuMetric, vpa.PodSelector)
 		if err != nil {
 			return nil, err
@@ -91,18 +102,9 @@ func (s externalMetricsClient) List(ctx context.Context, namespace string, state
 			continue
 		}
 
-		for _, cpu := range cpuMetrics.Items {
-			id := s.containerId(cpu)
-			if id != nil {
-				workloadValues[id.PodID][id.ContainerName][k8sapiv1.ResourceCPU] = cpu.Value
-			}
-		}
-		for _, mem := range memMetrics.Items {
-			id := s.containerId(mem)
-			if id != nil {
-				workloadValues[id.PodID][id.ContainerName][k8sapiv1.ResourceMemory] = mem.Value
-			}
-		}
+		s.addMetrics(cpuMetrics, k8sapiv1.ResourceCPU, &workloadValues)
+		s.addMetrics(memMetrics, k8sapiv1.ResourceMemory, &workloadValues)
+
 		for podId, cmaps := range workloadValues {
 			podMets := v1beta1.PodMetrics{
 				TypeMeta:   v1.TypeMeta{},
