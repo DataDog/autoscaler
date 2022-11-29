@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 
@@ -36,8 +36,6 @@ import (
 )
 
 var _ Interface = &Client{}
-
-const routeTablesResourceType = "Microsoft.Network/routeTables"
 
 // Client implements RouteTable client Interface.
 type Client struct {
@@ -121,7 +119,7 @@ func (c *Client) getRouteTable(ctx context.Context, resourceGroupName string, ro
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		routeTablesResourceType,
+		"Microsoft.Network/routeTables",
 		routeTableName,
 	)
 	result := network.RouteTable{}
@@ -182,15 +180,18 @@ func (c *Client) createOrUpdateRouteTable(ctx context.Context, resourceGroupName
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		routeTablesResourceType,
+		"Microsoft.Network/routeTables",
 		routeTableName,
 	)
-	decorators := []autorest.PrepareDecorator{}
+	decorators := []autorest.PrepareDecorator{
+		autorest.WithPathParameters("{resourceID}", map[string]interface{}{"resourceID": resourceID}),
+		autorest.WithJSON(parameters),
+	}
 	if etag != "" {
 		decorators = append(decorators, autorest.WithHeader("If-Match", autorest.String(etag)))
 	}
 
-	response, rerr := c.armClient.PutResource(ctx, resourceID, parameters, decorators...)
+	response, rerr := c.armClient.PutResourceWithDecorators(ctx, resourceID, parameters, decorators)
 	defer c.armClient.CloseResponse(ctx, response)
 	if rerr != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "routetable.put.request", resourceID, rerr.Error())

@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+//
 type BatchStopServersOption struct {
 	// 标记为启动云服务器操作。
 

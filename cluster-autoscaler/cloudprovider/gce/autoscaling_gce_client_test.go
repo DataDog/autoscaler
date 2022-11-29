@@ -143,7 +143,6 @@ func TestErrors(t *testing.T) {
 
 	testCases := []struct {
 		errorCodes         []string
-		errorMessage       string
 		expectedErrorCode  string
 		expectedErrorClass cloudprovider.InstanceErrorClass
 	}{
@@ -168,12 +167,6 @@ func TestErrors(t *testing.T) {
 			expectedErrorClass: cloudprovider.OtherErrorClass,
 		},
 		{
-			errorCodes:         []string{"CONDITION_NOT_MET"},
-			errorMessage:       "Instance 'myinst' creation failed: Constraint constraints/compute.vmExternalIpAccess violated for project 1234567890.",
-			expectedErrorCode:  "VM_EXTERNAL_IP_ACCESS_POLICY_CONSTRAINT",
-			expectedErrorClass: cloudprovider.OtherErrorClass,
-		},
-		{
 			errorCodes:         []string{"xyz", "abc"},
 			expectedErrorCode:  "OTHER",
 			expectedErrorClass: cloudprovider.OtherErrorClass,
@@ -190,8 +183,7 @@ func TestErrors(t *testing.T) {
 							Errors: &gce_api.ManagedInstanceLastAttemptErrors{
 								Errors: []*gce_api.ManagedInstanceLastAttemptErrorsErrors{
 									{
-										Code:    errorCode,
-										Message: tc.errorMessage,
+										Code: errorCode,
 									},
 								},
 							},

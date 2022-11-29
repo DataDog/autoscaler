@@ -96,8 +96,6 @@ type AutoscalingOptions struct {
 	CloudProviderName string
 	// NodeGroups is the list of node groups a.k.a autoscaling targets
 	NodeGroups []string
-	// EnforceNodeGroupMinSize is used to allow CA to scale up the node group to the configured min size if needed.
-	EnforceNodeGroupMinSize bool
 	// ScaleDownEnabled is used to allow CA to scale down the cluster
 	ScaleDownEnabled bool
 	// ScaleDownDelayAfterAdd sets the duration from the last scale up to the time when CA starts to check scale down options
@@ -156,9 +154,6 @@ type AutoscalingOptions struct {
 	// BalancingExtraIgnoredLabels is a list of labels to additionally ignore when comparing if two node groups are similar.
 	// Labels in BasicIgnoredLabels and the cloud provider-specific ignored labels are always ignored.
 	BalancingExtraIgnoredLabels []string
-	// BalancingLabels is a list of labels to use when comparing if two node groups are similar.
-	// If this is set, only labels are used to compare node groups. It is mutually exclusive with BalancingExtraIgnoredLabels.
-	BalancingLabels []string
 	// AWSUseStaticInstanceList tells if AWS cloud provider use static instance type list or dynamically fetch from remote APIs.
 	AWSUseStaticInstanceList bool
 	// ConcurrentGceRefreshes is the maximum number of concurrently refreshed instance groups or instance templates.
@@ -186,26 +181,4 @@ type AutoscalingOptions struct {
 	MaxScaleDownParallelism int
 	// MaxDrainParallelism is the maximum number of nodes needing drain, that can be drained and deleted in parallel.
 	MaxDrainParallelism int
-	// GceExpanderEphemeralStorageSupport is whether scale-up takes ephemeral storage resources into account.
-	GceExpanderEphemeralStorageSupport bool
-	// RecordDuplicatedEvents controls whether events should be duplicated within a 5 minute window.
-	RecordDuplicatedEvents bool
-	// MaxNodesPerScaleUp controls how many nodes can be added in a single scale-up.
-	// Note that this is strictly a performance optimization aimed at limiting binpacking time, not a tool to rate-limit
-	// scale-up. There is nothing stopping CA from adding MaxNodesPerScaleUp every loop.
-	MaxNodesPerScaleUp int
-	// MaxNodeGroupBinpackingDuration is a maximum time that can be spent binpacking a single NodeGroup. If the threshold
-	// is exceeded binpacking will be cut short and a partial scale-up will be performed.
-	MaxNodeGroupBinpackingDuration time.Duration
-	// NodeDeletionBatcherInterval is a time for how long CA ScaleDown gather nodes to delete them in batch.
-	NodeDeletionBatcherInterval time.Duration
-	// SkipNodesWithSystemPods tells if nodes with pods from kube-system should be deleted (except for DaemonSet or mirror pods)
-	SkipNodesWithSystemPods bool
-	// SkipNodesWithLocalStorage tells if nodes with pods with local storage, e.g. EmptyDir or HostPath, should be deleted
-	SkipNodesWithLocalStorage bool
-	// MinReplicaCount controls the minimum number of replicas that a replica set or replication controller should have
-	// to allow their pods deletion in scale down
-	MinReplicaCount int
-	// NodeDeleteDelayAfterTaint is the duration to wait before deleting a node after tainting it
-	NodeDeleteDelayAfterTaint time.Duration
 }

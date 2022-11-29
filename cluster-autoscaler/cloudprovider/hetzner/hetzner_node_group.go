@@ -122,11 +122,6 @@ func (n *hetznerNodeGroup) IncreaseSize(delta int) error {
 
 	n.targetSize = targetSize
 
-	// create new servers cache
-	if _, err := n.manager.cachedServers.servers(); err != nil {
-		klog.Errorf("failed to get servers: %v", err)
-	}
-
 	return nil
 }
 
@@ -160,11 +155,6 @@ func (n *hetznerNodeGroup) DeleteNodes(nodes []*apiv1.Node) error {
 	}
 	waitGroup.Wait()
 
-	// create new servers cache
-	if _, err := n.manager.cachedServers.servers(); err != nil {
-		klog.Errorf("failed to get servers: %v", err)
-	}
-
 	n.resetTargetSize(-len(nodes))
 
 	return nil
@@ -194,7 +184,12 @@ func (n *hetznerNodeGroup) Debug() string {
 // required that Instance objects returned by this method have Id field set.
 // Other fields are optional.
 func (n *hetznerNodeGroup) Nodes() ([]cloudprovider.Instance, error) {
-	servers, err := n.manager.cachedServers.getServersByNodeGroupName(n.id)
+	listOptions := hcloud.ListOpts{
+		PerPage:       50,
+		LabelSelector: nodeGroupLabel + "=" + n.id,
+	}
+	requestOptions := hcloud.ServerListOpts{ListOpts: listOptions}
+	servers, err := n.manager.client.Server.AllWithOpts(n.manager.apiCallContext, requestOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get servers for hcloud: %v", err)
 	}
@@ -322,7 +317,7 @@ func buildNodeGroupLabels(n *hetznerNodeGroup) map[string]string {
 }
 
 func getMachineTypeResourceList(m *hetznerManager, instanceType string) (apiv1.ResourceList, error) {
-	typeInfo, err := m.cachedServerType.getServerType(instanceType)
+	typeInfo, _, err := m.client.ServerType.Get(m.apiCallContext, instanceType)
 	if err != nil || typeInfo == nil {
 		return nil, fmt.Errorf("failed to get machine type %s info error: %v", instanceType, err)
 	}
@@ -337,7 +332,7 @@ func getMachineTypeResourceList(m *hetznerManager, instanceType string) (apiv1.R
 }
 
 func serverTypeAvailable(manager *hetznerManager, instanceType string, region string) (bool, error) {
-	serverType, err := manager.cachedServerType.getServerType(instanceType)
+	serverType, _, err := manager.client.ServerType.Get(manager.apiCallContext, instanceType)
 	if err != nil {
 		return false, err
 	}
@@ -363,20 +358,12 @@ func createServer(n *hetznerNodeGroup) error {
 		Labels: map[string]string{
 			nodeGroupLabel: n.id,
 		},
-		PublicNet: &hcloud.ServerCreatePublicNet{
-			EnableIPv4: n.manager.publicIPv4,
-			EnableIPv6: n.manager.publicIPv6,
-		},
 	}
 	if n.manager.sshKey != nil {
 		opts.SSHKeys = []*hcloud.SSHKey{n.manager.sshKey}
 	}
 	if n.manager.network != nil {
 		opts.Networks = []*hcloud.Network{n.manager.network}
-	}
-	if n.manager.firewall != nil {
-		serverCreateFirewall := &hcloud.ServerCreateFirewall{Firewall: *n.manager.firewall}
-		opts.Firewalls = []*hcloud.ServerCreateFirewall{serverCreateFirewall}
 	}
 
 	serverCreateResult, _, err := n.manager.client.Server.Create(n.manager.apiCallContext, opts)
@@ -426,6 +413,8 @@ func waitForServerAction(m *hetznerManager, serverName string, action *hcloud.Ac
 	case <-time.After(m.createTimeout):
 		return fmt.Errorf("timeout waiting for server %s", serverName)
 	}
+
+	return nil
 }
 
 func (n *hetznerNodeGroup) resetTargetSize(expectedDelta int) {

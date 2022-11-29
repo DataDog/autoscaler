@@ -75,7 +75,7 @@ func newTestAzureManager(t *testing.T) *AzureManager {
 		},
 	}
 
-	cache, error := newAzureCache(manager.azClient, refreshInterval, manager.config.ResourceGroup, vmTypeVMSS, false, "")
+	cache, error := newAzureCache(manager.azClient, refreshInterval, manager.config.ResourceGroup, vmTypeVMSS)
 	assert.NoError(t, error)
 
 	manager.azureCache = cache

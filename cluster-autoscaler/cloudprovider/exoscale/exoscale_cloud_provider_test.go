@@ -19,6 +19,7 @@ package exoscale
 import (
 	"context"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -124,9 +125,9 @@ type cloudProviderTestSuite struct {
 }
 
 func (ts *cloudProviderTestSuite) SetupTest() {
-	ts.T().Setenv("EXOSCALE_ZONE", testZone)
-	ts.T().Setenv("EXOSCALE_API_KEY", "x")
-	ts.T().Setenv("EXOSCALE_API_SECRET", "x")
+	_ = os.Setenv("EXOSCALE_ZONE", testZone)
+	_ = os.Setenv("EXOSCALE_API_KEY", "x")
+	_ = os.Setenv("EXOSCALE_API_SECRET", "x")
 
 	manager, err := newManager()
 	if err != nil {

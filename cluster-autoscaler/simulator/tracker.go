@@ -18,8 +18,6 @@ package simulator
 
 import (
 	"time"
-
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -133,22 +131,22 @@ func (tracker *UsageTracker) CleanUp(cutoff time.Time) {
 	}
 }
 
-// RemoveNodeFromTracker removes node from tracker and returns node names that should be removed from the list of uneeded nodes.
-func RemoveNodeFromTracker(tracker *UsageTracker, node string, unneeded []string) []string {
-	keysToRemove := sets.NewString()
+// RemoveNodeFromTracker removes node from tracker and also cleans the passed utilization map.
+func RemoveNodeFromTracker(tracker *UsageTracker, node string, utilization map[string]time.Time) {
+	keysToRemove := make([]string, 0)
 	if mainRecord, found := tracker.Get(node); found {
 		if mainRecord.usingTooMany {
-			keysToRemove = sets.NewString(unneeded...)
+			keysToRemove = getAllKeys(utilization)
 		} else {
 		usingloop:
 			for usedNode := range mainRecord.using {
 				if usedNodeRecord, found := tracker.Get(usedNode); found {
 					if usedNodeRecord.usedByTooMany {
-						keysToRemove = sets.NewString(unneeded...)
+						keysToRemove = getAllKeys(utilization)
 						break usingloop
 					} else {
 						for anotherNode := range usedNodeRecord.usedBy {
-							keysToRemove.Insert(anotherNode)
+							keysToRemove = append(keysToRemove, anotherNode)
 						}
 					}
 				}
@@ -156,6 +154,16 @@ func RemoveNodeFromTracker(tracker *UsageTracker, node string, unneeded []string
 		}
 	}
 	tracker.Unregister(node)
-	keysToRemove.Insert(node)
-	return keysToRemove.List()
+	delete(utilization, node)
+	for _, key := range keysToRemove {
+		delete(utilization, key)
+	}
+}
+
+func getAllKeys(m map[string]time.Time) []string {
+	result := make([]string, 0, len(m))
+	for key := range m {
+		result = append(result, key)
+	}
+	return result
 }

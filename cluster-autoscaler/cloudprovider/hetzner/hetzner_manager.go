@@ -21,40 +21,30 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
-
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/hetzner/hcloud-go/hcloud"
 )
 
 var (
-	version    = "dev"
-	httpClient = &http.Client{
-		Transport: instrumentedRoundTripper(),
-	}
+	version = "dev"
 )
 
 // hetznerManager handles Hetzner communication and data caching of
 // node groups
 type hetznerManager struct {
-	client           *hcloud.Client
-	nodeGroups       map[string]*hetznerNodeGroup
-	apiCallContext   context.Context
-	cloudInit        string
-	image            *hcloud.Image
-	sshKey           *hcloud.SSHKey
-	network          *hcloud.Network
-	firewall         *hcloud.Firewall
-	createTimeout    time.Duration
-	publicIPv4       bool
-	publicIPv6       bool
-	cachedServerType *serverTypeCache
-	cachedServers    *serversCache
+	client         *hcloud.Client
+	nodeGroups     map[string]*hetznerNodeGroup
+	apiCallContext context.Context
+	cloudInit      string
+	image          *hcloud.Image
+	sshKey         *hcloud.SSHKey
+	network        *hcloud.Network
+	createTimeout  time.Duration
 }
 
 func newManager() (*hetznerManager, error) {
@@ -68,11 +58,7 @@ func newManager() (*hetznerManager, error) {
 		return nil, errors.New("`HCLOUD_CLOUD_INIT` is not specified")
 	}
 
-	client := hcloud.NewClient(
-		hcloud.WithToken(token),
-		hcloud.WithHTTPClient(httpClient),
-	)
-
+	client := hcloud.NewClient(hcloud.WithToken(token))
 	ctx := context.Background()
 	cloudInit, err := base64.StdEncoding.DecodeString(cloudInitBase64)
 	if err != nil {
@@ -82,24 +68,6 @@ func newManager() (*hetznerManager, error) {
 	imageName := os.Getenv("HCLOUD_IMAGE")
 	if imageName == "" {
 		imageName = "ubuntu-20.04"
-	}
-
-	publicIPv4 := true
-	publicIPv4Str := os.Getenv("HCLOUD_PUBLIC_IPV4")
-	if publicIPv4Str != "" {
-		publicIPv4, err = strconv.ParseBool(publicIPv4Str)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse HCLOUD_PUBLIC_IPV4: %s", err)
-		}
-	}
-
-	publicIPv6 := true
-	publicIPv6Str := os.Getenv("HCLOUD_PUBLIC_IPV6")
-	if publicIPv6Str != "" {
-		publicIPv6, err = strconv.ParseBool(publicIPv6Str)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse HCLOUD_PUBLIC_IPV6: %s", err)
-		}
 	}
 
 	// Search for an image ID corresponding to the supplied HCLOUD_IMAGE env
@@ -127,6 +95,9 @@ func newManager() (*hetznerManager, error) {
 		image = images[0]
 	}
 
+	var network *hcloud.Network
+	networkName := os.Getenv("HCLOUD_NETWORK")
+
 	var sshKey *hcloud.SSHKey
 	sshKeyName := os.Getenv("HCLOUD_SSH_KEY")
 	if sshKeyName != "" {
@@ -136,8 +107,6 @@ func newManager() (*hetznerManager, error) {
 		}
 	}
 
-	var network *hcloud.Network
-	networkName := os.Getenv("HCLOUD_NETWORK")
 	if networkName != "" {
 		network, _, err = client.Network.Get(ctx, networkName)
 		if err != nil {
@@ -152,29 +121,15 @@ func newManager() (*hetznerManager, error) {
 		createTimeout = time.Duration(v) * time.Minute
 	}
 
-	var firewall *hcloud.Firewall
-	firewallName := os.Getenv("HCLOUD_FIREWALL")
-	if firewallName != "" {
-		firewall, _, err = client.Firewall.Get(ctx, firewallName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get firewall error: %s", err)
-		}
-	}
-
 	m := &hetznerManager{
-		client:           client,
-		nodeGroups:       make(map[string]*hetznerNodeGroup),
-		cloudInit:        string(cloudInit),
-		image:            image,
-		sshKey:           sshKey,
-		network:          network,
-		firewall:         firewall,
-		createTimeout:    createTimeout,
-		apiCallContext:   ctx,
-		publicIPv4:       publicIPv4,
-		publicIPv6:       publicIPv6,
-		cachedServerType: newServerTypeCache(ctx, client),
-		cachedServers:    newServersCache(ctx, client),
+		client:         client,
+		nodeGroups:     make(map[string]*hetznerNodeGroup),
+		cloudInit:      string(cloudInit),
+		image:          image,
+		sshKey:         sshKey,
+		network:        network,
+		createTimeout:  createTimeout,
+		apiCallContext: ctx,
 	}
 
 	m.nodeGroups[drainingNodePoolId] = &hetznerNodeGroup{
@@ -197,7 +152,13 @@ func (m *hetznerManager) Refresh() error {
 }
 
 func (m *hetznerManager) allServers(nodeGroup string) ([]*hcloud.Server, error) {
-	servers, err := m.cachedServers.getServersByNodeGroupName(nodeGroup)
+	listOptions := hcloud.ListOpts{
+		PerPage:       50,
+		LabelSelector: nodeGroupLabel + "=" + nodeGroup,
+	}
+
+	requestOptions := hcloud.ServerListOpts{ListOpts: listOptions}
+	servers, err := m.client.Server.AllWithOpts(m.apiCallContext, requestOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get servers for hcloud: %v", err)
 	}
@@ -236,7 +197,7 @@ func (m *hetznerManager) serverForNode(node *apiv1.Node) (*hcloud.Server, error)
 		nodeIdOrName = node.Name
 	}
 
-	server, err := m.cachedServers.getServer(nodeIdOrName)
+	server, _, err := m.client.Server.Get(m.apiCallContext, nodeIdOrName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get servers for node %s error: %v", node.Name, err)
 	}

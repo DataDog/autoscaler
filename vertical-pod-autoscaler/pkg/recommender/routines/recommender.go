@@ -22,6 +22,7 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"time"
 
+	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	vpa_clientset "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned"
 	vpa_api "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned/typed/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/checkpoint"
@@ -34,7 +35,7 @@ import (
 	"k8s.io/client-go/informers"
 	kube_client "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	klog "k8s.io/klog/v2"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -79,7 +80,6 @@ type recommender struct {
 	podResourceRecommender        logic.PodResourceRecommender
 	useCheckpoints                bool
 	lastAggregateContainerStateGC time.Time
-	recommendationPostProcessor   []RecommendationPostProcessor
 }
 
 func (r *recommender) GetClusterState() *model.ClusterState {
@@ -107,14 +107,7 @@ func (r *recommender) UpdateVPAs() {
 		}
 		resources := r.podResourceRecommender.GetRecommendedPodResources(GetContainerNameToAggregateStateMap(vpa))
 		had := vpa.HasRecommendation()
-
-		listOfResourceRecommendation := logic.MapToListOfRecommendedContainerResources(resources)
-
-		for _, postProcessor := range r.recommendationPostProcessor {
-			listOfResourceRecommendation = postProcessor.Process(vpa, listOfResourceRecommendation, observedVpa.Spec.ResourcePolicy)
-		}
-
-		vpa.UpdateRecommendation(listOfResourceRecommendation)
+		vpa.UpdateRecommendation(getCappedRecommendation(vpa.ID, resources, observedVpa.Spec.ResourcePolicy))
 		if vpa.HasRecommendation() && !had {
 			metrics_recommender.ObserveRecommendationLatency(vpa.Created)
 		}
@@ -143,6 +136,33 @@ func (r *recommender) UpdateVPAs() {
 				"Cannot update VPA %v object. Reason: %+v", vpa.ID.VpaName, err)
 		}
 	}
+}
+
+// getCappedRecommendation creates a recommendation based on recommended pod
+// resources, setting the UncappedTarget to the calculated recommended target
+// and if necessary, capping the Target, LowerBound and UpperBound according
+// to the ResourcePolicy.
+func getCappedRecommendation(vpaID model.VpaID, resources logic.RecommendedPodResources,
+	policy *vpa_types.PodResourcePolicy) *vpa_types.RecommendedPodResources {
+	containerResources := make([]vpa_types.RecommendedContainerResources, 0, len(resources))
+	for containerName, res := range resources {
+		containerResources = append(containerResources, vpa_types.RecommendedContainerResources{
+			ContainerName:  containerName,
+			Target:         model.ResourcesAsResourceList(res.Target),
+			LowerBound:     model.ResourcesAsResourceList(res.LowerBound),
+			UpperBound:     model.ResourcesAsResourceList(res.UpperBound),
+			UncappedTarget: model.ResourcesAsResourceList(res.Target),
+		})
+	}
+	recommendation := &vpa_types.RecommendedPodResources{
+		ContainerRecommendations: containerResources,
+	}
+	cappedRecommendation, err := vpa_utils.ApplyVPAPolicy(recommendation, policy)
+	if err != nil {
+		klog.Errorf("Failed to apply policy for VPA %v/%v: %v", vpaID.Namespace, vpaID.VpaName, err)
+		return recommendation
+	}
+	return cappedRecommendation
 }
 
 func (r *recommender) MaintainCheckpoints(ctx context.Context, minCheckpointsPerRun int) {
@@ -199,8 +219,6 @@ type RecommenderFactory struct {
 	PodResourceRecommender logic.PodResourceRecommender
 	VpaClient              vpa_api.VerticalPodAutoscalersGetter
 
-	RecommendationPostProcessors []RecommendationPostProcessor
-
 	CheckpointsGCInterval time.Duration
 	UseCheckpoints        bool
 }
@@ -217,7 +235,6 @@ func (c RecommenderFactory) Make() Recommender {
 		useCheckpoints:                c.UseCheckpoints,
 		vpaClient:                     c.VpaClient,
 		podResourceRecommender:        c.PodResourceRecommender,
-		recommendationPostProcessor:   c.RecommendationPostProcessors,
 		lastAggregateContainerStateGC: time.Now(),
 		lastCheckpointGC:              time.Now(),
 	}
@@ -228,21 +245,20 @@ func (c RecommenderFactory) Make() Recommender {
 // NewRecommender creates a new recommender instance.
 // Dependencies are created automatically. Pass non-nil clientOptions to use external metrics provider.
 // Deprecated; use RecommenderFactory instead.
-func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, useCheckpoints bool, namespace string, recommenderName string, recommendationPostProcessors []RecommendationPostProcessor, externalClientOptions *metrics.ExternalClientOptions) Recommender {
+func NewRecommender(config *rest.Config, checkpointsGCInterval time.Duration, useCheckpoints bool, namespace string, externalClientOptions *metrics.ExternalClientOptions) Recommender {
 	clusterState := model.NewClusterState(AggregateContainerStateGCInterval)
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	factory := informers.NewSharedInformerFactoryWithOptions(kubeClient, defaultResyncPeriod, informers.WithNamespace(namespace))
 	controllerFetcher := controllerfetcher.NewControllerFetcher(config, kubeClient, factory, scaleCacheEntryFreshnessTime, scaleCacheEntryLifetime, scaleCacheEntryJitterFactor)
 
 	return RecommenderFactory{
-		ClusterState:                 clusterState,
-		ClusterStateFeeder:           input.NewClusterStateFeeder(config, clusterState, *memorySaver, namespace, "default-metrics-client", recommenderName, externalClientOptions),
-		ControllerFetcher:            controllerFetcher,
-		CheckpointWriter:             checkpoint.NewCheckpointWriter(clusterState, vpa_clientset.NewForConfigOrDie(config).AutoscalingV1()),
-		VpaClient:                    vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
-		PodResourceRecommender:       logic.CreatePodResourceRecommender(),
-		RecommendationPostProcessors: recommendationPostProcessors,
-		CheckpointsGCInterval:        checkpointsGCInterval,
-		UseCheckpoints:               useCheckpoints,
+		ClusterState:           clusterState,
+		ClusterStateFeeder:     input.NewClusterStateFeeder(config, clusterState, *memorySaver, namespace, externalClientOptions),
+		ControllerFetcher:      controllerFetcher,
+		CheckpointWriter:       checkpoint.NewCheckpointWriter(clusterState, vpa_clientset.NewForConfigOrDie(config).AutoscalingV1()),
+		VpaClient:              vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
+		PodResourceRecommender: logic.CreatePodResourceRecommender(),
+		CheckpointsGCInterval:  checkpointsGCInterval,
+		UseCheckpoints:         useCheckpoints,
 	}.Make()
 }

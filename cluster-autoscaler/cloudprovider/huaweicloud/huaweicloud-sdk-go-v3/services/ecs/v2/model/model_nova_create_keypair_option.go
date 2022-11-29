@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+//
 type NovaCreateKeypairOption struct {
 	// 导入的公钥信息。  建议导入的公钥长度不大于1024字节。  说明：  - 长度超过1024字节会导致云服务器注入该密钥失败。
 

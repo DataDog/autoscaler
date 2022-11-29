@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+//
 type NovaLink struct {
 	// 相应资源的链接。
 

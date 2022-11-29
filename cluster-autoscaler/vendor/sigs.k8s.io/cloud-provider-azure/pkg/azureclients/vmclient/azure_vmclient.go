@@ -18,6 +18,7 @@ package vmclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -37,8 +38,6 @@ import (
 )
 
 var _ Interface = &Client{}
-
-const vmResourceType = "Microsoft.Compute/virtualMachines"
 
 // Client implements VirtualMachine client Interface.
 type Client struct {
@@ -122,7 +121,7 @@ func (c *Client) getVM(ctx context.Context, resourceGroupName string, VMName str
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmResourceType,
+		"Microsoft.Compute/virtualMachines",
 		VMName,
 	)
 	result := compute.VirtualMachine{}
@@ -180,7 +179,10 @@ func (c *Client) List(ctx context.Context, resourceGroupName string) ([]compute.
 
 // listVM gets a list of VirtualMachines in the resourceGroupName.
 func (c *Client) listVM(ctx context.Context, resourceGroupName string) ([]compute.VirtualMachine, *retry.Error) {
-	resourceID := armclient.GetResourceListID(c.subscriptionID, resourceGroupName, vmResourceType)
+	resourceID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines",
+		autorest.Encode("path", c.subscriptionID),
+		autorest.Encode("path", resourceGroupName),
+	)
 
 	result := make([]compute.VirtualMachine, 0)
 	page := &VirtualMachineListResultPage{}
@@ -268,7 +270,7 @@ func (c *Client) UpdateAsync(ctx context.Context, resourceGroupName string, VMNa
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmResourceType,
+		"Microsoft.Compute/virtualMachines",
 		VMName,
 	)
 
@@ -308,7 +310,7 @@ func (c *Client) updateVM(ctx context.Context, resourceGroupName string, VMName 
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmResourceType,
+		"Microsoft.Compute/virtualMachines",
 		VMName,
 	)
 
@@ -469,7 +471,7 @@ func (c *Client) createOrUpdateVM(ctx context.Context, resourceGroupName string,
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmResourceType,
+		"Microsoft.Compute/virtualMachines",
 		VMName,
 	)
 
@@ -538,9 +540,9 @@ func (c *Client) deleteVM(ctx context.Context, resourceGroupName string, VMName 
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmResourceType,
+		"Microsoft.Compute/virtualMachines",
 		VMName,
 	)
 
-	return c.armClient.DeleteResource(ctx, resourceID)
+	return c.armClient.DeleteResource(ctx, resourceID, "")
 }

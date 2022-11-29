@@ -115,7 +115,7 @@ func TestBuildGceCloudProvider(t *testing.T) {
 		map[string]int64{cloudprovider.ResourceNameCores: 1, cloudprovider.ResourceNameMemory: 10000000},
 		map[string]int64{cloudprovider.ResourceNameCores: 10, cloudprovider.ResourceNameMemory: 100000000})
 
-	provider, err := BuildGceCloudProvider(gceManagerMock, resourceLimiter, nil)
+	provider, err := BuildGceCloudProvider(gceManagerMock, resourceLimiter)
 	assert.NoError(t, err)
 	assert.NotNil(t, provider)
 }

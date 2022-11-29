@@ -14,31 +14,24 @@ An FAQ is available [HERE](./FAQ.md).
 
 You should also take a look at the notes and "gotchas" for your specific cloud provider:
 * [AliCloud](./cloudprovider/alicloud/README.md)
-* [AWS](./cloudprovider/aws/README.md)
 * [Azure](./cloudprovider/azure/README.md)
+* [AWS](./cloudprovider/aws/README.md)
 * [BaiduCloud](./cloudprovider/baiducloud/README.md)
-* [BizflyCloud](./cloudprovider/bizflycloud/README.md)
 * [Brightbox](./cloudprovider/brightbox/README.md)
 * [CherryServers](./cloudprovider/cherryservers/README.md)
-* [Civo](./cloudprovider/civo/README.md)
 * [CloudStack](./cloudprovider/cloudstack/README.md)
-* [ClusterAPI](./cloudprovider/clusterapi/README.md)
-* [DigitalOcean](./cloudprovider/digitalocean/README.md)
-* [Exoscale](./cloudprovider/exoscale/README.md)
-* [Equinix Metal](./cloudprovider/packet/README.md#notes)
+* [HuaweiCloud](./cloudprovider/huaweicloud/README.md)
 * [External gRPC](./cloudprovider/externalgrpc/README.md)
 * [Hetzner](./cloudprovider/hetzner/README.md)
-* [HuaweiCloud](./cloudprovider/huaweicloud/README.md)
+* [Equinix Metal](./cloudprovider/packet/README.md#notes) 
 * [IonosCloud](./cloudprovider/ionoscloud/README.md)
-* [Kamatera](./cloudprovider/kamatera/README.md)
-* [Linode](./cloudprovider/linode/README.md)
-* [Magnum](./cloudprovider/magnum/README.md)
-* [OracleCloud](./cloudprovider/oci/README.md)
 * [OVHcloud](./cloudprovider/ovhcloud/README.md)
-* [Rancher](./cloudprovider/rancher/README.md)
-* [Scaleway](./cloudprovider/scaleway/README.md)
-* [TencentCloud](./cloudprovider/tencentcloud/README.md)
+* [Linode](./cloudprovider/linode/README.md)
+* [OracleCloud](./cloudprovider/oci/README.md)
+* [ClusterAPI](./cloudprovider/clusterapi/README.md)
+* [BizflyCloud](./cloudprovider/bizflycloud/README.md)
 * [Vultr](./cloudprovider/vultr/README.md)
+* [TencentCloud](./cloudprovider/tencentcloud/README.md)
 
 # Releases
 
@@ -168,27 +161,19 @@ Supported cloud providers:
 * GKE https://cloud.google.com/container-engine/docs/cluster-autoscaler
 * AWS https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md
 * Azure https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/azure/README.md
-* AliCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/alicloud/README.md
-* BaiduCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/baiducloud/README.md
-* BizflyCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/bizflycloud/README.md
+* Alibaba Cloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/alicloud/README.md
 * Brightbox https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/brightbox/README.md
 * CherryServers https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/cherryservers/README.md
-* Civo https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/civo/README.md
-* CloudStack https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/cloudstack/README.md
-* ClusterAPI https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/clusterapi/README.md
+* OpenStack Magnum https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/magnum/README.md
 * DigitalOcean https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/digitalocean/README.md
+* CloudStack https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/cloudstack/README.md
 * Exoscale https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/exoscale/README.md
 * Equinix Metal https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/packet/README.md
 * External gRPC https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/externalgrpc/README.md
-* Hetzner https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/hetzner/README.md
-* HuaweiCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/huaweicloud/README.md
-* IonosCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/ionoscloud/README.md
-* Kamatera https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/kamatera/README.md
-* Linode https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/linode/README.md
-* Magnum https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/magnum/README.md
-* OracleCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/oci/README.md
 * OVHcloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/ovhcloud/README.md
-* Rancher https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/rancher/README.md
-* Scaleway https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/scaleway/README.md
-* TencentCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/tencentcloud/README.md
+* Linode https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/linode/README.md
+* OCI https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/oci/README.md
+* Hetzner https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/hetzner/README.md
+* Cluster API https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/clusterapi/README.md
 * Vultr https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/vultr/README.md
+* TencentCloud https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/tencentcloud/README.md

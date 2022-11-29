@@ -40,7 +40,6 @@ type VerticalPodAutoscalerBuilder interface {
 	WithTargetRef(targetRef *autoscaling.CrossVersionObjectReference) VerticalPodAutoscalerBuilder
 	WithUpperBound(cpu, memory string) VerticalPodAutoscalerBuilder
 	WithAnnotations(map[string]string) VerticalPodAutoscalerBuilder
-	WithRecommender(string2 string) VerticalPodAutoscalerBuilder
 	AppendCondition(conditionType vpa_types.VerticalPodAutoscalerConditionType,
 		status core.ConditionStatus, reason, message string, lastTransitionTime time.Time) VerticalPodAutoscalerBuilder
 	AppendRecommendation(vpa_types.RecommendedContainerResources) VerticalPodAutoscalerBuilder
@@ -71,7 +70,6 @@ type verticalPodAutoscalerBuilder struct {
 	annotations             map[string]string
 	targetRef               *autoscaling.CrossVersionObjectReference
 	appendedRecommendations []vpa_types.RecommendedContainerResources
-	recommender             string
 }
 
 func (b *verticalPodAutoscalerBuilder) WithName(vpaName string) VerticalPodAutoscalerBuilder {
@@ -155,12 +153,6 @@ func (b *verticalPodAutoscalerBuilder) WithAnnotations(annotations map[string]st
 	return &c
 }
 
-func (b *verticalPodAutoscalerBuilder) WithRecommender(recommender string) VerticalPodAutoscalerBuilder {
-	c := *b
-	c.recommender = recommender
-	return &c
-}
-
 func (b *verticalPodAutoscalerBuilder) AppendCondition(conditionType vpa_types.VerticalPodAutoscalerConditionType,
 	status core.ConditionStatus, reason, message string, lastTransitionTime time.Time) VerticalPodAutoscalerBuilder {
 	c := *b
@@ -183,10 +175,6 @@ func (b *verticalPodAutoscalerBuilder) Get() *vpa_types.VerticalPodAutoscaler {
 	if b.containerName == "" {
 		panic("Must call WithContainer() before Get()")
 	}
-	var recommenders []*vpa_types.VerticalPodAutoscalerRecommenderSelector
-	if b.recommender != "" {
-		recommenders = []*vpa_types.VerticalPodAutoscalerRecommenderSelector{{Name: b.recommender}}
-	}
 	resourcePolicy := vpa_types.PodResourcePolicy{ContainerPolicies: []vpa_types.ContainerResourcePolicy{{
 		ContainerName:    b.containerName,
 		MinAllowed:       b.minAllowed,
@@ -208,7 +196,6 @@ func (b *verticalPodAutoscalerBuilder) Get() *vpa_types.VerticalPodAutoscaler {
 			UpdatePolicy:   b.updatePolicy,
 			ResourcePolicy: &resourcePolicy,
 			TargetRef:      b.targetRef,
-			Recommenders:   recommenders,
 		},
 		Status: vpa_types.VerticalPodAutoscalerStatus{
 			Recommendation: recommendation,

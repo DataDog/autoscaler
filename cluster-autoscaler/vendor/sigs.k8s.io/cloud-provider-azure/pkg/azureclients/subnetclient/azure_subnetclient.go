@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-02-01/network"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -37,8 +37,6 @@ import (
 )
 
 var _ Interface = &Client{}
-
-const vnetResourceType = "Microsoft.Network/virtualNetworks"
 
 // Client implements Subnet client Interface.
 type Client struct {
@@ -122,7 +120,7 @@ func (c *Client) getSubnet(ctx context.Context, resourceGroupName string, virtua
 	resourceID := armclient.GetChildResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vnetResourceType,
+		"Microsoft.Network/virtualNetworks",
 		virtualNetworkName,
 		"subnets",
 		subnetName,
@@ -185,7 +183,7 @@ func (c *Client) listSubnet(ctx context.Context, resourceGroupName string, virtu
 	resourceID := armclient.GetChildResourcesListID(
 		c.subscriptionID,
 		resourceGroupName,
-		vnetResourceType,
+		"Microsoft.Network/virtualNetworks",
 		virtualNetworkName,
 		"subnets")
 
@@ -260,7 +258,7 @@ func (c *Client) createOrUpdateSubnet(ctx context.Context, resourceGroupName str
 	resourceID := armclient.GetChildResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vnetResourceType,
+		"Microsoft.Network/virtualNetworks",
 		virtualNetworkName,
 		"subnets",
 		subnetName)
@@ -329,12 +327,12 @@ func (c *Client) deleteSubnet(ctx context.Context, resourceGroupName string, vir
 	resourceID := armclient.GetChildResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vnetResourceType,
+		"Microsoft.Network/virtualNetworks",
 		virtualNetworkName,
 		"subnets",
 		subnetName)
 
-	return c.armClient.DeleteResource(ctx, resourceID)
+	return c.armClient.DeleteResource(ctx, resourceID, "")
 }
 
 func (c *Client) listResponder(resp *http.Response) (result network.SubnetListResult, err error) {

@@ -41,7 +41,7 @@ type fakeControllerFetcher struct {
 	err error
 }
 
-func (f *fakeControllerFetcher) FindTopMostWellKnownOrScalable(_ *controllerfetcher.ControllerKeyWithAPIVersion) (*controllerfetcher.ControllerKeyWithAPIVersion, error) {
+func (f *fakeControllerFetcher) FindTopMostWellKnownOrScalable(controller *controllerfetcher.ControllerKeyWithAPIVersion) (*controllerfetcher.ControllerKeyWithAPIVersion, error) {
 	return f.key, f.err
 }
 
@@ -52,8 +52,6 @@ func parseLabelSelector(selector string) labels.Selector {
 }
 
 var (
-	recommenderName                     = "name"
-	empty                               = ""
 	unsupportedConditionTextFromFetcher = "Cannot read targetRef. Reason: targetRef not defined"
 	unsupportedConditionNoExtraText     = "Cannot read targetRef"
 	unsupportedConditionNoTargetRef     = "Cannot read targetRef"
@@ -82,9 +80,6 @@ func TestLoadPods(t *testing.T) {
 		expectedSelector                    labels.Selector
 		expectedConfigUnsupported           *string
 		expectedConfigDeprecated            *string
-		expectedVpaFetch                    bool
-		recommenderName                     *string
-		recommender                         string
 	}
 
 	testCases := []testCase{
@@ -95,7 +90,6 @@ func TestLoadPods(t *testing.T) {
 			expectedSelector:          labels.Nothing(),
 			expectedConfigUnsupported: &unsupportedConditionTextFromFetcher,
 			expectedConfigDeprecated:  nil,
-			expectedVpaFetch:          true,
 		},
 		{
 			name:                      "also no selector but no error",
@@ -104,7 +98,6 @@ func TestLoadPods(t *testing.T) {
 			expectedSelector:          labels.Nothing(),
 			expectedConfigUnsupported: &unsupportedConditionNoExtraText,
 			expectedConfigDeprecated:  nil,
-			expectedVpaFetch:          true,
 		},
 		{
 			name:               "targetRef selector",
@@ -126,7 +119,6 @@ func TestLoadPods(t *testing.T) {
 			expectedSelector:          parseLabelSelector("app = test"),
 			expectedConfigUnsupported: nil,
 			expectedConfigDeprecated:  nil,
-			expectedVpaFetch:          true,
 		},
 		{
 			name:                      "no targetRef",
@@ -135,7 +127,6 @@ func TestLoadPods(t *testing.T) {
 			expectedSelector:          labels.Nothing(),
 			expectedConfigUnsupported: nil,
 			expectedConfigDeprecated:  nil,
-			expectedVpaFetch:          true,
 		},
 		{
 			name:               "can't decide if top-level-ref",
@@ -148,7 +139,6 @@ func TestLoadPods(t *testing.T) {
 				APIVersion: apiVersion,
 			},
 			expectedConfigUnsupported: &unsupportedConditionNoTargetRef,
-			expectedVpaFetch:          true,
 		},
 		{
 			name:               "non-top-level targetRef",
@@ -169,7 +159,6 @@ func TestLoadPods(t *testing.T) {
 				ApiVersion: apiVersion,
 			},
 			expectedConfigUnsupported: &unsupportedTargetRefHasParent,
-			expectedVpaFetch:          true,
 		},
 		{
 			name:               "error checking if top-level-ref",
@@ -182,7 +171,6 @@ func TestLoadPods(t *testing.T) {
 				APIVersion: "taxonomy",
 			},
 			expectedConfigUnsupported:           &unsupportedConditionMudaMudaMuda,
-			expectedVpaFetch:                    true,
 			findTopMostWellKnownOrScalableError: fmt.Errorf("muda muda muda"),
 		},
 		{
@@ -204,78 +192,6 @@ func TestLoadPods(t *testing.T) {
 				ApiVersion: apiVersion,
 			},
 			expectedConfigUnsupported: nil,
-			expectedVpaFetch:          true,
-		},
-		{
-			name:               "no recommenderName",
-			selector:           parseLabelSelector("app = test"),
-			fetchSelectorError: nil,
-			targetRef: &autoscalingv1.CrossVersionObjectReference{
-				Kind:       kind,
-				Name:       name1,
-				APIVersion: apiVersion,
-			},
-			topMostWellKnownOrScalableKey: &controllerfetcher.ControllerKeyWithAPIVersion{
-				ControllerKey: controllerfetcher.ControllerKey{
-					Kind:      kind,
-					Name:      name1,
-					Namespace: namespace,
-				},
-				ApiVersion: apiVersion,
-			},
-			expectedSelector:          parseLabelSelector("app = test"),
-			expectedConfigUnsupported: nil,
-			expectedConfigDeprecated:  nil,
-			expectedVpaFetch:          false,
-			recommenderName:           &empty,
-		},
-		{
-			name:               "recommenderName doesn't match recommender",
-			selector:           parseLabelSelector("app = test"),
-			fetchSelectorError: nil,
-			targetRef: &autoscalingv1.CrossVersionObjectReference{
-				Kind:       kind,
-				Name:       name1,
-				APIVersion: apiVersion,
-			},
-			topMostWellKnownOrScalableKey: &controllerfetcher.ControllerKeyWithAPIVersion{
-				ControllerKey: controllerfetcher.ControllerKey{
-					Kind:      kind,
-					Name:      name1,
-					Namespace: namespace,
-				},
-				ApiVersion: apiVersion,
-			},
-			expectedSelector:          parseLabelSelector("app = test"),
-			expectedConfigUnsupported: nil,
-			expectedConfigDeprecated:  nil,
-			expectedVpaFetch:          false,
-			recommenderName:           &recommenderName,
-			recommender:               "other",
-		},
-		{
-			name:               "recommenderName matches recommender",
-			selector:           parseLabelSelector("app = test"),
-			fetchSelectorError: nil,
-			targetRef: &autoscalingv1.CrossVersionObjectReference{
-				Kind:       kind,
-				Name:       name1,
-				APIVersion: apiVersion,
-			},
-			topMostWellKnownOrScalableKey: &controllerfetcher.ControllerKeyWithAPIVersion{
-				ControllerKey: controllerfetcher.ControllerKey{
-					Kind:      kind,
-					Name:      name1,
-					Namespace: namespace,
-				},
-				ApiVersion: apiVersion,
-			},
-			expectedSelector:          parseLabelSelector("app = test"),
-			expectedConfigUnsupported: nil,
-			expectedConfigDeprecated:  nil,
-			expectedVpaFetch:          true,
-			recommenderName:           &recommenderName,
-			recommender:               recommenderName,
 		},
 	}
 
@@ -285,11 +201,7 @@ func TestLoadPods(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			vpaBuilder := test.VerticalPodAutoscaler().WithName("testVpa").WithContainer("container").WithNamespace("testNamespace").WithTargetRef(tc.targetRef)
-			if tc.recommender != "" {
-				vpaBuilder = vpaBuilder.WithRecommender(tc.recommender)
-			}
-			vpa := vpaBuilder.Get()
+			vpa := test.VerticalPodAutoscaler().WithName("testVpa").WithContainer("container").WithNamespace("testNamespace").WithTargetRef(tc.targetRef).Get()
 			vpaLister := &test.VerticalPodAutoscalerListerMock{}
 			vpaLister.On("List").Return([]*vpa_types.VerticalPodAutoscaler{vpa}, nil)
 
@@ -305,15 +217,8 @@ func TestLoadPods(t *testing.T) {
 					err: tc.findTopMostWellKnownOrScalableError,
 				},
 			}
-			if tc.recommenderName == nil {
-				clusterStateFeeder.recommenderName = DefaultRecommenderName
-			} else {
-				clusterStateFeeder.recommenderName = *tc.recommenderName
-			}
 
-			if tc.expectedVpaFetch {
-				targetSelectorFetcher.EXPECT().Fetch(vpa).Return(tc.selector, tc.fetchSelectorError)
-			}
+			targetSelectorFetcher.EXPECT().Fetch(vpa).Return(tc.selector, tc.fetchSelectorError)
 			clusterStateFeeder.LoadVPAs()
 
 			vpaID := model.VpaID{
@@ -321,10 +226,6 @@ func TestLoadPods(t *testing.T) {
 				VpaName:   vpa.Name,
 			}
 
-			if !tc.expectedVpaFetch {
-				assert.NotContains(t, clusterState.Vpas, vpaID)
-				return
-			}
 			assert.Contains(t, clusterState.Vpas, vpaID)
 			storedVpa := clusterState.Vpas[vpaID]
 			if tc.expectedSelector != nil {

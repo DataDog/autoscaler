@@ -18,6 +18,7 @@ package vmssvmclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -38,11 +39,6 @@ import (
 )
 
 var _ Interface = &Client{}
-
-const (
-	vmssResourceType = "Microsoft.Compute/virtualMachineScaleSets"
-	vmResourceType   = "virtualMachines"
-)
 
 // Client implements VMSS client Interface.
 type Client struct {
@@ -126,9 +122,9 @@ func (c *Client) getVMSSVM(ctx context.Context, resourceGroupName string, VMScal
 	resourceID := armclient.GetChildResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		VMScaleSetName,
-		vmResourceType,
+		"virtualMachines",
 		instanceID,
 	)
 	result := compute.VirtualMachineScaleSetVM{}
@@ -186,12 +182,10 @@ func (c *Client) List(ctx context.Context, resourceGroupName string, virtualMach
 
 // listVMSSVM gets a list of VirtualMachineScaleSetVMs in the virtualMachineScaleSet.
 func (c *Client) listVMSSVM(ctx context.Context, resourceGroupName string, virtualMachineScaleSetName string, expand string) ([]compute.VirtualMachineScaleSetVM, *retry.Error) {
-	resourceID := armclient.GetChildResourcesListID(
-		c.subscriptionID,
-		resourceGroupName,
-		vmssResourceType,
-		virtualMachineScaleSetName,
-		vmResourceType,
+	resourceID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets/%s/virtualMachines",
+		autorest.Encode("path", c.subscriptionID),
+		autorest.Encode("path", resourceGroupName),
+		autorest.Encode("path", virtualMachineScaleSetName),
 	)
 
 	result := make([]compute.VirtualMachineScaleSetVM, 0)
@@ -280,9 +274,9 @@ func (c *Client) UpdateAsync(ctx context.Context, resourceGroupName string, VMSc
 	resourceID := armclient.GetChildResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		VMScaleSetName,
-		vmResourceType,
+		"virtualMachines",
 		instanceID,
 	)
 
@@ -321,9 +315,9 @@ func (c *Client) updateVMSSVM(ctx context.Context, resourceGroupName string, VMS
 	resourceID := armclient.GetChildResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		VMScaleSetName,
-		vmResourceType,
+		"virtualMachines",
 		instanceID,
 	)
 
@@ -485,9 +479,9 @@ func (c *Client) updateVMSSVMs(ctx context.Context, resourceGroupName string, VM
 		resourceID := armclient.GetChildResourceID(
 			c.subscriptionID,
 			resourceGroupName,
-			vmssResourceType,
+			"Microsoft.Compute/virtualMachineScaleSets",
 			VMScaleSetName,
-			vmResourceType,
+			"virtualMachines",
 			instanceID,
 		)
 		resources[resourceID] = parameter

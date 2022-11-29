@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+//
 type ServerLimits struct {
 	// 镜像元数据最大的长度。
 

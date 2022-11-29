@@ -44,18 +44,6 @@ type GceTemplateBuilder struct{}
 // (cf. https://cloud.google.com/compute/docs/disks/local-ssd)
 const LocalSSDDiskSizeInGiB = 375
 
-// These annotations are used internally only to store information in node temlate and use it later in CA, the actuall nodes won't have these annotations.
-const (
-	// LocalSsdCountAnnotation is the annotation for number of attached local SSDs to the node.
-	LocalSsdCountAnnotation = "cluster-autoscaler/gce/local-ssd-count"
-	// BootDiskTypeAnnotation is the annotation for boot disk type of the node.
-	BootDiskTypeAnnotation = "cluster-autoscaler/gce/boot-disk-type"
-	// BootDiskSizeAnnotation is the annotation for boot disk sise of the node/
-	BootDiskSizeAnnotation = "cluster-autoscaler/gce/boot-disk-size"
-	// EphemeralStorageLocalSsdAnnotation is the annotation for nodes where ephemeral storage is backed up by local SSDs.
-	EphemeralStorageLocalSsdAnnotation = "cluster-autoscaler/gce/ephemeral-storage-local-ssd"
-)
-
 // TODO: This should be imported from sigs.k8s.io/gcp-compute-persistent-disk-csi-driver/pkg/common/constants.go
 // This key is applicable to both GCE and GKE
 const gceCSITopologyKeyZone = "topology.gke.io/zone"
@@ -72,7 +60,7 @@ func (t *GceTemplateBuilder) getAcceleratorCount(accelerators []*gce.Accelerator
 
 // BuildCapacity builds a list of resource capacities given list of hardware.
 func (t *GceTemplateBuilder) BuildCapacity(cpu int64, mem int64, accelerators []*gce.AcceleratorConfig, os OperatingSystem, osDistribution OperatingSystemDistribution, arch SystemArchitecture,
-	ephemeralStorage int64, ephemeralStorageLocalSSDCount int64, pods *int64, version string, r OsReservedCalculator, extendedResources apiv1.ResourceList) (apiv1.ResourceList, error) {
+	ephemeralStorage int64, ephemeralStorageLocalSSDCount int64, pods *int64, version string, r OsReservedCalculator) (apiv1.ResourceList, error) {
 	capacity := apiv1.ResourceList{}
 	if pods == nil {
 		capacity[apiv1.ResourcePods] = *resource.NewQuantity(110, resource.DecimalSI)
@@ -96,10 +84,6 @@ func (t *GceTemplateBuilder) BuildCapacity(cpu int64, mem int64, accelerators []
 			storageTotal = ephemeralStorage - r.CalculateOSReservedEphemeralStorage(ephemeralStorage, os, osDistribution, arch, version)
 		}
 		capacity[apiv1.ResourceEphemeralStorage] = *resource.NewQuantity(int64(math.Max(float64(storageTotal), 0)), resource.DecimalSI)
-	}
-
-	for resourceName, quantity := range extendedResources {
-		capacity[resourceName] = quantity
 	}
 
 	return capacity, nil
@@ -191,45 +175,26 @@ func (t *GceTemplateBuilder) BuildNodeFromTemplate(mig Mig, template *gce.Instan
 	if osDistribution == OperatingSystemDistributionUnknown {
 		return nil, fmt.Errorf("could not obtain os-distribution from kube-env from template metadata")
 	}
-	arch, err := extractSystemArchitectureFromKubeEnv(kubeEnvValue)
-	if err != nil {
-		arch = DefaultArch
-		klog.Errorf("Couldn't extract architecture from kube-env for MIG %q, falling back to %q. Error: %v", mig.Id(), arch, err)
+	arch := extractSystemArchitectureFromKubeEnv(kubeEnvValue)
+	if arch == UnknownArch {
+		return nil, fmt.Errorf("could not obtain arch from kube-env from template metadata")
 	}
 
-	addBootDiskAnnotations(&node, template.Properties)
 	var ephemeralStorage int64 = -1
-	if !isBootDiskEphemeralStorageWithInstanceTemplateDisabled(kubeEnvValue) {
-		// ephemeral storage is backed up by boot disk
+	ssdCount := ephemeralStorageLocalSSDCount(kubeEnvValue)
+	if ssdCount > 0 {
+		ephemeralStorage, err = getLocalSSDEphemeralStorageFromInstanceTemplateProperties(template.Properties, ssdCount)
+	} else if !isBootDiskEphemeralStorageWithInstanceTemplateDisabled(kubeEnvValue) {
 		ephemeralStorage, err = getBootDiskEphemeralStorageFromInstanceTemplateProperties(template.Properties)
-	} else {
-		// ephemeral storage is backed up by local ssd
-		addAnnotation(&node, EphemeralStorageLocalSsdAnnotation, strconv.FormatBool(true))
-	}
-
-	localSsdCount, err := getLocalSsdCount(template.Properties)
-	if localSsdCount > 0 {
-		addAnnotation(&node, LocalSsdCountAnnotation, strconv.FormatInt(localSsdCount, 10))
-	}
-	ephemeralStorageLocalSsdCount := ephemeralStorageLocalSSDCount(kubeEnvValue)
-	if err == nil && ephemeralStorageLocalSsdCount > 0 {
-		ephemeralStorage, err = getEphemeralStorageOnLocalSsd(localSsdCount, ephemeralStorageLocalSsdCount)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("could not fetch ephemeral storage from instance template: %v", err)
 	}
 
-	extendedResources, err := extractExtendedResourcesFromKubeEnv(kubeEnvValue)
-	if err != nil {
-		// External Resources are optional and should not break the template creation
-		klog.Errorf("could not fetch extended resources from instance template: %v", err)
-	}
-
-	capacity, err := t.BuildCapacity(cpu, mem, template.Properties.GuestAccelerators, os, osDistribution, arch, ephemeralStorage, ephemeralStorageLocalSsdCount, pods, mig.Version(), reserved, extendedResources)
+	capacity, err := t.BuildCapacity(cpu, mem, template.Properties.GuestAccelerators, os, osDistribution, arch, ephemeralStorage, ssdCount, pods, mig.Version(), reserved)
 	if err != nil {
 		return nil, err
 	}
-
 	node.Status = apiv1.NodeStatus{
 		Capacity: capacity,
 	}
@@ -300,10 +265,11 @@ func ephemeralStorageLocalSSDCount(kubeEnvValue string) int64 {
 	return int64(n)
 }
 
-func getLocalSsdCount(instanceProperties *gce.InstanceProperties) (int64, error) {
+func getLocalSSDEphemeralStorageFromInstanceTemplateProperties(instanceProperties *gce.InstanceProperties, ssdCount int64) (ephemeralStorage int64, err error) {
 	if instanceProperties.Disks == nil {
 		return 0, fmt.Errorf("instance properties disks is nil")
 	}
+
 	var count int64
 	for _, disk := range instanceProperties.Disks {
 		if disk != nil && disk.InitializeParams != nil {
@@ -312,14 +278,12 @@ func getLocalSsdCount(instanceProperties *gce.InstanceProperties) (int64, error)
 			}
 		}
 	}
-	return count, nil
-}
 
-func getEphemeralStorageOnLocalSsd(localSsdCount, ephemeralStorageLocalSsdCount int64) (int64, error) {
-	if localSsdCount < ephemeralStorageLocalSsdCount {
+	if count < ssdCount {
 		return 0, fmt.Errorf("actual local SSD count is lower than ephemeral_storage_local_ssd_count")
 	}
-	return ephemeralStorageLocalSsdCount * LocalSSDDiskSizeInGiB * units.GiB, nil
+
+	return ssdCount * LocalSSDDiskSizeInGiB * units.GiB, nil
 }
 
 // isBootDiskEphemeralStorageWithInstanceTemplateDisabled will allow bypassing Disk Size of Boot Disk from being
@@ -473,33 +437,6 @@ func extractKubeReservedFromKubeEnv(kubeEnv string) (string, error) {
 	return kubeReserved, nil
 }
 
-func extractExtendedResourcesFromKubeEnv(kubeEnvValue string) (apiv1.ResourceList, error) {
-	extendedResourcesAsString, found, err := extractAutoscalerVarFromKubeEnv(kubeEnvValue, "extended_resources")
-	if err != nil {
-		klog.Warning("error while obtaining extended_resources from AUTOSCALER_ENV_VARS; %v", err)
-		return nil, err
-	}
-
-	if !found {
-		return apiv1.ResourceList{}, nil
-	}
-
-	extendedResourcesMap, err := parseKeyValueListToMap(extendedResourcesAsString)
-	if err != nil {
-		return apiv1.ResourceList{}, err
-	}
-
-	extendedResources := apiv1.ResourceList{}
-	for name, quantity := range extendedResourcesMap {
-		if q, err := resource.ParseQuantity(quantity); err == nil && q.Sign() >= 0 {
-			extendedResources[apiv1.ResourceName(name)] = q
-		} else if err != nil {
-			klog.Warning("ignoring invalid value in extended_resources defined in AUTOSCALER_ENV_VARS; %v", err)
-		}
-	}
-	return extendedResources, nil
-}
-
 // OperatingSystem denotes operating system used by nodes coming from node group
 type OperatingSystem string
 
@@ -618,23 +555,20 @@ func (s SystemArchitecture) Name() string {
 	return string(s)
 }
 
-func extractSystemArchitectureFromKubeEnv(kubeEnv string) (SystemArchitecture, error) {
-	archName, found, err := extractAutoscalerVarFromKubeEnv(kubeEnv, "arch")
+func extractSystemArchitectureFromKubeEnv(kubeEnv string) SystemArchitecture {
+	arch, found, err := extractAutoscalerVarFromKubeEnv(kubeEnv, "arch")
 	if err != nil {
-		return UnknownArch, fmt.Errorf("error while obtaining arch from AUTOSCALER_ENV_VARS: %v", err)
+		klog.Errorf("error while obtaining arch from AUTOSCALER_ENV_VARS; using default %v", err)
+		return UnknownArch
 	}
 	if !found {
-		return UnknownArch, fmt.Errorf("no arch defined in AUTOSCALER_ENV_VARS")
+		klog.V(4).Infof("no arch defined in AUTOSCALER_ENV_VARS; using default %v", err)
+		return DefaultArch
 	}
-	arch := ToSystemArchitecture(archName)
-	if arch == UnknownArch {
-		return UnknownArch, fmt.Errorf("unknown arch %q defined in AUTOSCALER_ENV_VARS", archName)
-	}
-	return arch, nil
+	return ToSystemArchitecture(arch)
 }
 
-// ToSystemArchitecture parses a string to SystemArchitecture. Returns UnknownArch if the string doesn't represent a
-// valid architecture.
+// ToSystemArchitecture parses a string to SystemArchitecture
 func ToSystemArchitecture(arch string) SystemArchitecture {
 	switch arch {
 	case string(Arm64):
@@ -806,25 +740,4 @@ func buildTaints(kubeEnvTaints map[string]string) ([]apiv1.Taint, error) {
 		})
 	}
 	return taints, nil
-}
-
-func addAnnotation(node *apiv1.Node, key, value string) {
-	if node.Annotations == nil {
-		node.Annotations = make(map[string]string)
-	}
-	node.Annotations[key] = value
-}
-
-func addBootDiskAnnotations(node *apiv1.Node, instanceProperties *gce.InstanceProperties) {
-	if instanceProperties.Disks == nil {
-		return
-	}
-	for _, disk := range instanceProperties.Disks {
-		if disk != nil && disk.InitializeParams != nil {
-			if disk.Boot {
-				addAnnotation(node, BootDiskSizeAnnotation, strconv.FormatInt(disk.InitializeParams.DiskSizeGb, 10))
-				addAnnotation(node, BootDiskTypeAnnotation, disk.InitializeParams.DiskType)
-			}
-		}
-	}
 }

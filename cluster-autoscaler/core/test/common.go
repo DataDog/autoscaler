@@ -46,8 +46,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodeinfosprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/nodes"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/status"
-	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
-	"k8s.io/autoscaler/cluster-autoscaler/simulator/predicatechecker"
+	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/labels"
@@ -133,9 +132,9 @@ func ExtractPodNames(pods []*apiv1.Pod) []string {
 }
 
 // NewTestProcessors returns a set of simple processors for use in tests.
-func NewTestProcessors(context *context.AutoscalingContext) *processors.AutoscalingProcessors {
+func NewTestProcessors() *processors.AutoscalingProcessors {
 	return &processors.AutoscalingProcessors{
-		PodListProcessor:       filteroutschedulable.NewFilterOutSchedulablePodListProcessor(context.PredicateChecker),
+		PodListProcessor:       filteroutschedulable.NewFilterOutSchedulablePodListProcessor(),
 		NodeGroupListProcessor: &nodegroups.NoOpNodeGroupListProcessor{},
 		NodeGroupSetProcessor:  nodegroupset.NewDefaultNodeGroupSetProcessor([]string{}),
 		ScaleDownSetProcessor:  nodes.NewPostFilteringScaleDownNodeProcessor(),
@@ -166,15 +165,15 @@ func NewScaleTestAutoscalingContext(
 	}
 	// Ignoring error here is safe - if a test doesn't specify valid estimatorName,
 	// it either doesn't need one, or should fail when it turns out to be nil.
-	estimatorBuilder, _ := estimator.NewEstimatorBuilder(options.EstimatorName, estimator.NewThresholdBasedEstimationLimiter(0, 0))
-	predicateChecker, err := predicatechecker.NewTestPredicateChecker()
+	estimatorBuilder, _ := estimator.NewEstimatorBuilder(options.EstimatorName)
+	predicateChecker, err := simulator.NewTestPredicateChecker()
 	if err != nil {
 		return context.AutoscalingContext{}, err
 	}
 	if debuggingSnapshotter == nil {
 		debuggingSnapshotter = debuggingsnapshot.NewDebuggingSnapshotter(false)
 	}
-	clusterSnapshot := clustersnapshot.NewBasicClusterSnapshot()
+	clusterSnapshot := simulator.NewBasicClusterSnapshot()
 	return context.AutoscalingContext{
 		AutoscalingOptions: options,
 		AutoscalingKubeClients: context.AutoscalingKubeClients{

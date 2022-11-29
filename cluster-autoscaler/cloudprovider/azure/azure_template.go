@@ -18,6 +18,7 @@ package azure
 
 import (
 	"fmt"
+	compute20190701 "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -72,7 +73,8 @@ func buildGenericLabels(template compute.VirtualMachineScaleSet, nodeName string
 	return result
 }
 
-func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineScaleSet, manager *AzureManager) (*apiv1.Node, error) {
+func buildNodeFromTemplate(scaleSetName string,
+	template compute.VirtualMachineScaleSet, skuClient compute20190701.ResourceSkusClient, enableDynamicInstanceList bool) (*apiv1.Node, error) {
 	node := apiv1.Node{}
 	nodeName := fmt.Sprintf("%s-asg-%d", scaleSetName, rand.Int63())
 
@@ -90,10 +92,10 @@ func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineS
 
 	// Fetching SKU information from SKU API if enableDynamicInstanceList is true.
 	var dynamicErr error
-	if manager.config.EnableDynamicInstanceList {
+	if enableDynamicInstanceList {
 		var vmssTypeDynamic InstanceType
 		klog.V(1).Infof("Fetching instance information for SKU: %s from SKU API", *template.Sku.Name)
-		vmssTypeDynamic, dynamicErr = GetVMSSTypeDynamically(template, manager.azureCache)
+		vmssTypeDynamic, dynamicErr = GetVMSSTypeDynamically(template, skuClient)
 		if dynamicErr == nil {
 			vcpu = vmssTypeDynamic.VCPU
 			gpuCount = vmssTypeDynamic.GPU
@@ -102,7 +104,7 @@ func buildNodeFromTemplate(scaleSetName string, template compute.VirtualMachineS
 			klog.Errorf("Dynamically fetching of instance information from SKU api failed with error: %v", dynamicErr)
 		}
 	}
-	if !manager.config.EnableDynamicInstanceList || dynamicErr != nil {
+	if !enableDynamicInstanceList || dynamicErr != nil {
 		klog.V(1).Infof("Falling back to static SKU list for SKU: %s", *template.Sku.Name)
 		// fall-back on static list of vmss if dynamic workflow fails.
 		vmssTypeStatic, staticErr := GetVMSSTypeStatically(template)
@@ -166,7 +168,6 @@ func extractLabelsFromScaleSet(tags map[string]*string) map[string]string {
 		splits := strings.Split(tagName, nodeLabelTagName)
 		if len(splits) > 1 {
 			label := strings.Replace(splits[1], "_", "/", -1)
-			label = strings.Replace(label, "~2", "_", -1)
 			if label != "" {
 				result[label] = *tagValue
 			}
@@ -189,7 +190,6 @@ func extractTaintsFromScaleSet(tags map[string]*string) []apiv1.Taint {
 				values := strings.SplitN(*tagValue, ":", 2)
 				if len(values) > 1 {
 					taintKey := strings.Replace(splits[1], "_", "/", -1)
-					taintKey = strings.Replace(taintKey, "~2", "_", -1)
 					taints = append(taints, apiv1.Taint{
 						Key:    taintKey,
 						Value:  values[0],
@@ -260,7 +260,6 @@ func extractAllocatableResourcesFromScaleSet(tags map[string]*string) map[string
 		}
 
 		normalizedResourceName := strings.Replace(resourceName[1], "_", "/", -1)
-		normalizedResourceName = strings.Replace(normalizedResourceName, "~2", "/", -1)
 		quantity, err := resource.ParseQuantity(*tagValue)
 		if err != nil {
 			continue

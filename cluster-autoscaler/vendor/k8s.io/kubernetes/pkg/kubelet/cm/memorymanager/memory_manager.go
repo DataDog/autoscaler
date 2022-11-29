@@ -43,7 +43,7 @@ const memoryManagerStateFileName = "memory_manager_state"
 type ActivePodsFunc func() []*v1.Pod
 
 type runtimeService interface {
-	UpdateContainerResources(id string, resources *runtimeapi.ContainerResources) error
+	UpdateContainerResources(id string, resources *runtimeapi.LinuxContainerResources) error
 }
 
 type sourcesReadyStub struct{}
@@ -339,13 +339,6 @@ func (m *manager) removeStaleState() {
 			}
 		}
 	}
-
-	m.containerMap.Visit(func(podUID, containerName, containerID string) {
-		if _, ok := activeContainers[podUID][containerName]; !ok {
-			klog.InfoS("RemoveStaleState removing state", "podUID", podUID, "containerName", containerName)
-			m.policyRemoveContainerByRef(podUID, containerName)
-		}
-	})
 }
 
 func (m *manager) policyRemoveContainerByRef(podUID string, containerName string) {

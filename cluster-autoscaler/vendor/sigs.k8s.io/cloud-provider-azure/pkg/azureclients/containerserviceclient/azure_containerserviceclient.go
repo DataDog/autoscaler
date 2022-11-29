@@ -18,6 +18,7 @@ package containerserviceclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -36,8 +37,6 @@ import (
 )
 
 var _ Interface = &Client{}
-
-const managedClusterResourceType = "Microsoft.ContainerService/managedClusters"
 
 // Client implements ContainerService client Interface.
 type Client struct {
@@ -122,7 +121,7 @@ func (c *Client) getManagedCluster(ctx context.Context, resourceGroupName string
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		managedClusterResourceType,
+		"Microsoft.ContainerService/managedClusters",
 		managedClusterName,
 	)
 	result := containerservice.ManagedCluster{}
@@ -180,7 +179,9 @@ func (c *Client) List(ctx context.Context, resourceGroupName string) ([]containe
 
 // listManagedCluster gets a list of ManagedClusters in the resource group.
 func (c *Client) listManagedCluster(ctx context.Context, resourceGroupName string) ([]containerservice.ManagedCluster, *retry.Error) {
-	resourceID := armclient.GetResourceListID(c.subscriptionID, resourceGroupName, managedClusterResourceType)
+	resourceID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters",
+		autorest.Encode("path", c.subscriptionID),
+		autorest.Encode("path", resourceGroupName))
 	result := make([]containerservice.ManagedCluster, 0)
 	page := &ManagedClusterResultPage{}
 	page.fn = c.listNextResults
@@ -342,15 +343,18 @@ func (c *Client) createOrUpdateManagedCluster(ctx context.Context, resourceGroup
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		managedClusterResourceType,
+		"Microsoft.ContainerService/managedClusters",
 		managedClusterName,
 	)
-	decorators := []autorest.PrepareDecorator{}
+	decorators := []autorest.PrepareDecorator{
+		autorest.WithPathParameters("{resourceID}", map[string]interface{}{"resourceID": resourceID}),
+		autorest.WithJSON(parameters),
+	}
 	if etag != "" {
 		decorators = append(decorators, autorest.WithHeader("If-Match", autorest.String(etag)))
 	}
 
-	response, rerr := c.armClient.PutResource(ctx, resourceID, parameters, decorators...)
+	response, rerr := c.armClient.PutResourceWithDecorators(ctx, resourceID, parameters, decorators)
 	defer c.armClient.CloseResponse(ctx, response)
 	if rerr != nil {
 		klog.V(5).Infof("Received error in %s: resourceID: %s, error: %s", "managedCluster.put.request", resourceID, rerr.Error())
@@ -414,9 +418,9 @@ func (c *Client) deleteManagedCluster(ctx context.Context, resourceGroupName str
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		managedClusterResourceType,
+		"Microsoft.ContainerService/managedClusters",
 		managedClusterName,
 	)
 
-	return c.armClient.DeleteResource(ctx, resourceID)
+	return c.armClient.DeleteResource(ctx, resourceID, "")
 }

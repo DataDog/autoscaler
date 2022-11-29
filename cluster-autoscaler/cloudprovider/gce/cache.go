@@ -28,8 +28,13 @@ import (
 
 // MachineTypeKey is used to identify MachineType.
 type MachineTypeKey struct {
-	Zone            string
-	MachineTypeName string
+	Zone        string
+	MachineType string
+}
+
+type machinesCacheValue struct {
+	machineType *gce.MachineType
+	err         error
 }
 
 // GceCache is used for caching cluster resources state.
@@ -61,7 +66,7 @@ type GceCache struct {
 	instancesFromUnknownMig   map[GceRef]bool
 	resourceLimiter           *cloudprovider.ResourceLimiter
 	autoscalingOptionsCache   map[GceRef]map[string]string
-	machinesCache             map[MachineTypeKey]MachineType
+	machinesCache             map[MachineTypeKey]machinesCacheValue
 	migTargetSizeCache        map[GceRef]int64
 	migBaseNameCache          map[GceRef]string
 	instanceTemplateNameCache map[GceRef]string
@@ -76,7 +81,7 @@ func NewGceCache() *GceCache {
 		instancesToMig:            map[GceRef]GceRef{},
 		instancesFromUnknownMig:   map[GceRef]bool{},
 		autoscalingOptionsCache:   map[GceRef]map[string]string{},
-		machinesCache:             map[MachineTypeKey]MachineType{},
+		machinesCache:             map[MachineTypeKey]machinesCacheValue{},
 		migTargetSizeCache:        map[GceRef]int64{},
 		migBaseNameCache:          map[GceRef]string{},
 		instanceTemplateNameCache: map[GceRef]string{},
@@ -391,40 +396,46 @@ func (gc *GceCache) InvalidateAllMigInstanceTemplates() {
 	gc.instanceTemplatesCache = map[GceRef]*gce.InstanceTemplate{}
 }
 
-// GetMachine retrieves machine type from cache under lock.
-func (gc *GceCache) GetMachine(machineTypeName string, zone string) (MachineType, bool) {
+// GetMachineFromCache retrieves machine type from cache under lock.
+func (gc *GceCache) GetMachineFromCache(machineType string, zone string) (*gce.MachineType, error) {
 	gc.cacheMutex.Lock()
 	defer gc.cacheMutex.Unlock()
 
-	m, found := gc.machinesCache[MachineTypeKey{zone, machineTypeName}]
-	return m, found
-}
-
-// AddMachine adds machine to cache under lock.
-func (gc *GceCache) AddMachine(machineType MachineType, zone string) {
-	gc.cacheMutex.Lock()
-	defer gc.cacheMutex.Unlock()
-
-	gc.machinesCache[MachineTypeKey{zone, machineType.Name}] = machineType
-}
-
-// SetMachines sets the machines cache under lock.
-func (gc *GceCache) SetMachines(machinesCache map[MachineTypeKey]MachineType) {
-	gc.cacheMutex.Lock()
-	defer gc.cacheMutex.Unlock()
-
-	gc.machinesCache = map[MachineTypeKey]MachineType{}
-	for k, v := range machinesCache {
-		gc.machinesCache[k] = v
+	cv, ok := gc.machinesCache[MachineTypeKey{zone, machineType}]
+	if !ok {
+		return nil, nil
 	}
+	if cv.err != nil {
+		return nil, cv.err
+	}
+	return cv.machineType, nil
 }
 
-// InvalidateAllMachines invalidates the machines cache under lock.
-func (gc *GceCache) InvalidateAllMachines() {
+// AddMachineToCache adds machine to cache under lock.
+func (gc *GceCache) AddMachineToCache(machineType string, zone string, machine *gce.MachineType) {
 	gc.cacheMutex.Lock()
 	defer gc.cacheMutex.Unlock()
 
-	gc.machinesCache = map[MachineTypeKey]MachineType{}
+	gc.machinesCache[MachineTypeKey{zone, machineType}] = machinesCacheValue{machineType: machine}
+}
+
+// AddMachineToCacheWithError adds machine to cache under lock.
+func (gc *GceCache) AddMachineToCacheWithError(machineType string, zone string, err error) {
+	gc.cacheMutex.Lock()
+	defer gc.cacheMutex.Unlock()
+
+	gc.machinesCache[MachineTypeKey{zone, machineType}] = machinesCacheValue{err: err}
+}
+
+// SetMachinesCache sets the machines cache under lock.
+func (gc *GceCache) SetMachinesCache(machinesCache map[MachineTypeKey]*gce.MachineType) {
+	gc.cacheMutex.Lock()
+	defer gc.cacheMutex.Unlock()
+
+	gc.machinesCache = map[MachineTypeKey]machinesCacheValue{}
+	for k, v := range machinesCache {
+		gc.machinesCache[k] = machinesCacheValue{machineType: v}
+	}
 }
 
 // SetMigBasename sets basename for given mig in cache

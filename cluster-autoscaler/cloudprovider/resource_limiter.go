@@ -17,10 +17,10 @@ limitations under the License.
 package cloudprovider
 
 import (
+	"bytes"
 	"fmt"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"math"
-	"strings"
 )
 
 // ResourceLimiter contains limits (max, min) for resources (cores, memory etc.).
@@ -82,9 +82,12 @@ func (r *ResourceLimiter) HasMaxLimitSet(resourceName string) bool {
 }
 
 func (r *ResourceLimiter) String() string {
-	var resourceDetails = []string{}
+	var buffer bytes.Buffer
 	for _, name := range r.GetResources() {
-		resourceDetails = append(resourceDetails, fmt.Sprintf("{%s : %d - %d}", name, r.GetMin(name), r.GetMax(name)))
+		if buffer.Len() > 0 {
+			buffer.WriteString(", ")
+		}
+		buffer.WriteString(fmt.Sprintf("{%s : %d - %d}", name, r.GetMin(name), r.GetMax(name)))
 	}
-	return strings.Join(resourceDetails, ", ")
+	return buffer.String()
 }

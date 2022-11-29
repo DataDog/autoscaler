@@ -1,8 +1,8 @@
 approvers:
+- aleksandra-malinowska
 - feiskyer
 - towca
 reviewers:
+- aleksandra-malinowska
 - feiskyer
-- x13n
-emeritus_approvers:
-- aleksandra-malinowska # 2022-09-30
+- Jeffwan

@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+//
 type SubJob struct {
 	// Job的状态。  - SUCCESS：成功。  - RUNNING：运行中。  - FAIL：失败。  - INIT：正在初始化。
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+//
 type BatchStartServersOption struct {
 	// 云服务器ID列表
 

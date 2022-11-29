@@ -1,9 +1,10 @@
 approvers:
+- aleksandra-malinowska
+- losipiuk
 - maciekpytel
 - mwielgus
 reviewers:
+- aleksandra-malinowska
+- losipiuk
 - maciekpytel
 - mwielgus
-emeritus_approvers:
-- aleksandra-malinowska # 2022-09-30
-- losipiuk # 2022-09-30

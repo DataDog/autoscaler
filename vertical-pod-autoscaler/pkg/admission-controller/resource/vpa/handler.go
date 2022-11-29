@@ -85,7 +85,7 @@ func (h *resourceHandler) GetPatches(ar *v1.AdmissionRequest) ([]resource.PatchR
 		return nil, err
 	}
 
-	err = ValidateVPA(vpa, isCreate)
+	err = validateVPA(vpa, isCreate)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +111,7 @@ func parseVPA(raw []byte) (*vpa_types.VerticalPodAutoscaler, error) {
 	return &vpa, nil
 }
 
-// ValidateVPA checks the correctness of VPA Spec and returns an error if there is a problem.
-func ValidateVPA(vpa *vpa_types.VerticalPodAutoscaler, isCreate bool) error {
+func validateVPA(vpa *vpa_types.VerticalPodAutoscaler, isCreate bool) error {
 	if vpa.Spec.UpdatePolicy != nil {
 		mode := vpa.Spec.UpdatePolicy.UpdateMode
 		if mode == nil {

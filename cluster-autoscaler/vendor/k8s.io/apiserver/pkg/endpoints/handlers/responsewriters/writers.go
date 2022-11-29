@@ -36,6 +36,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/handlers/negotiation"
 	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/endpoints/request"
+	endpointsrequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/util/flushwriter"
@@ -87,21 +88,18 @@ func StreamObject(statusCode int, gv schema.GroupVersion, s runtime.NegotiatedSe
 // The context is optional and can be nil. This method will perform optional content compression if requested by
 // a client and the feature gate for APIResponseCompression is enabled.
 func SerializeObject(mediaType string, encoder runtime.Encoder, hw http.ResponseWriter, req *http.Request, statusCode int, object runtime.Object) {
-	disableCompression := request.CompressionDisabledFrom(req.Context())
 	trace := utiltrace.New("SerializeObject",
-		utiltrace.Field{"audit-id", request.GetAuditIDTruncated(req.Context())},
 		utiltrace.Field{"method", req.Method},
 		utiltrace.Field{"url", req.URL.Path},
 		utiltrace.Field{"protocol", req.Proto},
 		utiltrace.Field{"mediaType", mediaType},
-		utiltrace.Field{"encoder", encoder.Identifier()},
-		utiltrace.Field{"disableCompression", disableCompression})
+		utiltrace.Field{"encoder", encoder.Identifier()})
 	defer trace.LogIfLong(5 * time.Second)
 
 	w := &deferredResponseWriter{
 		mediaType:       mediaType,
 		statusCode:      statusCode,
-		contentEncoding: negotiateContentEncoding(req, disableCompression),
+		contentEncoding: negotiateContentEncoding(req),
 		hw:              hw,
 		trace:           trace,
 	}
@@ -157,12 +155,12 @@ const (
 // negotiateContentEncoding returns a supported client-requested content encoding for the
 // provided request. It will return the empty string if no supported content encoding was
 // found or if response compression is disabled.
-func negotiateContentEncoding(req *http.Request, disableCompression bool) string {
+func negotiateContentEncoding(req *http.Request) string {
 	encoding := req.Header.Get("Accept-Encoding")
 	if len(encoding) == 0 {
 		return ""
 	}
-	if !utilfeature.DefaultFeatureGate.Enabled(features.APIResponseCompression) || disableCompression {
+	if !utilfeature.DefaultFeatureGate.Enabled(features.APIResponseCompression) {
 		return ""
 	}
 	for len(encoding) > 0 {
@@ -274,7 +272,7 @@ func WriteObjectNegotiated(s runtime.NegotiatedSerializer, restrictions negotiat
 	audit.LogResponseObject(req.Context(), object, gv, s)
 
 	encoder := s.EncoderForVersion(serializer.Serializer, gv)
-	request.TrackSerializeResponseObjectLatency(req.Context(), func() {
+	endpointsrequest.TrackSerializeResponseObjectLatency(req.Context(), func() {
 		SerializeObject(serializer.MediaType, encoder, w, req, statusCode, object)
 	})
 }

@@ -85,16 +85,12 @@ func (c *LoadBalancerTypeClient) Get(ctx context.Context, idOrName string) (*Loa
 type LoadBalancerTypeListOpts struct {
 	ListOpts
 	Name string
-	Sort []string
 }
 
 func (l LoadBalancerTypeListOpts) values() url.Values {
 	vals := l.ListOpts.values()
 	if l.Name != "" {
 		vals.Add("name", l.Name)
-	}
-	for _, sort := range l.Sort {
-		vals.Add("sort", sort)
 	}
 	return vals
 }
@@ -129,7 +125,7 @@ func (c *LoadBalancerTypeClient) All(ctx context.Context) ([]*LoadBalancerType, 
 	opts := LoadBalancerTypeListOpts{}
 	opts.PerPage = 50
 
-	err := c.client.all(func(page int) (*Response, error) {
+	_, err := c.client.all(func(page int) (*Response, error) {
 		opts.Page = page
 		LoadBalancerTypes, resp, err := c.List(ctx, opts)
 		if err != nil {

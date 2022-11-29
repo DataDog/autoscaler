@@ -17,10 +17,7 @@ limitations under the License.
 package core
 
 import (
-	"bytes"
-	"flag"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -41,7 +38,6 @@ import (
 	core_utils "k8s.io/autoscaler/cluster-autoscaler/core/utils"
 	"k8s.io/autoscaler/cluster-autoscaler/estimator"
 	ca_processors "k8s.io/autoscaler/cluster-autoscaler/processors"
-	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
@@ -49,8 +45,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	policyv1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/fake"
 	v1appslister "k8s.io/client-go/listers/apps/v1"
@@ -159,7 +154,6 @@ func TestStaticAutoscalerRunOnce(t *testing.T) {
 	n2 := BuildTestNode("n2", 1000, 1000)
 	SetNodeReadyState(n2, true, time.Now())
 	n3 := BuildTestNode("n3", 1000, 1000)
-	n4 := BuildTestNode("n4", 1000, 1000)
 
 	p1 := BuildTestPod("p1", 600, 100)
 	p1.Spec.NodeName = "n1"
@@ -178,7 +172,7 @@ func TestStaticAutoscalerRunOnce(t *testing.T) {
 			return ret
 		},
 		nil, nil,
-		nil, map[string]*schedulerframework.NodeInfo{"ng1": tni, "ng2": tni, "ng3": tni})
+		nil, map[string]*schedulerframework.NodeInfo{"ng1": tni, "ng2": tni})
 	provider.AddNodeGroup("ng1", 1, 10, 1)
 	provider.AddNode("ng1", n1)
 	ng1 := reflect.ValueOf(provider.GetNodeGroup("ng1")).Interface().(*testprovider.TestNodeGroup)
@@ -192,12 +186,11 @@ func TestStaticAutoscalerRunOnce(t *testing.T) {
 			ScaleDownUnreadyTime:          time.Minute,
 			ScaleDownUtilizationThreshold: 0.5,
 		},
-		EstimatorName:           estimator.BinpackingEstimatorName,
-		EnforceNodeGroupMinSize: true,
-		ScaleDownEnabled:        true,
-		MaxNodesTotal:           1,
-		MaxCoresTotal:           10,
-		MaxMemoryTotal:          100000,
+		EstimatorName:    estimator.BinpackingEstimatorName,
+		ScaleDownEnabled: true,
+		MaxNodesTotal:    1,
+		MaxCoresTotal:    10,
+		MaxMemoryTotal:   100000,
 	}
 	processorCallbacks := newStaticAutoscalerProcessorCallbacks()
 
@@ -214,7 +207,7 @@ func TestStaticAutoscalerRunOnce(t *testing.T) {
 		MaxNodeProvisionTime: 10 * time.Second,
 	}
 
-	processors := NewTestProcessors(&context)
+	processors := NewTestProcessors()
 	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterStateConfig, context.LogRecorder, NewBackoff())
 	sdPlanner, sdActuator := newScaleDownPlannerAndActuator(t, &context, processors, clusterState)
 
@@ -276,10 +269,10 @@ func TestStaticAutoscalerRunOnce(t *testing.T) {
 	// Scale down.
 	readyNodeLister.SetNodes([]*apiv1.Node{n1, n2})
 	allNodeLister.SetNodes([]*apiv1.Node{n1, n2})
-	scheduledPodMock.On("List").Return([]*apiv1.Pod{p1}, nil).Times(3)
+	scheduledPodMock.On("List").Return([]*apiv1.Pod{p1}, nil).Twice()
 	unschedulablePodMock.On("List").Return([]*apiv1.Pod{}, nil).Once()
 	daemonSetListerMock.On("List", labels.Everything()).Return([]*appsv1.DaemonSet{}, nil).Once()
-	podDisruptionBudgetListerMock.On("List").Return([]*policyv1.PodDisruptionBudget{}, nil).Twice()
+	podDisruptionBudgetListerMock.On("List").Return([]*policyv1.PodDisruptionBudget{}, nil).Once()
 	onScaleDownMock.On("ScaleDown", "ng1", "n2").Return(nil).Once()
 
 	err = autoscaler.RunOnce(time.Now().Add(3 * time.Hour))
@@ -318,22 +311,6 @@ func TestStaticAutoscalerRunOnce(t *testing.T) {
 	assert.NoError(t, err)
 	mock.AssertExpectationsForObjects(t, scheduledPodMock, unschedulablePodMock,
 		podDisruptionBudgetListerMock, daemonSetListerMock, onScaleUpMock, onScaleDownMock)
-
-	// Scale up to node gorup min size.
-	readyNodeLister.SetNodes([]*apiv1.Node{n4})
-	allNodeLister.SetNodes([]*apiv1.Node{n4})
-	scheduledPodMock.On("List").Return([]*apiv1.Pod{}, nil)
-	unschedulablePodMock.On("List").Return([]*apiv1.Pod{}, nil)
-	daemonSetListerMock.On("List", labels.Everything()).Return([]*appsv1.DaemonSet{}, nil)
-	podDisruptionBudgetListerMock.On("List").Return([]*policyv1.PodDisruptionBudget{}, nil)
-	onScaleUpMock.On("ScaleUp", "ng3", 2).Return(nil).Once() // 2 new nodes are supposed to be scaled up.
-
-	provider.AddNodeGroup("ng3", 3, 10, 1)
-	provider.AddNode("ng3", n4)
-
-	err = autoscaler.RunOnce(time.Now().Add(5 * time.Hour))
-	assert.NoError(t, err)
-	mock.AssertExpectationsForObjects(t, onScaleUpMock)
 }
 
 func TestStaticAutoscalerRunOnceWithAutoprovisionedEnabled(t *testing.T) {
@@ -393,6 +370,10 @@ func TestStaticAutoscalerRunOnceWithAutoprovisionedEnabled(t *testing.T) {
 	provider.AddNode("ng1,", n1)
 	assert.NotNil(t, provider)
 
+	processors := NewTestProcessors()
+	processors.NodeGroupManager = nodeGroupManager
+	processors.NodeGroupListProcessor = nodeGroupListProcessor
+
 	// Create context with mocked lister registry.
 	options := config.AutoscalingOptions{
 		NodeGroupDefaults: config.NodeGroupAutoscalingOptions{
@@ -412,10 +393,6 @@ func TestStaticAutoscalerRunOnceWithAutoprovisionedEnabled(t *testing.T) {
 
 	context, err := NewScaleTestAutoscalingContext(options, &fake.Clientset{}, nil, provider, processorCallbacks, nil)
 	assert.NoError(t, err)
-
-	processors := NewTestProcessors(&context)
-	processors.NodeGroupManager = nodeGroupManager
-	processors.NodeGroupListProcessor = nodeGroupListProcessor
 
 	listerRegistry := kube_util.NewListerRegistry(allNodeLister, readyNodeLister, scheduledPodMock,
 		unschedulablePodMock, podDisruptionBudgetListerMock, daemonSetListerMock,
@@ -479,9 +456,9 @@ func TestStaticAutoscalerRunOnceWithAutoprovisionedEnabled(t *testing.T) {
 	// Scale down.
 	readyNodeLister.SetNodes([]*apiv1.Node{n1, n2})
 	allNodeLister.SetNodes([]*apiv1.Node{n1, n2})
-	scheduledPodMock.On("List").Return([]*apiv1.Pod{p1}, nil).Times(3)
+	scheduledPodMock.On("List").Return([]*apiv1.Pod{p1}, nil).Twice()
 	unschedulablePodMock.On("List").Return([]*apiv1.Pod{}, nil).Once()
-	podDisruptionBudgetListerMock.On("List").Return([]*policyv1.PodDisruptionBudget{}, nil).Twice()
+	podDisruptionBudgetListerMock.On("List").Return([]*policyv1.PodDisruptionBudget{}, nil).Once()
 	daemonSetListerMock.On("List", labels.Everything()).Return([]*appsv1.DaemonSet{}, nil).Once()
 	onNodeGroupDeleteMock.On("Delete", "autoprovisioned-"+
 		"TN1").Return(nil).Once()
@@ -575,7 +552,7 @@ func TestStaticAutoscalerRunOnceWithALongUnregisteredNode(t *testing.T) {
 	// broken node failed to register in time
 	clusterState.UpdateNodes(nodes, nil, later)
 
-	processors := NewTestProcessors(&context)
+	processors := NewTestProcessors()
 
 	sdPlanner, sdActuator := newScaleDownPlannerAndActuator(t, &context, processors, clusterState)
 
@@ -703,7 +680,6 @@ func TestStaticAutoscalerRunOncePodsWithPriorities(t *testing.T) {
 		MaxCoresTotal:                10,
 		MaxMemoryTotal:               100000,
 		ExpendablePodsPriorityCutoff: 10,
-		NodeDeletionBatcherInterval:  0 * time.Second,
 	}
 	processorCallbacks := newStaticAutoscalerProcessorCallbacks()
 
@@ -720,7 +696,7 @@ func TestStaticAutoscalerRunOncePodsWithPriorities(t *testing.T) {
 		MaxNodeProvisionTime: 10 * time.Second,
 	}
 
-	processors := NewTestProcessors(&context)
+	processors := NewTestProcessors()
 	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterStateConfig, context.LogRecorder, NewBackoff())
 	sdPlanner, sdActuator := newScaleDownPlannerAndActuator(t, &context, processors, clusterState)
 
@@ -766,10 +742,10 @@ func TestStaticAutoscalerRunOncePodsWithPriorities(t *testing.T) {
 	// Scale down.
 	readyNodeLister.SetNodes([]*apiv1.Node{n1, n2, n3})
 	allNodeLister.SetNodes([]*apiv1.Node{n1, n2, n3})
-	scheduledPodMock.On("List").Return([]*apiv1.Pod{p1, p2, p3, p4}, nil).Times(3)
+	scheduledPodMock.On("List").Return([]*apiv1.Pod{p1, p2, p3, p4}, nil).Times(2)
 	unschedulablePodMock.On("List").Return([]*apiv1.Pod{p5}, nil).Once()
 	daemonSetListerMock.On("List", labels.Everything()).Return([]*appsv1.DaemonSet{}, nil).Once()
-	podDisruptionBudgetListerMock.On("List").Return([]*policyv1.PodDisruptionBudget{}, nil).Twice()
+	podDisruptionBudgetListerMock.On("List").Return([]*policyv1.PodDisruptionBudget{}, nil).Once()
 	onScaleDownMock.On("ScaleDown", "ng1", "n1").Return(nil).Once()
 
 	p4.Spec.NodeName = "n2"
@@ -849,7 +825,7 @@ func TestStaticAutoscalerRunOnceWithFilteringOnBinPackingEstimator(t *testing.T)
 		MaxNodeProvisionTime: 10 * time.Second,
 	}
 
-	processors := NewTestProcessors(&context)
+	processors := NewTestProcessors()
 	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterStateConfig, context.LogRecorder, NewBackoff())
 	sdPlanner, sdActuator := newScaleDownPlannerAndActuator(t, &context, processors, clusterState)
 
@@ -946,7 +922,7 @@ func TestStaticAutoscalerRunOnceWithFilteringOnUpcomingNodesEnabledNoScaleUp(t *
 		MaxNodeProvisionTime: 10 * time.Second,
 	}
 
-	processors := NewTestProcessors(&context)
+	processors := NewTestProcessors()
 	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterStateConfig, context.LogRecorder, NewBackoff())
 	sdPlanner, sdActuator := newScaleDownPlannerAndActuator(t, &context, processors, clusterState)
 
@@ -976,6 +952,7 @@ func TestStaticAutoscalerRunOnceWithFilteringOnUpcomingNodesEnabledNoScaleUp(t *
 }
 
 func TestStaticAutoscalerInstanceCreationErrors(t *testing.T) {
+
 	// setup
 	provider := &mockprovider.CloudProvider{}
 
@@ -1400,103 +1377,6 @@ func TestSubtractNodes(t *testing.T) {
 	}
 }
 
-func TestFilterOutYoungPods(t *testing.T) {
-	now := time.Now()
-	klog.InitFlags(nil)
-	flag.CommandLine.Parse([]string{"--logtostderr=false"})
-
-	p1 := BuildTestPod("p1", 500, 1000)
-	p1.CreationTimestamp = metav1.NewTime(now.Add(-1 * time.Minute))
-	p2 := BuildTestPod("p2", 500, 1000)
-	p2.CreationTimestamp = metav1.NewTime(now.Add(-1 * time.Minute))
-	p2.Annotations = map[string]string{
-		podScaleUpDelayAnnotationKey: "5m",
-	}
-	p3 := BuildTestPod("p3", 500, 1000)
-	p3.CreationTimestamp = metav1.NewTime(now.Add(-1 * time.Minute))
-	p3.Annotations = map[string]string{
-		podScaleUpDelayAnnotationKey: "2m",
-	}
-	p4 := BuildTestPod("p4", 500, 1000)
-	p4.CreationTimestamp = metav1.NewTime(now.Add(-1 * time.Minute))
-	p4.Annotations = map[string]string{
-		podScaleUpDelayAnnotationKey: "error",
-	}
-
-	tests := []struct {
-		name               string
-		newPodScaleUpDelay time.Duration
-		runTime            time.Time
-		pods               []*apiv1.Pod
-		expectedPods       []*apiv1.Pod
-		expectedError      string
-	}{
-		{
-			name:               "annotation delayed pod checking now",
-			newPodScaleUpDelay: 0,
-			runTime:            now,
-			pods:               []*apiv1.Pod{p1, p2},
-			expectedPods:       []*apiv1.Pod{p1},
-		},
-		{
-			name:               "annotation delayed pod checking after delay",
-			newPodScaleUpDelay: 0,
-			runTime:            now.Add(5 * time.Minute),
-			pods:               []*apiv1.Pod{p1, p2},
-			expectedPods:       []*apiv1.Pod{p1, p2},
-		},
-		{
-			name:               "globally delayed pods",
-			newPodScaleUpDelay: 5 * time.Minute,
-			runTime:            now,
-			pods:               []*apiv1.Pod{p1, p2},
-			expectedPods:       []*apiv1.Pod(nil),
-		},
-		{
-			name:               "annotation delay smaller than global",
-			newPodScaleUpDelay: 5 * time.Minute,
-			runTime:            now.Add(2 * time.Minute),
-			pods:               []*apiv1.Pod{p1, p3},
-			expectedPods:       []*apiv1.Pod(nil),
-			expectedError:      "Failed to set pod scale up delay for",
-		},
-		{
-			name:               "annotation delay with error",
-			newPodScaleUpDelay: 0,
-			runTime:            now,
-			pods:               []*apiv1.Pod{p1, p4},
-			expectedPods:       []*apiv1.Pod{p1, p4},
-			expectedError:      "Failed to parse pod",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			context := context.AutoscalingContext{
-				AutoscalingOptions: config.AutoscalingOptions{
-					NewPodScaleUpDelay: tt.newPodScaleUpDelay,
-				},
-			}
-			autoscaler := &StaticAutoscaler{
-				AutoscalingContext: &context,
-			}
-
-			var buf bytes.Buffer
-			klog.SetOutput(&buf)
-			defer func() {
-				klog.SetOutput(os.Stderr)
-			}()
-
-			actual := autoscaler.filterOutYoungPods(tt.pods, tt.runTime)
-
-			assert.Equal(t, tt.expectedPods, actual)
-			if tt.expectedError != "" {
-				assert.Contains(t, buf.String(), tt.expectedError)
-			}
-		})
-	}
-}
-
 func nodeNames(ns []*apiv1.Node) []string {
 	names := make([]string, len(ns))
 	for i, node := range ns {
@@ -1517,16 +1397,9 @@ func waitForDeleteToFinish(t *testing.T, deleteFinished <-chan bool) {
 func newScaleDownPlannerAndActuator(t *testing.T, ctx *context.AutoscalingContext, p *ca_processors.AutoscalingProcessors, cs *clusterstate.ClusterStateRegistry) (scaledown.Planner, scaledown.Actuator) {
 	ctx.MaxScaleDownParallelism = 10
 	ctx.MaxDrainParallelism = 1
-	ctx.NodeDeletionBatcherInterval = 0 * time.Second
-	ctx.NodeDeleteDelayAfterTaint = 1 * time.Second
-	deleteOptions := simulator.NodeDeleteOptions{
-		SkipNodesWithSystemPods:   true,
-		SkipNodesWithLocalStorage: true,
-		MinReplicaCount:           0,
-	}
 	ndt := deletiontracker.NewNodeDeletionTracker(0 * time.Second)
-	sd := legacy.NewScaleDown(ctx, p, ndt, deleteOptions)
-	actuator := actuation.NewActuator(ctx, cs, ndt, deleteOptions)
+	sd := legacy.NewScaleDown(ctx, p, cs, ndt)
+	actuator := actuation.NewActuator(ctx, cs, ndt)
 	wrapper := legacy.NewScaleDownWrapper(sd, actuator)
 	return wrapper, wrapper
 }

@@ -128,14 +128,15 @@ func main() {
 		as.Serve(w, r)
 		healthCheck.UpdateLastActivity()
 	})
+	clientset := getClient()
 	server := &http.Server{
 		Addr:      fmt.Sprintf(":%d", *port),
-		TLSConfig: configTLS(certs.serverCert, certs.serverKey),
+		TLSConfig: configTLS(clientset, certs.serverCert, certs.serverKey),
 	}
 	url := fmt.Sprintf("%v:%v", *webhookAddress, *webhookPort)
 	go func() {
 		if *registerWebhook {
-			selfRegistration(kubeClient, certs.caCert, namespace, *serviceName, url, *registerByURL, int32(*webhookTimeout))
+			selfRegistration(clientset, certs.caCert, namespace, *serviceName, url, *registerByURL, int32(*webhookTimeout))
 		}
 		// Start status updates after the webhook is initialized.
 		statusUpdater.Run(stopCh)

@@ -51,12 +51,11 @@ type GceCloudProvider struct {
 	gceManager GceManager
 	// This resource limiter is used if resource limits are not defined through cloud API.
 	resourceLimiterFromFlags *cloudprovider.ResourceLimiter
-	pricingModel             cloudprovider.PricingModel
 }
 
 // BuildGceCloudProvider builds CloudProvider implementation for GCE.
-func BuildGceCloudProvider(gceManager GceManager, resourceLimiter *cloudprovider.ResourceLimiter, pricingModel cloudprovider.PricingModel) (*GceCloudProvider, error) {
-	return &GceCloudProvider{gceManager: gceManager, resourceLimiterFromFlags: resourceLimiter, pricingModel: pricingModel}, nil
+func BuildGceCloudProvider(gceManager GceManager, resourceLimiter *cloudprovider.ResourceLimiter) (*GceCloudProvider, error) {
+	return &GceCloudProvider{gceManager: gceManager, resourceLimiterFromFlags: resourceLimiter}, nil
 }
 
 // Cleanup cleans up all resources before the cloud provider is removed
@@ -103,7 +102,7 @@ func (gce *GceCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.N
 
 // Pricing returns pricing model for this cloud provider or error if not available.
 func (gce *GceCloudProvider) Pricing() (cloudprovider.PricingModel, errors.AutoscalerError) {
-	return gce.pricingModel, nil
+	return NewGcePriceModel(NewGcePriceInfo()), nil
 }
 
 // GetAvailableMachineTypes get all machine types that can be requested from the cloud provider.
@@ -368,8 +367,7 @@ func BuildGCE(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscover
 		klog.Fatalf("Failed to create GCE Manager: %v", err)
 	}
 
-	pricingModel := NewGcePriceModel(NewGcePriceInfo(), opts.GceExpanderEphemeralStorageSupport)
-	provider, err := BuildGceCloudProvider(manager, rl, pricingModel)
+	provider, err := BuildGceCloudProvider(manager, rl)
 	if err != nil {
 		klog.Fatalf("Failed to create GCE cloud provider: %v", err)
 	}

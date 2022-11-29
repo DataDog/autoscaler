@@ -19,7 +19,9 @@ package azure
 import (
 	"context"
 	"fmt"
+	compute20190701 "github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-07-01/compute"
+	"github.com/Azure/skewer"
 	"k8s.io/klog/v2"
 	"regexp"
 	"strings"
@@ -59,19 +61,24 @@ var GetVMSSTypeStatically = func(template compute.VirtualMachineScaleSet) (*Inst
 
 // GetVMSSTypeDynamically fetched vmss instance information using sku api calls.
 // It is declared as a variable for testing purpose.
-var GetVMSSTypeDynamically = func(template compute.VirtualMachineScaleSet, azCache *azureCache) (InstanceType, error) {
+var GetVMSSTypeDynamically = func(template compute.VirtualMachineScaleSet, skuClient compute20190701.ResourceSkusClient) (InstanceType, error) {
 	ctx := context.Background()
+	var sku skewer.SKU
 	var vmssType InstanceType
 
-	sku, err := azCache.GetSKU(ctx, *template.Sku.Name, *template.Location)
+	cache, err := skewer.NewCache(ctx, skewer.WithLocation(*template.Location), skewer.WithResourceClient(skuClient))
+	if err != nil {
+		klog.V(1).Infof("Failed to instantiate cache, err: %v", err)
+		return vmssType, err
+	}
+
+	sku, err = cache.Get(ctx, *template.Sku.Name, skewer.VirtualMachines, *template.Location)
 	if err != nil {
 		// We didn't find an exact match but this is a promo type, check for matching standard
+		klog.V(1).Infof("No exact match found for %s, checking standard types. Error %v", *template.Sku.Name, err)
 		promoRe := regexp.MustCompile(`(?i)_promo`)
 		skuName := promoRe.ReplaceAllString(*template.Sku.Name, "")
-		if skuName != *template.Sku.Name {
-			klog.V(1).Infof("No exact match found for %q, checking standard type %q. Error %v", *template.Sku.Name, skuName, err)
-			sku, err = azCache.GetSKU(ctx, skuName, *template.Location)
-		}
+		sku, err = cache.Get(context.Background(), skuName, skewer.VirtualMachines, *template.Location)
 		if err != nil {
 			return vmssType, fmt.Errorf("instance type %q not supported. Error %v", *template.Sku.Name, err)
 		}

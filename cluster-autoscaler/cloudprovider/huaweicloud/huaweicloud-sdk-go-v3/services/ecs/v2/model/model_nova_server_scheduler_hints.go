@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+//
 type NovaServerSchedulerHints struct {
 	// 在指定的专属主机或者共享主机上创建弹性云服务器。 参数值为shared或者dedicated。
 

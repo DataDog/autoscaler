@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+//
 type ListServerGroupsResult struct {
 	// 云服务器组UUID。
 

@@ -18,7 +18,7 @@ package gce
 
 import (
 	"math"
-	"strconv"
+	"strings"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -30,27 +30,20 @@ import (
 
 // GcePriceModel implements PriceModel interface for GCE.
 type GcePriceModel struct {
-	PriceInfo               PriceInfo
-	EphemeralStorageSupport bool
+	PriceInfo PriceInfo
 }
 
 // NewGcePriceModel gets a new instance of GcePriceModel
-func NewGcePriceModel(info PriceInfo, ephemeralStorageSupport bool) *GcePriceModel {
+func NewGcePriceModel(info PriceInfo) *GcePriceModel {
 	return &GcePriceModel{
-		PriceInfo:               info,
-		EphemeralStorageSupport: ephemeralStorageSupport,
+		PriceInfo: info,
 	}
 }
 
 const (
-	preemptibleLabel              = "cloud.google.com/gke-preemptible"
-	spotLabel                     = "cloud.google.com/gke-spot"
-	ephemeralStorageLocalSsdLabel = "cloud.google.com/gke-ephemeral-storage-local-ssd"
-	bootDiskTypeLabel             = "cloud.google.com/gke-boot-disk"
+	preemptibleLabel = "cloud.google.com/gke-preemptible"
+	spotLabel        = "cloud.google.com/gke-spot"
 )
-
-// DefaultBootDiskSizeGB is 100 GB.
-const DefaultBootDiskSizeGB = 100
 
 // NodePrice returns a price of running the given node for a given period of time.
 // All prices are in USD.
@@ -80,37 +73,6 @@ func (model *GcePriceModel) NodePrice(node *apiv1.Node, startTime time.Time, end
 		}
 	}
 
-	// Ephemeral Storage
-	if model.EphemeralStorageSupport {
-		// Local SSD price
-		if node.Labels[ephemeralStorageLocalSsdLabel] == "true" || node.Annotations[EphemeralStorageLocalSsdAnnotation] == "true" {
-			localSsdCount, _ := strconv.ParseFloat(node.Annotations[LocalSsdCountAnnotation], 64)
-			localSsdPrice := model.PriceInfo.LocalSsdPricePerHour()
-			if hasPreemptiblePricing(node) {
-				localSsdPrice = model.PriceInfo.SpotLocalSsdPricePerHour()
-			}
-			price += localSsdCount * float64(LocalSSDDiskSizeInGiB) * localSsdPrice * getHours(startTime, endTime)
-		}
-
-		// Boot disk price
-		bootDiskSize, _ := strconv.ParseInt(node.Annotations[BootDiskSizeAnnotation], 10, 64)
-		if bootDiskSize == 0 {
-			klog.Errorf("Boot disk size is not found for node %s, using default size %v", node.Name, DefaultBootDiskSizeGB)
-			bootDiskSize = DefaultBootDiskSizeGB
-		}
-		bootDiskType := node.Annotations[BootDiskTypeAnnotation]
-		if val, ok := node.Labels[bootDiskTypeLabel]; ok {
-			bootDiskType = val
-		}
-		if bootDiskType == "" {
-			klog.Errorf("Boot disk type is not found for node %s, using default type %s", node.Name, DefaultBootDiskType)
-			bootDiskType = DefaultBootDiskType
-		}
-		bootDiskPrice := model.PriceInfo.BootDiskPricePerHour()[bootDiskType]
-
-		price += bootDiskPrice * float64(bootDiskSize) * getHours(startTime, endTime)
-	}
-
 	// GPUs
 	if gpuRequest, found := node.Status.Capacity[gpu.ResourceNvidiaGPU]; found {
 		gpuPrice := model.PriceInfo.BaseGpuPricePerHour()
@@ -130,6 +92,7 @@ func (model *GcePriceModel) NodePrice(node *apiv1.Node, startTime time.Time, end
 		price += float64(gpuRequest.MilliValue()) / 1000.0 * gpuPrice * getHours(startTime, endTime)
 	}
 
+	// TODO: handle SSDs.
 	return price, nil
 }
 
@@ -141,10 +104,10 @@ func (model *GcePriceModel) getPreemptibleDiscount(node *apiv1.Node) float64 {
 	if !found {
 		return 1.0
 	}
-	instanceFamily, _ := GetMachineFamily(instanceType)
+	instanceFamily := getInstanceFamily(instanceType)
 
 	discountMap := model.PriceInfo.PredefinedPreemptibleDiscount()
-	if IsCustomMachine(instanceType) {
+	if isInstanceCustom(instanceType) {
 		discountMap = model.PriceInfo.CustomPreemptibleDiscount()
 	}
 
@@ -170,8 +133,8 @@ func (model *GcePriceModel) getBasePrice(resources apiv1.ResourceList, instanceT
 		return 0
 	}
 	hours := getHours(startTime, endTime)
-	instanceFamily, _ := GetMachineFamily(instanceType)
-	isCustom := IsCustomMachine(instanceType)
+	instanceFamily := getInstanceFamily(instanceType)
+	isCustom := isInstanceCustom(instanceType)
 	price := 0.0
 
 	cpu := resources[apiv1.ResourceCPU]
@@ -196,13 +159,6 @@ func (model *GcePriceModel) getBasePrice(resources apiv1.ResourceList, instanceT
 	}
 	price += float64(mem.Value()) / float64(units.GiB) * memPrice * hours
 
-	if model.EphemeralStorageSupport {
-		ephemeralStorage := resources[apiv1.ResourceEphemeralStorage]
-		// For simplification using a fixed price for default boot disk.
-		ephemeralStoragePrice := model.PriceInfo.BootDiskPricePerHour()[DefaultBootDiskType]
-		price += float64(ephemeralStorage.Value()) / float64(units.GiB) * ephemeralStoragePrice * hours
-	}
-
 	return price
 }
 
@@ -221,6 +177,14 @@ func getHours(startTime time.Time, endTime time.Time) float64 {
 	minutes := math.Ceil(float64(endTime.Sub(startTime)) / float64(time.Minute))
 	hours := minutes / 60.0
 	return hours
+}
+
+func getInstanceFamily(instanceType string) string {
+	return strings.Split(instanceType, "-")[0]
+}
+
+func isInstanceCustom(instanceType string) bool {
+	return strings.Contains(instanceType, "custom")
 }
 
 // hasPreemptiblePricing returns whether we should use preemptible pricing for a node, based on labels. Spot VMs have

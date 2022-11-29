@@ -85,16 +85,12 @@ func (c *LocationClient) Get(ctx context.Context, idOrName string) (*Location, *
 type LocationListOpts struct {
 	ListOpts
 	Name string
-	Sort []string
 }
 
 func (l LocationListOpts) values() url.Values {
 	vals := l.ListOpts.values()
 	if l.Name != "" {
 		vals.Add("name", l.Name)
-	}
-	for _, sort := range l.Sort {
-		vals.Add("sort", sort)
 	}
 	return vals
 }
@@ -129,7 +125,7 @@ func (c *LocationClient) All(ctx context.Context) ([]*Location, error) {
 	opts := LocationListOpts{}
 	opts.PerPage = 50
 
-	err := c.client.all(func(page int) (*Response, error) {
+	_, err := c.client.all(func(page int) (*Response, error) {
 		opts.Page = page
 		locations, resp, err := c.List(ctx, opts)
 		if err != nil {

@@ -18,6 +18,7 @@ package vmssclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -37,8 +38,6 @@ import (
 )
 
 var _ Interface = &Client{}
-
-const vmssResourceType = "Microsoft.Compute/virtualMachineScaleSets"
 
 // Client implements VMSS client Interface.
 type Client struct {
@@ -122,7 +121,7 @@ func (c *Client) getVMSS(ctx context.Context, resourceGroupName string, VMScaleS
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		VMScaleSetName,
 	)
 	result := compute.VirtualMachineScaleSet{}
@@ -180,11 +179,9 @@ func (c *Client) List(ctx context.Context, resourceGroupName string) ([]compute.
 
 // listVMSS gets a list of VirtualMachineScaleSets in the resource group.
 func (c *Client) listVMSS(ctx context.Context, resourceGroupName string) ([]compute.VirtualMachineScaleSet, *retry.Error) {
-	resourceID := armclient.GetResourceListID(
-		c.subscriptionID,
-		resourceGroupName,
-		vmssResourceType,
-	)
+	resourceID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachineScaleSets",
+		autorest.Encode("path", c.subscriptionID),
+		autorest.Encode("path", resourceGroupName))
 	result := make([]compute.VirtualMachineScaleSet, 0)
 	page := &VirtualMachineScaleSetListResultPage{}
 	page.fn = c.listNextResults
@@ -271,7 +268,7 @@ func (c *Client) CreateOrUpdateAsync(ctx context.Context, resourceGroupName stri
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		VMScaleSetName,
 	)
 
@@ -322,7 +319,7 @@ func (c *Client) createOrUpdateVMSS(ctx context.Context, resourceGroupName strin
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		VMScaleSetName,
 	)
 	response, rerr := c.armClient.PutResource(ctx, resourceID, parameters)
@@ -494,7 +491,7 @@ func (c *Client) DeleteInstancesAsync(ctx context.Context, resourceGroupName str
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		vmScaleSetName,
 	)
 
@@ -549,7 +546,7 @@ func (c *Client) DeallocateInstancesAsync(ctx context.Context, resourceGroupName
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		vmScaleSetName,
 	)
 
@@ -598,7 +595,7 @@ func (c *Client) StartInstancesAsync(ctx context.Context, resourceGroupName stri
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		vmScaleSetName,
 	)
 
@@ -632,7 +629,7 @@ func (c *Client) deleteVMSSInstances(ctx context.Context, resourceGroupName stri
 	resourceID := armclient.GetResourceID(
 		c.subscriptionID,
 		resourceGroupName,
-		vmssResourceType,
+		"Microsoft.Compute/virtualMachineScaleSets",
 		vmScaleSetName,
 	)
 	response, rerr := c.armClient.PostResource(ctx, resourceID, "delete", vmInstanceIDs, map[string]interface{}{})

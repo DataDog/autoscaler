@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 // Package oapi provides primitives to interact with the openapi HTTP API.
+//
 package oapi
 
 import (

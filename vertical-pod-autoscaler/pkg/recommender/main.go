@@ -18,7 +18,6 @@ package main
 
 import (
 	"flag"
-	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -31,11 +30,13 @@ import (
 	metrics_quality "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/quality"
 	metrics_recommender "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/recommender"
 	kube_flag "k8s.io/component-base/cli/flag"
-	klog "k8s.io/klog/v2"
+	"k8s.io/klog/v2"
 )
 
+// DefaultRecommenderName denotes the current recommender name as the "default" one.
+const DefaultRecommenderName = "default"
+
 var (
-	recommenderName        = flag.String("recommender-name", input.DefaultRecommenderName, "Set the recommender name. Recommender will generate recommendations for VPAs that configure the same recommender name. If the recommender name is left as default it will also generate recommendations that don't explicitly specify recommender. You shouldn't run two recommenders with the same name in a cluster.")
 	metricsFetcherInterval = flag.Duration("recommender-interval", 1*time.Minute, `How often metrics should be fetched`)
 	checkpointsGCInterval  = flag.Duration("checkpoints-gc-interval", 10*time.Minute, `How often orphaned checkpoints should be garbage collected`)
 	prometheusAddress      = flag.String("prometheus-address", "", `Where to reach for Prometheus metrics`)
@@ -76,7 +77,7 @@ var (
 func main() {
 	klog.InitFlags(nil)
 	kube_flag.InitFlags()
-	klog.V(1).Infof("Vertical Pod Autoscaler %s Recommender: %v", common.VerticalPodAutoscalerVersion, recommenderName)
+	klog.V(1).Infof("Vertical Pod Autoscaler %s Recommender: %v", common.VerticalPodAutoscalerVersion, DefaultRecommenderName)
 
 	config := common.CreateKubeConfigOrDie(*kubeconfig, float32(*kubeApiQps), int(*kubeApiBurst))
 

@@ -42,7 +42,7 @@ import (
 type ActivePodsFunc func() []*v1.Pod
 
 type runtimeService interface {
-	UpdateContainerResources(id string, resources *runtimeapi.ContainerResources) error
+	UpdateContainerResources(id string, resources *runtimeapi.LinuxContainerResources) error
 }
 
 type policyName string
@@ -388,16 +388,6 @@ func (m *manager) removeStaleState() {
 			}
 		}
 	}
-
-	m.containerMap.Visit(func(podUID, containerName, containerID string) {
-		if _, ok := activeContainers[podUID][containerName]; !ok {
-			klog.ErrorS(nil, "RemoveStaleState: removing container", "podUID", podUID, "containerName", containerName)
-			err := m.policyRemoveContainerByRef(podUID, containerName)
-			if err != nil {
-				klog.ErrorS(err, "RemoveStaleState: failed to remove container", "podUID", podUID, "containerName", containerName)
-			}
-		}
-	})
 }
 
 func (m *manager) reconcileState() (success []reconciledContainer, failure []reconciledContainer) {
@@ -515,10 +505,8 @@ func (m *manager) updateContainerCPUSet(containerID string, cpus cpuset.CPUSet) 
 	// this patch-like partial resources.
 	return m.containerRuntime.UpdateContainerResources(
 		containerID,
-		&runtimeapi.ContainerResources{
-			Linux: &runtimeapi.LinuxContainerResources{
-				CpusetCpus: cpus.String(),
-			},
+		&runtimeapi.LinuxContainerResources{
+			CpusetCpus: cpus.String(),
 		})
 }
 

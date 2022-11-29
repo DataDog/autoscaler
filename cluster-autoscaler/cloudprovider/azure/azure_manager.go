@@ -91,7 +91,7 @@ func createAzureManagerInternal(configReader io.Reader, discoveryOpts cloudprovi
 	if cfg.VmssCacheTTL != 0 {
 		cacheTTL = time.Duration(cfg.VmssCacheTTL) * time.Second
 	}
-	cache, err := newAzureCache(azClient, cacheTTL, cfg.ResourceGroup, cfg.VMType, cfg.EnableDynamicInstanceList, cfg.Location)
+	cache, err := newAzureCache(azClient, cacheTTL, cfg.ResourceGroup, cfg.VMType)
 	if err != nil {
 		return nil, err
 	}

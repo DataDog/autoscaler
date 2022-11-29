@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+//
 type PageLink struct {
 	// 相应资源的链接。
 

@@ -34,6 +34,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -41,7 +42,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	cloudprovider "k8s.io/cloud-provider"
-	cloudproviderapi "k8s.io/cloud-provider/api"
 	"k8s.io/klog/v2"
 	"k8s.io/legacy-cloud-providers/azure/auth"
 	azcache "k8s.io/legacy-cloud-providers/azure/cache"
@@ -327,7 +327,7 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 	if err != nil {
 		return nil, err
 	}
-	az.ipv6DualStackEnabled = true
+	az.ipv6DualStackEnabled = utilfeature.DefaultFeatureGate.Enabled(IPv6DualStack)
 
 	return az, nil
 }
@@ -793,7 +793,7 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 			}
 		}
 
-		// Remove from nodeZones cache if using deprecated LabelFailureDomainBetaZone
+		//Remove from nodeZones cache if using depreciated LabelFailureDomainBetaZone
 		prevZoneFailureDomain, ok := prevNode.ObjectMeta.Labels[v1.LabelFailureDomainBetaZone]
 		if ok && az.isAvailabilityZone(prevZoneFailureDomain) {
 			az.nodeZones[prevZone].Delete(prevNode.ObjectMeta.Name)
@@ -808,17 +808,16 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 			delete(az.nodeResourceGroups, prevNode.ObjectMeta.Name)
 		}
 
+		// Remove from unmanagedNodes cache.
 		managed, ok := prevNode.ObjectMeta.Labels[managedByAzureLabel]
-		isNodeManagedByCloudProvider := !ok || managed != "false"
-
-		// Remove from unmanagedNodes cache
-		if !isNodeManagedByCloudProvider {
+		if ok && managed == "false" {
 			az.unmanagedNodes.Delete(prevNode.ObjectMeta.Name)
+			az.excludeLoadBalancerNodes.Delete(prevNode.ObjectMeta.Name)
 		}
 
-		// if the node is being deleted from the cluster, exclude it from load balancers
-		if newNode == nil {
-			az.excludeLoadBalancerNodes.Insert(prevNode.ObjectMeta.Name)
+		// Remove from excludeLoadBalancerNodes cache.
+		if _, hasExcludeBalancerLabel := prevNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]; hasExcludeBalancerLabel {
+			az.excludeLoadBalancerNodes.Delete(prevNode.ObjectMeta.Name)
 		}
 	}
 
@@ -841,35 +840,16 @@ func (az *Cloud) updateNodeCaches(prevNode, newNode *v1.Node) {
 			az.nodeResourceGroups[newNode.ObjectMeta.Name] = strings.ToLower(newRG)
 		}
 
-		_, hasExcludeBalancerLabel := newNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]
+		// Add to unmanagedNodes cache.
 		managed, ok := newNode.ObjectMeta.Labels[managedByAzureLabel]
-		isNodeManagedByCloudProvider := !ok || managed != "false"
-
-		// Update unmanagedNodes cache
-		if !isNodeManagedByCloudProvider {
+		if ok && managed == "false" {
 			az.unmanagedNodes.Insert(newNode.ObjectMeta.Name)
+			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
 		}
 
-		// Update excludeLoadBalancerNodes cache
-		switch {
-		case !isNodeManagedByCloudProvider:
+		// Add to excludeLoadBalancerNodes cache.
+		if _, hasExcludeBalancerLabel := newNode.ObjectMeta.Labels[v1.LabelNodeExcludeBalancers]; hasExcludeBalancerLabel {
 			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
-
-		case hasExcludeBalancerLabel:
-			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
-
-		case !isNodeReady(newNode) && getCloudTaint(newNode.Spec.Taints) == nil:
-			// If not in ready state and not a newly created node, add to excludeLoadBalancerNodes cache.
-			// New nodes (tainted with "node.cloudprovider.kubernetes.io/uninitialized") should not be
-			// excluded from load balancers regardless of their state, so as to reduce the number of
-			// VMSS API calls and not provoke VMScaleSetActiveModelsCountLimitReached.
-			// (https://github.com/kubernetes-sigs/cloud-provider-azure/issues/851)
-			az.excludeLoadBalancerNodes.Insert(newNode.ObjectMeta.Name)
-
-		default:
-			// Nodes not falling into the three cases above are valid backends and
-			// should not appear in excludeLoadBalancerNodes cache.
-			az.excludeLoadBalancerNodes.Delete(newNode.ObjectMeta.Name)
 		}
 	}
 }
@@ -994,22 +974,4 @@ func (az *Cloud) ShouldNodeExcludedFromLoadBalancer(nodeName string) (bool, erro
 	}
 
 	return az.excludeLoadBalancerNodes.Has(nodeName), nil
-}
-
-func isNodeReady(node *v1.Node) bool {
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == v1.NodeReady && cond.Status == v1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func getCloudTaint(taints []v1.Taint) *v1.Taint {
-	for _, taint := range taints {
-		if taint.Key == cloudproviderapi.TaintExternalCloudProvider {
-			return &taint
-		}
-	}
-	return nil
 }

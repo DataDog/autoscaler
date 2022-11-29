@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+//
 type NovaServerFault struct {
 	// 错误码。
 

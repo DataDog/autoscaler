@@ -80,11 +80,11 @@ func TestIncreaseDecreaseSize(t *testing.T) {
 					w.Write([]byte(`{"error": "invalid body"}`))
 					return
 				}
-				planSlug := createRequest.Plan
+				planID := createRequest.PlanID
 				if err != nil {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(400)
-					w.Write([]byte(`{"error": "invalid plan slug"}`))
+					w.Write([]byte(`{"error": "invalid plan ID"}`))
 					return
 				}
 				if createRequest.ProjectID != m.nodePools["default"].projectID {
@@ -104,7 +104,7 @@ func TestIncreaseDecreaseSize(t *testing.T) {
 					ID:       rand.Intn(10000),
 					Name:     createRequest.Hostname,
 					Hostname: createRequest.Hostname,
-					Plan:     Plan{Slug: planSlug},
+					Plan:     Plan{ID: planID},
 					Project:  Project{ID: projectID},
 					Image:    createRequest.Image,
 					Tags:     *createRequest.Tags,

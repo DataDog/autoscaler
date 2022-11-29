@@ -19,7 +19,7 @@ set -o nounset
 set -o pipefail
 
 REPOSITORY_ROOT=$(realpath $(dirname ${BASH_SOURCE})/..)
-CRD_OPTS=crd:allowDangerousTypes=true
+CRD_OPTS=crd:trivialVersions=false,allowDangerousTypes=true
 APIS_PATH=${REPOSITORY_ROOT}/pkg/apis
 OUTPUT=${REPOSITORY_ROOT}/deploy/vpa-v1-crd-gen.yaml
 WORKSPACE=$(mktemp -d)
@@ -52,5 +52,4 @@ resources:
 commonAnnotations:
   "api-approved.kubernetes.io": "https://github.com/kubernetes/kubernetes/pull/63797"
 EOF
-echo --- > ${OUTPUT}
-kubectl kustomize . >> ${OUTPUT}
+kubectl kustomize . > ${OUTPUT}

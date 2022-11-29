@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"regexp"
 	"runtime/debug"
-	"sync"
 	"testing"
 	"time"
 
@@ -22,22 +21,17 @@ var matchMethod = flag.String("testify.m", "", "regular expression to select tes
 // retrieving the current *testing.T context.
 type Suite struct {
 	*assert.Assertions
-	mu      sync.RWMutex
 	require *require.Assertions
 	t       *testing.T
 }
 
 // T retrieves the current *testing.T context.
 func (suite *Suite) T() *testing.T {
-	suite.mu.RLock()
-	defer suite.mu.RUnlock()
 	return suite.t
 }
 
 // SetT sets the current *testing.T context.
 func (suite *Suite) SetT(t *testing.T) {
-	suite.mu.Lock()
-	defer suite.mu.Unlock()
 	suite.t = t
 	suite.Assertions = assert.New(t)
 	suite.require = require.New(t)
@@ -45,8 +39,6 @@ func (suite *Suite) SetT(t *testing.T) {
 
 // Require returns a require context for suite.
 func (suite *Suite) Require() *require.Assertions {
-	suite.mu.Lock()
-	defer suite.mu.Unlock()
 	if suite.require == nil {
 		suite.require = require.New(suite.T())
 	}
@@ -59,8 +51,6 @@ func (suite *Suite) Require() *require.Assertions {
 // assert.Assertions with require.Assertions), this method is provided so you
 // can call `suite.Assert().NoError()`.
 func (suite *Suite) Assert() *assert.Assertions {
-	suite.mu.Lock()
-	defer suite.mu.Unlock()
 	if suite.Assertions == nil {
 		suite.Assertions = assert.New(suite.T())
 	}

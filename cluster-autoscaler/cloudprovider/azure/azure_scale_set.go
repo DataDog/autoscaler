@@ -479,7 +479,8 @@ func (scaleSet *ScaleSet) TemplateNodeInfo() (*schedulerframework.NodeInfo, erro
 		return nil, err
 	}
 
-	node, err := buildNodeFromTemplate(scaleSet.Name, template, scaleSet.manager)
+	node, err := buildNodeFromTemplate(scaleSet.Name, template, scaleSet.manager.azClient.skuClient,
+		scaleSet.enableDynamicInstanceList)
 	if err != nil {
 		return nil, err
 	}

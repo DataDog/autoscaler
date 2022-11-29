@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+//
 type Ipv6Bandwidth struct {
 	// IPv6带宽的ID。
 

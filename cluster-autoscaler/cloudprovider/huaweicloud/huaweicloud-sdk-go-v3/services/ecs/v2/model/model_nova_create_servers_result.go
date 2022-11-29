@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+//
 type NovaCreateServersResult struct {
 	// 弹性云服务器uuid。
 

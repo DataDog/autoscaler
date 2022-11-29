@@ -24,6 +24,7 @@ import (
 	admissionregistration "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 )
 
@@ -31,7 +32,20 @@ const (
 	webhookConfigName = "vpa-webhook-config"
 )
 
-func configTLS(serverCert, serverKey []byte) *tls.Config {
+// get a clientset with in-cluster config.
+func getClient() *kubernetes.Clientset {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Fatal(err)
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Fatal(err)
+	}
+	return clientset
+}
+
+func configTLS(clientset *kubernetes.Clientset, serverCert, serverKey []byte) *tls.Config {
 	sCert, err := tls.X509KeyPair(serverCert, serverKey)
 	if err != nil {
 		klog.Fatal(err)
