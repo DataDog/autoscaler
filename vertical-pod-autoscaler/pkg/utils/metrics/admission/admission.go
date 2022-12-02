@@ -58,6 +58,10 @@ const (
 	Pod AdmissionResource = "Pod"
 	// Vpa means VerticalPodAutoscaler object (CRD)
 	Vpa AdmissionResource = "VPA"
+	// Deployment means Kubernetes Deployment
+	Deployment AdmissionResource = "Deployment"
+	// StatefulSet means Kubernetes Deployment
+	StatefulSet AdmissionResource = "StatefulSet"
 )
 
 var (
@@ -67,6 +71,14 @@ var (
 			Name:      "admission_pods_total",
 			Help:      "Number of Pods processed by VPA Admission Controller.",
 		}, []string{"applied"},
+	)
+
+	admissionWorkloadCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "admission_workload_total",
+			Help:      "Number of Workload (Deployment, StatefulSet, DaemonSet) processed by VPA Admission Controller.",
+		}, []string{"applied", "resource"},
 	)
 
 	admissionLatency = prometheus.NewHistogramVec(
@@ -85,6 +97,7 @@ var (
 // Register initializes all metrics for VPA Admission Controller
 func Register() {
 	prometheus.MustRegister(admissionCount)
+	prometheus.MustRegister(admissionWorkloadCount)
 	prometheus.MustRegister(admissionLatency)
 	prometheus.MustRegister(functionLatency)
 }
@@ -92,6 +105,11 @@ func Register() {
 // OnAdmittedPod increases the counter of pods handled by VPA Admission Controller
 func OnAdmittedPod(touched bool) {
 	admissionCount.WithLabelValues(fmt.Sprintf("%v", touched)).Add(1)
+}
+
+// OnAdmittedWorkload increases the counter of workloads handled by VPA Admission Controller
+func OnAdmittedWorkload(touched bool, resource AdmissionResource) {
+	admissionWorkloadCount.WithLabelValues(fmt.Sprintf("%v", touched), string(resource)).Add(1)
 }
 
 // NewAdmissionLatency provides a timer for admission latency; call Observe() on it to measure
