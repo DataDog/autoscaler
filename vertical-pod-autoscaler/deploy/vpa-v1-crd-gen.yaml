@@ -429,6 +429,7 @@ spec:
                     - Initial
                     - Recreate
                     - Auto
+                    - Trigger
                     type: string
                 type: object
             required:

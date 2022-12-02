@@ -25,6 +25,7 @@ import (
 	vpa_lister "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/listers/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target"
 	controllerfetcher "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target/controller_fetcher"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/annotations"
 	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
 )
 
@@ -57,8 +58,16 @@ func (m *matcher) GetMatchingVPA(pod *core.Pod) *vpa_types.VerticalPodAutoscaler
 	}
 	onConfigs := make([]*vpa_api_util.VpaWithSelector, 0)
 	for _, vpaConfig := range configs {
-		if vpa_api_util.GetUpdateMode(vpaConfig) == vpa_types.UpdateModeOff {
+		updateMode := vpa_api_util.GetUpdateMode(vpaConfig)
+		if updateMode == vpa_types.UpdateModeOff {
 			continue
+		}
+		if updateMode == vpa_types.UpdateModeTrigger {
+			if !annotations.HasVpaTrigger(&pod.ObjectMeta) {
+				klog.V(3).Infof("skipping VPA object %v with UpdateMode %s because %s does not have the `%s:%s` annotation.",
+					vpaConfig.Name, updateMode, pod.Name, annotations.VpaTriggerLabel, annotations.VpaTriggerEnabled)
+				continue
+			}
 		}
 		selector, err := m.selectorFetcher.Fetch(vpaConfig)
 		if err != nil {
