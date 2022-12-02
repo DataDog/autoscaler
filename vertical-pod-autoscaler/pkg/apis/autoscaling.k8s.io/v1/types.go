@@ -120,7 +120,7 @@ type PodUpdatePolicy struct {
 }
 
 // UpdateMode controls when autoscaler applies changes to the pod resoures.
-// +kubebuilder:validation:Enum=Off;Initial;Recreate;Auto
+// +kubebuilder:validation:Enum=Off;Initial;Recreate;Auto;Trigger
 type UpdateMode string
 
 const (
@@ -137,9 +137,13 @@ const (
 	UpdateModeRecreate UpdateMode = "Recreate"
 	// UpdateModeAuto means that autoscaler assigns resources on pod creation
 	// and additionally can update them during the lifetime of the pod,
-	// using any available update method. Currently this is equivalent to
+	// using any available update method. Currently, this is equivalent to
 	// Recreate, which is the only available update method.
 	UpdateModeAuto UpdateMode = "Auto"
+	// UpdateModeTrigger means that the autoscaler assigns resource when
+	// the controlling workload (Deployement, Statefulset) or the pod has
+	// the `vpaTrigger: true` annotation.
+	UpdateModeTrigger UpdateMode = "Trigger"
 )
 
 // PodResourcePolicy controls how autoscaler computes the recommended resources
