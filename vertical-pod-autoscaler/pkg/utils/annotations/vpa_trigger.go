@@ -22,8 +22,10 @@ import (
 
 const (
 	// VpaTriggerLabel is a label used by the vpa trigger annotation.
-	VpaTriggerLabel     = "vpaTrigger"
-	VpaTriggerEnabled   = "true"
+	VpaTriggerLabel = "vpaTrigger"
+	// VpaTriggerEnabled is the value of VpaTriggerLabel used to enable the tirgger.
+	VpaTriggerEnabled = "true"
+	// VpaTriggerTriggered is the value of VpaTriggerLabel set once we've triggered an update because of the annotation.
 	VpaTriggerTriggered = "triggered"
 )
 
