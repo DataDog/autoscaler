@@ -1,0 +1,122 @@
+# This config creates a deployment with two pods, each requesting 100 millicores
+# and trying to utilize slightly above 500 millicores (repeatedly using CPU for
+# 0.5s and sleeping 0.5s).
+# It also creates a corresponding Vertical Pod Autoscaler that adjusts the
+# requests.
+---
+apiVersion: "autoscaling.k8s.io/v1"
+kind: VerticalPodAutoscaler
+metadata:
+  name: hamster-deployment-vpa
+spec:
+  # recommenders field can be unset when using the default recommender.
+  # When using an alternative recommender, the alternative recommender's name
+  # can be specified as the following in a list.
+  # recommenders: 
+  #   - name: 'alternative'
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: hamster-deployment
+  updatePolicy:
+    updateMode: Trigger
+  resourcePolicy:
+    containerPolicies:
+      - containerName: '*'
+        minAllowed:
+          cpu: 10m
+          memory: 50Mi
+        maxAllowed:
+          cpu: 600m
+          memory: 500Mi
+        controlledResources: ["cpu", "memory"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hamster-deployment
+  annotations:
+    vpaTrigger: "true"
+spec:
+  selector:
+    matchLabels:
+      app: hamster-deployment
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: hamster-deployment
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534 # nobody
+      containers:
+        - name: hamster
+          image: k8s.gcr.io/ubuntu-slim:0.1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 50Mi
+          command: ["/bin/sh"]
+          args:
+            - "-c"
+            - "while true; do timeout 0.5s yes >/dev/null; sleep 0.5s; done"
+---
+apiVersion: "autoscaling.k8s.io/v1"
+kind: VerticalPodAutoscaler
+metadata:
+  name: hamster-statefulset-vpa
+spec:
+  # recommenders field can be unset when using the default recommender.
+  # When using an alternative recommender, the alternative recommender's name
+  # can be specified as the following in a list.
+  # recommenders:
+  #   - name: 'alternative'
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: StatefulSet
+    name: hamster-statefulset
+  updatePolicy:
+    updateMode: Trigger
+  resourcePolicy:
+    containerPolicies:
+      - containerName: '*'
+        minAllowed:
+          cpu: 10m
+          memory: 50Mi
+        maxAllowed:
+          cpu: 600m
+          memory: 500Mi
+        controlledResources: ["cpu", "memory"]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hamster-statefulset
+  annotations:
+    vpaTrigger: "true"
+spec:
+  selector:
+    matchLabels:
+      app: hamster-statefulset
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: hamster-statefulset
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534 # nobody
+      containers:
+        - name: hamster
+          image: k8s.gcr.io/ubuntu-slim:0.1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 50Mi
+          command: ["/bin/sh"]
+          args:
+            - "-c"
+            - "while true; do timeout 0.5s yes >/dev/null; sleep 0.5s; done"
+  serviceName: hamster-statefulset
