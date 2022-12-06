@@ -88,6 +88,9 @@ func (s externalMetricsClient) List(ctx context.Context, namespace string, state
 	nsClient := s.externalClient.NamespacedMetrics(namespace)
 
 	for _, vpa := range state.Vpas {
+		if vpa.PodCount == 0 {
+			continue
+		}
 		workloadValues := make(podContainerResourceMap)
 		cpuMetrics, err := nsClient.List(s.options.CpuMetric, vpa.PodSelector)
 		if err != nil {
