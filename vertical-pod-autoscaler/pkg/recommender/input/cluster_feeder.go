@@ -147,6 +147,8 @@ func newMetricsClient(config *rest.Config, namespace, clientName string, externa
 		metricsGetter := resourceclient.NewForConfigOrDie(config)
 		return metrics.NewMetricsClient(metrics.NewPodMetricsesSource(metricsGetter), namespace, clientName)
 	}
+	metricsGetter := resourceclient.NewForConfigOrDie(config)
+	return metrics.NewMetricsClient(metrics.NewPodMetricsesSource(metricsGetter), namespace)
 }
 
 // WatchEvictionEventsWithRetries watches new Events with reason=Evicted and passes them to the observer.
