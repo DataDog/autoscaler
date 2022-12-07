@@ -27,7 +27,9 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod/patch"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/vpa"
+	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/annotations"
+	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
 )
 
 // WorkloadResourceHandler builds patches for Workloads.
@@ -61,6 +63,11 @@ func (h *WorkloadResourceHandler) GetPatchesForWorkload(namespace string, object
 		klog.V(4).Infof("No matching VPA found for %s/%s", objectMeta.Namespace, objectMeta.Name)
 		return []resource_admission.PatchRecord{}, nil
 	}
+	updateMode := vpa_api_util.GetUpdateMode(controllingVpa)
+	if updateMode != vpa_types.UpdateModeTrigger {
+		klog.V(4).Infof("Only UpdateMode=%s is supported for workload, found %s", vpa_types.UpdateModeTrigger, updateMode)
+		return []resource_admission.PatchRecord{}, nil
+	}
 	pod, err := h.preProcessor.Process(pod)
 	if err != nil {
 		return nil, err
@@ -78,11 +85,11 @@ func (h *WorkloadResourceHandler) GetPatchesForWorkload(namespace string, object
 		patches = append(patches, partialPatches...)
 	}
 
-	return FixupPodPatchesForWorkload(patches), nil
+	return FixupPatchesSpecPathForWorkload(patches), nil
 }
 
-// FixupPodPatchesForWorkload takes patches for a pod and adapt them to be applied to a workload.
-func FixupPodPatchesForWorkload(patches []resource_admission.PatchRecord) []resource_admission.PatchRecord {
+// FixupPatchesSpecPathForWorkload takes patches for a pod and adapt them to be applied to a workload.
+func FixupPatchesSpecPathForWorkload(patches []resource_admission.PatchRecord) []resource_admission.PatchRecord {
 	for i, patch := range patches {
 		// If it's a patch to spec, add the path to the PodSpec
 		if strings.HasPrefix(patch.Path, "/spec/") {

@@ -16,7 +16,7 @@ one and use current recommendation to set resource requests in the pod.
 
 For each deployment or statefulset creation or update, it will get a request from the
 apiserver and either decide there's no matching VPA configuration or find the corresponding
-one and if `UpdateMode` is set to `Annotation` and the `vpaTrigger: true` annotion is set, it
+one and if `UpdateMode` is set to `Annotation` and the `vpaTrigger: true` annotation is set, it
 will use current recommendation to set resource requests in the pod template spec.
 
 ## Running
