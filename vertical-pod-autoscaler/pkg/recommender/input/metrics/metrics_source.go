@@ -23,6 +23,7 @@ type podMetricsSource struct {
 	metricsGetter resourceclient.PodMetricsesGetter
 }
 
+// NewPodMetricsesSource Returns a Source-wrapper around PodMetricsesGetter.
 func NewPodMetricsesSource(source resourceclient.PodMetricsesGetter) Source {
 	return podMetricsSource{metricsGetter: source}
 }
@@ -37,12 +38,14 @@ type externalMetricsClient struct {
 	options        ExternalClientOptions
 }
 
+// ExternalClientOptions specifies parameters for using an External Metrics Client.
 type ExternalClientOptions struct {
 	CpuMetric, MemoryMetric                          string
 	PodNamespaceLabel, PodNameLabel                  string
 	CtrNamespaceLabel, CtrPodNameLabel, CtrNameLabel string
 }
 
+// NewExternalClient returns a Source for an External Metrics Client.
 func NewExternalClient(c *rest.Config, options ExternalClientOptions) Source {
 	extClient, err := external_metrics.NewForConfig(c)
 	if err != nil {
@@ -63,9 +66,9 @@ func (s externalMetricsClient) containerId(value externalmetricsv1beta1.External
 			PodID:         model.PodID{Namespace: podNS, PodName: podName},
 			ContainerName: ctrName,
 		}
-	} else {
-		return nil
 	}
+	return nil
+
 }
 
 type podContainerResourceMap map[model.PodID]map[string]k8sapiv1.ResourceList
