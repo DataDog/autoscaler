@@ -15,7 +15,8 @@ import (
 	"k8s.io/metrics/pkg/client/external_metrics"
 )
 
-type Source interface {
+// MetricsSource wraps both metrics-client and External Metrics
+type MetricsSource interface {
 	List(ctx context.Context, namespace string, model *model.ClusterState, opts v1.ListOptions) (*v1beta1.PodMetricsList, error)
 }
 
@@ -24,7 +25,7 @@ type podMetricsSource struct {
 }
 
 // NewPodMetricsesSource Returns a Source-wrapper around PodMetricsesGetter.
-func NewPodMetricsesSource(source resourceclient.PodMetricsesGetter) Source {
+func NewPodMetricsesSource(source resourceclient.PodMetricsesGetter) MetricsSource {
 	return podMetricsSource{metricsGetter: source}
 }
 
@@ -46,7 +47,7 @@ type ExternalClientOptions struct {
 }
 
 // NewExternalClient returns a Source for an External Metrics Client.
-func NewExternalClient(c *rest.Config, options ExternalClientOptions) Source {
+func NewExternalClient(c *rest.Config, options ExternalClientOptions) MetricsSource {
 	extClient, err := external_metrics.NewForConfig(c)
 	if err != nil {
 		klog.Fatalf("Failed initializing external metrics client: %v", err)
