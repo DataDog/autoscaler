@@ -17,6 +17,8 @@ limitations under the License.
 package annotations
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -26,7 +28,7 @@ const (
 	// VpaTriggerEnabled is the value of VpaTriggerLabel used to enable the tirgger.
 	VpaTriggerEnabled = "true"
 	// VpaTriggerTriggered is the value of VpaTriggerLabel set once we've triggered an update because of the annotation.
-	VpaTriggerTriggered = "triggered"
+	VpaTriggerTriggered = "triggered at"
 )
 
 // HasVpaTrigger creates an annotation value for a given pod.
@@ -35,4 +37,9 @@ func HasVpaTrigger(objectMeta *metav1.ObjectMeta) bool {
 		return true
 	}
 	return false
+}
+
+// GetVpaTriggeredValue returns the value for the VpaTriggerLabel annotation once it has been triggered at a given time.
+func GetVpaTriggeredValue(t time.Time) string {
+	return VpaTriggerTriggered + " " + t.Format(time.RFC3339)
 }
