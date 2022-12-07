@@ -17,6 +17,8 @@ limitations under the License.
 package patch
 
 import (
+	"time"
+
 	core "k8s.io/api/core/v1"
 
 	resource_admission "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource"
@@ -26,11 +28,13 @@ import (
 
 type updateTrigger struct{}
 
+var now = time.Now
+
 func (*updateTrigger) CalculatePatches(pod *core.Pod, _ *vpa_types.VerticalPodAutoscaler) ([]resource_admission.PatchRecord, error) {
 	patches := []resource_admission.PatchRecord{}
 
 	if annotations.HasVpaTrigger(&pod.ObjectMeta) {
-		patches = append(patches, GetAddAnnotationPatch(annotations.VpaTriggerLabel, annotations.VpaTriggerTriggered))
+		patches = append(patches, GetAddAnnotationPatch(annotations.VpaTriggerLabel, annotations.GetVpaTriggeredValue(now())))
 	}
 
 	return patches, nil

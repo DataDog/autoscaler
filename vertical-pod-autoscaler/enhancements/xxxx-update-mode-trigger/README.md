@@ -41,9 +41,9 @@ changes only when they deploy their application.
 
 The proposal is to extend the existing admission controller.
 
-A new `vpaTrigger` annotation and the associated `UpdateMode` `Trigger` will be created. When
-an admitted resource is handled by the admission controller, recommendations will be applied only
-if the `vpaTrigger` annotation is present and equal to `true`. 
+A new `vpaTrigger` annotation on the controller (deployment/sts) and the associated `UpdateMode` `Trigger`
+in the VPA object will be created. When  an admitted resource is handled by the admission controller,
+recommendations will be applied only  if the `vpaTrigger` annotation is present and equal to `true`. 
 
 The admission controller will now also watch and mutate creation and updates of
 `Deployment` and `StatefulSet`. It will do so by changing the `PodTemplateSpec` in the
