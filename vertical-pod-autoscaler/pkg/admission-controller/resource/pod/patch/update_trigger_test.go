@@ -18,6 +18,7 @@ package patch
 
 import (
 	"testing"
+	"time"
 
 	core "k8s.io/api/core/v1"
 
@@ -34,6 +35,11 @@ func addVpaUpdateTriggerPatch(value string) *resource_admission.PatchRecord {
 }
 
 func TestCalculatePatches_UpdateTrigger(t *testing.T) {
+	now = func() time.Time { return time.Date(1, 1, 1, 1, 1, 1, 1, time.UTC) }
+	defer func() {
+		now = time.Now
+	}()
+
 	tests := []struct {
 		name          string
 		pod           *core.Pod
@@ -47,11 +53,11 @@ func TestCalculatePatches_UpdateTrigger(t *testing.T) {
 		{
 			name:          "update vpa update trigger annotation",
 			pod:           test.Pod().WithAnnotations(map[string]string{annotations.VpaTriggerLabel: annotations.VpaTriggerEnabled}).Get(),
-			expectedPatch: addVpaUpdateTriggerPatch(annotations.VpaTriggerTriggered),
+			expectedPatch: addVpaUpdateTriggerPatch(annotations.GetVpaTriggeredValue(now())),
 		},
 		{
 			name:          "doesn't vpa update trigger annotation if already triggered",
-			pod:           test.Pod().WithAnnotations(map[string]string{annotations.VpaTriggerLabel: annotations.VpaTriggerTriggered}).Get(),
+			pod:           test.Pod().WithAnnotations(map[string]string{annotations.VpaTriggerLabel: annotations.GetVpaTriggeredValue(now())}).Get(),
 			expectedPatch: nil,
 		},
 	}
