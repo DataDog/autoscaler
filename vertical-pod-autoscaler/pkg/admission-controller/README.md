@@ -7,10 +7,17 @@
 ## Intro
 
 This is a binary that registers itself as a Mutating Admission Webhook
-and because of that is on the path of creating all pods.
+and because of that is on the path of creating all pods and
+creating or updating all deployments and statefulsets.
+
 For each pod creation, it will get a request from the apiserver and it will
 either decide there's no matching VPA configuration or find the corresponding
 one and use current recommendation to set resource requests in the pod.
+
+For each deployment or statefulset creation or update, it will get a request from the
+apiserver and either decide there's no matching VPA configuration or find the corresponding
+one and if `UpdateMode` is set to `Annotation` and the `vpaTrigger: true` annotation is set, it
+will use current recommendation to set resource requests in the pod template spec.
 
 ## Running
 
@@ -29,7 +36,7 @@ up the changes: ```sudo systemctl restart kubelet.service```
    `kubectl create -f ../deploy/admission-controller-deployment.yaml`.
    The first thing this will do is it will register itself with the apiserver as
    Webhook Admission Controller and start changing resource requirements
-   for pods on their creation & updates.
+   for pods, deployments and statefulsets on their creation & updates.
 1. You can specify a path for it to register as a part of the installation process
    by setting `--register-by-url=true` and passing `--webhook-address` and `--webhook-port`.
 
