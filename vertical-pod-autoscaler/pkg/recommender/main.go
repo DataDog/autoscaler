@@ -95,7 +95,14 @@ func main() {
 
 	var externalClientOptions *metrics2.ExternalClientOptions = nil
 	if *useExternalMetrics {
-		externalClientOptions = &metrics2.ExternalClientOptions{CpuMetric: *externalCpuMetric, MemoryMetric: *externalMemoryMetric, PodNamespaceLabel: *podNamespaceLabel, PodNameLabel: *podNameLabel, CtrNamespaceLabel: *ctrNamespaceLabel, CtrPodNameLabel: *ctrPodNameLabel, CtrNameLabel: *ctrNameLabel}
+		resourceMetrics := map[apiv1.ResourceName]string{}
+		if externalCpuMetric != nil && *externalCpuMetric != "" {
+			resourceMetrics[apiv1.ResourceCPU] = *externalCpuMetric
+		}
+		if externalMemoryMetric != nil && *externalMemoryMetric != "" {
+			resourceMetrics[apiv1.ResourceMemory] = *externalMemoryMetric
+		}
+		externalClientOptions = &metrics2.ExternalClientOptions{ResourceMetrics: resourceMetrics, PodNamespaceLabel: *podNamespaceLabel, PodNameLabel: *podNameLabel, CtrNamespaceLabel: *ctrNamespaceLabel, CtrPodNameLabel: *ctrPodNameLabel, CtrNameLabel: *ctrNameLabel}
 	}
 	recommender := routines.NewRecommender(config, *checkpointsGCInterval, useCheckpoints, *vpaObjectNamespace, *recommenderName, postProcessors, externalClientOptions)
 

@@ -58,7 +58,7 @@ type externalMetricsClient struct {
 
 // ExternalClientOptions specifies parameters for using an External Metrics Client.
 type ExternalClientOptions struct {
-	CpuMetric, MemoryMetric                          string
+	ResourceMetrics                                  map[k8sapiv1.ResourceName]string
 	PodNamespaceLabel, PodNameLabel                  string
 	CtrNamespaceLabel, CtrPodNameLabel, CtrNameLabel string
 }
@@ -87,7 +87,6 @@ func (s *externalMetricsClient) containerId(value externalmetricsv1beta1.Externa
 		}
 	}
 	return nil
-
 }
 
 type podContainerResourceMap map[model.PodID]map[string]k8sapiv1.ResourceList
@@ -117,28 +116,33 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 			continue
 		}
 		workloadValues := make(podContainerResourceMap)
-		cpuMetrics, err := nsClient.List(s.options.CpuMetric, vpa.PodSelector)
-		if err != nil {
-			return nil, err
-		}
-		memMetrics, err := nsClient.List(s.options.MemoryMetric, vpa.PodSelector)
-		if err != nil {
-			return nil, err
-		}
 
-		if cpuMetrics == nil || len(cpuMetrics.Items) == 0 || memMetrics == nil || len(memMetrics.Items) == 0 {
-			continue
-		}
+		var selectedTimestamp v1.Time
+		var selectedWindows time.Duration
+		for resourceName, metricName := range s.options.ResourceMetrics {
+			m, err := nsClient.List(metricName, vpa.PodSelector)
+			if err != nil {
+				return nil, err // Do we want to error or do we prefer to skip ?
+			}
+			if m == nil || len(m.Items) == 0 {
+				continue
+			}
+			s.addMetrics(m, resourceName, workloadValues)
 
-		s.addMetrics(cpuMetrics, k8sapiv1.ResourceCPU, workloadValues)
-		s.addMetrics(memMetrics, k8sapiv1.ResourceMemory, workloadValues)
+			if !m.Items[0].Timestamp.Time.IsZero() {
+				selectedTimestamp = m.Items[0].Timestamp
+				if m.Items[0].WindowSeconds != nil {
+					selectedWindows = time.Duration(*m.Items[0].WindowSeconds) * time.Second
+				}
+			}
+		}
 
 		for podId, cmaps := range workloadValues {
 			podMets := v1beta1.PodMetrics{
 				TypeMeta:   v1.TypeMeta{},
 				ObjectMeta: v1.ObjectMeta{Name: podId.PodName, Namespace: podId.Namespace},
-				Timestamp:  cpuMetrics.Items[0].Timestamp,
-				Window:     v1.Duration{Duration: time.Second * time.Duration(*cpuMetrics.Items[0].WindowSeconds)},
+				Timestamp:  selectedTimestamp, // I am not sure this is correct. Need to rework Timestamp and Window... which one should we use?
+				Window:     v1.Duration{Duration: selectedWindows},
 				Containers: make([]v1beta1.ContainerMetrics, len(cmaps)),
 			}
 			for cname, res := range cmaps {
