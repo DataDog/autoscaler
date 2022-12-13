@@ -92,10 +92,10 @@ func (s *externalMetricsClient) containerId(value externalmetricsv1beta1.Externa
 
 type podContainerResourceMap map[model.PodID]map[string]k8sapiv1.ResourceList
 
-func (s *externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalMetricValueList, name k8sapiv1.ResourceName, resourceMap *podContainerResourceMap) {
+func (s *externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalMetricValueList, name k8sapiv1.ResourceName, resourceMap podContainerResourceMap) {
 	for _, val := range list.Items {
 		if id := s.containerId(val); id != nil {
-			(*resourceMap)[id.PodID][id.ContainerName][name] = val.Value
+			resourceMap[id.PodID][id.ContainerName][name] = val.Value
 		}
 	}
 }
@@ -113,6 +113,9 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 		if vpa.PodCount == 0 {
 			continue
 		}
+		if namespace != "" && vpa.ID.Namespace != namespace {
+			continue
+		}
 		workloadValues := make(podContainerResourceMap)
 		cpuMetrics, err := nsClient.List(s.options.CpuMetric, vpa.PodSelector)
 		if err != nil {
@@ -127,8 +130,8 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 			continue
 		}
 
-		s.addMetrics(cpuMetrics, k8sapiv1.ResourceCPU, &workloadValues)
-		s.addMetrics(memMetrics, k8sapiv1.ResourceMemory, &workloadValues)
+		s.addMetrics(cpuMetrics, k8sapiv1.ResourceCPU, workloadValues)
+		s.addMetrics(memMetrics, k8sapiv1.ResourceMemory, workloadValues)
 
 		for podId, cmaps := range workloadValues {
 			podMets := v1beta1.PodMetrics{
@@ -136,7 +139,7 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 				ObjectMeta: v1.ObjectMeta{Name: podId.PodName, Namespace: podId.Namespace},
 				Timestamp:  cpuMetrics.Items[0].Timestamp,
 				Window:     v1.Duration{Duration: time.Second * time.Duration(*cpuMetrics.Items[0].WindowSeconds)},
-				Containers: make([]v1beta1.ContainerMetrics, 0, len(cmaps)),
+				Containers: make([]v1beta1.ContainerMetrics, len(cmaps)),
 			}
 			for cname, res := range cmaps {
 				podMets.Containers = append(podMets.Containers, v1beta1.ContainerMetrics{Name: cname, Usage: res})
