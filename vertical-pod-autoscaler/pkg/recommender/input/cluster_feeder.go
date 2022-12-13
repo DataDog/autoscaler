@@ -128,7 +128,7 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 		PodLister:           podLister,
 		OOMObserver:         oomObserver,
 		KubeClient:          kubeClient,
-		MetricsClient:       newMetricsClient(config, namespace, metricsClientName, externalClientOptions),
+		MetricsClient:       newMetricsClient(config, namespace, clusterState, externalClientOptions),
 		VpaCheckpointClient: vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
 		VpaLister:           vpa_api_util.NewVpasLister(vpa_clientset.NewForConfigOrDie(config), make(chan struct{}), namespace),
 		ClusterState:        clusterState,
@@ -139,13 +139,10 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 	}.Make()
 }
 
-func newMetricsClient(config *rest.Config, namespace, clientName string, externalClientOptions *metrics.ExternalClientOptions) metrics.MetricsClient {
+func newMetricsClient(config *rest.Config, namespace string, clusterState *model.ClusterState, externalClientOptions *metrics.ExternalClientOptions) metrics.MetricsClient {
 	if externalClientOptions != nil {
-		externalSource := metrics.NewExternalClient(config, *externalClientOptions)
-		return metrics.NewMetricsClient(externalSource, namespace, clientName)
-	} else {
-		metricsGetter := resourceclient.NewForConfigOrDie(config)
-		return metrics.NewMetricsClient(metrics.NewPodMetricsesSource(metricsGetter), namespace, clientName)
+		externalSource := metrics.NewExternalClient(config, clusterState, *externalClientOptions)
+		return metrics.NewMetricsClient(externalSource, namespace)
 	}
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
 	return metrics.NewMetricsClient(metrics.NewPodMetricsesSource(metricsGetter), namespace)

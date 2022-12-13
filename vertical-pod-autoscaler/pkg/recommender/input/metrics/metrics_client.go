@@ -23,7 +23,6 @@ import (
 	k8sapiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
-	recommender_metrics "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/recommender"
 	klog "k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
@@ -48,27 +47,24 @@ type MetricsClient interface {
 }
 
 type metricsClient struct {
-	source     Source
-	namespace  string
-	clientName string
+	source    PodMetricsLister
+	namespace string
 }
 
 // NewMetricsClient creates new instance of MetricsClient, which is used by recommender.
 // It requires an instance of PodMetricsesGetter, which is used for underlying communication with metrics server.
 // namespace limits queries to particular namespace, use k8sapiv1.NamespaceAll to select all namespaces.
-func NewMetricsClient(source Source, namespace string, clientName string) MetricsClient {
+func NewMetricsClient(source PodMetricsLister, namespace string) MetricsClient {
 	return &metricsClient{
-		source:     source,
-		namespace:  namespace,
-		clientName: clientName,
+		source:    source,
+		namespace: namespace,
 	}
 }
 
 func (c *metricsClient) GetContainersMetrics(state *model.ClusterState) ([]*ContainerMetricsSnapshot, error) {
 	var metricsSnapshots []*ContainerMetricsSnapshot
 
-	podMetricsList, err := c.source.List(context.TODO(), c.namespace, state, metav1.ListOptions{})
-	recommender_metrics.RecordMetricsServerResponse(err, c.clientName)
+	podMetricsList, err := c.source.List(context.TODO(), c.namespace, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
