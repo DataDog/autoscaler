@@ -31,9 +31,9 @@ import (
 	"k8s.io/metrics/pkg/client/external_metrics"
 )
 
-// MetricsSource wraps both metrics-client and External Metrics
-type MetricsSource interface {
-	List(ctx context.Context, namespace string, model *model.ClusterState, opts v1.ListOptions) (*v1beta1.PodMetricsList, error)
+// PodMetricsLister wraps both metrics-client and External Metrics
+type PodMetricsLister interface {
+	List(ctx context.Context, namespace string, opts v1.ListOptions) (*v1beta1.PodMetricsList, error)
 }
 
 type podMetricsSource struct {
@@ -41,11 +41,11 @@ type podMetricsSource struct {
 }
 
 // NewPodMetricsesSource Returns a Source-wrapper around PodMetricsesGetter.
-func NewPodMetricsesSource(source resourceclient.PodMetricsesGetter) MetricsSource {
-	return podMetricsSource{metricsGetter: source}
+func NewPodMetricsesSource(source resourceclient.PodMetricsesGetter) PodMetricsLister {
+	return &podMetricsSource{metricsGetter: source}
 }
 
-func (s podMetricsSource) List(ctx context.Context, namespace string, _ *model.ClusterState, opts v1.ListOptions) (*v1beta1.PodMetricsList, error) {
+func (s *podMetricsSource) List(ctx context.Context, namespace string, opts v1.ListOptions) (*v1beta1.PodMetricsList, error) {
 	podMetricsInterface := s.metricsGetter.PodMetricses(namespace)
 	return podMetricsInterface.List(ctx, opts)
 }
@@ -53,6 +53,7 @@ func (s podMetricsSource) List(ctx context.Context, namespace string, _ *model.C
 type externalMetricsClient struct {
 	externalClient external_metrics.ExternalMetricsClient
 	options        ExternalClientOptions
+	clusterState   *model.ClusterState
 }
 
 // ExternalClientOptions specifies parameters for using an External Metrics Client.
@@ -63,18 +64,19 @@ type ExternalClientOptions struct {
 }
 
 // NewExternalClient returns a Source for an External Metrics Client.
-func NewExternalClient(c *rest.Config, options ExternalClientOptions) MetricsSource {
+func NewExternalClient(c *rest.Config, clusterState *model.ClusterState, options ExternalClientOptions) PodMetricsLister {
 	extClient, err := external_metrics.NewForConfig(c)
 	if err != nil {
 		klog.Fatalf("Failed initializing external metrics client: %v", err)
 	}
-	return externalMetricsClient{
+	return &externalMetricsClient{
 		externalClient: extClient,
 		options:        options,
+		clusterState:   clusterState,
 	}
 }
 
-func (s externalMetricsClient) containerId(value externalmetricsv1beta1.ExternalMetricValue) *model.ContainerID {
+func (s *externalMetricsClient) containerId(value externalmetricsv1beta1.ExternalMetricValue) *model.ContainerID {
 	podNS, hasPodNS := value.MetricLabels[s.options.PodNamespaceLabel]
 	podName, hasPodName := value.MetricLabels[s.options.PodNameLabel]
 	ctrName, hasCtrName := value.MetricLabels[s.options.CtrNameLabel]
@@ -90,7 +92,7 @@ func (s externalMetricsClient) containerId(value externalmetricsv1beta1.External
 
 type podContainerResourceMap map[model.PodID]map[string]k8sapiv1.ResourceList
 
-func (s externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalMetricValueList, name k8sapiv1.ResourceName, resourceMap *podContainerResourceMap) {
+func (s *externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalMetricValueList, name k8sapiv1.ResourceName, resourceMap *podContainerResourceMap) {
 	for _, val := range list.Items {
 		if id := s.containerId(val); id != nil {
 			(*resourceMap)[id.PodID][id.ContainerName][name] = val.Value
@@ -98,7 +100,7 @@ func (s externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalM
 	}
 }
 
-func (s externalMetricsClient) List(ctx context.Context, namespace string, state *model.ClusterState, opts v1.ListOptions) (*v1beta1.PodMetricsList, error) {
+func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts v1.ListOptions) (*v1beta1.PodMetricsList, error) {
 	result := v1beta1.PodMetricsList{}
 	// Get all VPAs in the namespace
 	// - We already do this in the cluster state feeder!  It's in its clusterState member.
@@ -107,7 +109,7 @@ func (s externalMetricsClient) List(ctx context.Context, namespace string, state
 	// Send out the queries.
 	nsClient := s.externalClient.NamespacedMetrics(namespace)
 
-	for _, vpa := range state.Vpas {
+	for _, vpa := range s.clusterState.Vpas {
 		if vpa.PodCount == 0 {
 			continue
 		}
