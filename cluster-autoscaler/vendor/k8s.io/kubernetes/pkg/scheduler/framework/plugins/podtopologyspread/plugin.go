@@ -18,6 +18,7 @@ package podtopologyspread
 
 import (
 	"fmt"
+	"os"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -101,6 +102,13 @@ func New(plArgs runtime.Object, h framework.Handle, fts feature.Features) (frame
 		enableNodeInclusionPolicyInPodTopologySpread: fts.EnableNodeInclusionPolicyInPodTopologySpread,
 		enableMatchLabelKeysInPodTopologySpread:      fts.EnableMatchLabelKeysInPodTopologySpread,
 	}
+
+	// enableMatchLabelKeysInPodTopologySpread is enabled by default in kube 1.26, but to keep the CA scheduler behavior
+	// in line with clusters older than 1.26, this flag can be overridden to disable the new scheduling behavior
+	if os.Getenv("SPREADTOPOLOGY_NODE_INCLUSION_POLICY") == "disabled" {
+		pl.enableNodeInclusionPolicyInPodTopologySpread = false
+	}
+	
 	if args.DefaultingType == config.SystemDefaulting {
 		pl.defaultConstraints = systemDefaultConstraints
 		pl.systemDefaulted = true
