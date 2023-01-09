@@ -424,6 +424,9 @@ github.com/opencontainers/selinux/pkg/pwalkdir
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
+# github.com/pmezard/go-difflib v1.0.0
+## explicit
+github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.12.1
 ## explicit; go 1.13
 github.com/prometheus/client_golang/prometheus
@@ -456,6 +459,9 @@ github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
 github.com/spf13/pflag
+# github.com/stretchr/testify v1.7.0
+## explicit; go 1.13
+github.com/stretchr/testify/assert
 # github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635
 ## explicit
 github.com/syndtr/gocapability/capability
@@ -651,6 +657,7 @@ google.golang.org/api/internal
 google.golang.org/api/internal/gensupport
 google.golang.org/api/internal/impersonate
 google.golang.org/api/internal/third_party/uritemplates
+google.golang.org/api/monitoring/v3
 google.golang.org/api/option
 google.golang.org/api/option/internaloption
 google.golang.org/api/tpu/v1
@@ -1573,10 +1580,12 @@ k8s.io/kubernetes/test/e2e/common/network
 k8s.io/kubernetes/test/e2e/common/node
 k8s.io/kubernetes/test/e2e/common/storage
 k8s.io/kubernetes/test/e2e/framework
+k8s.io/kubernetes/test/e2e/framework/autoscaling
 k8s.io/kubernetes/test/e2e/framework/config
 k8s.io/kubernetes/test/e2e/framework/deployment
 k8s.io/kubernetes/test/e2e/framework/events
 k8s.io/kubernetes/test/e2e/framework/ginkgowrapper
+k8s.io/kubernetes/test/e2e/framework/gpu
 k8s.io/kubernetes/test/e2e/framework/job
 k8s.io/kubernetes/test/e2e/framework/kubectl
 k8s.io/kubernetes/test/e2e/framework/log
@@ -1597,7 +1606,10 @@ k8s.io/kubernetes/test/e2e/framework/statefulset
 k8s.io/kubernetes/test/e2e/framework/testfiles
 k8s.io/kubernetes/test/e2e/framework/volume
 k8s.io/kubernetes/test/e2e/framework/websocket
+k8s.io/kubernetes/test/e2e/instrumentation/common
+k8s.io/kubernetes/test/e2e/instrumentation/monitoring
 k8s.io/kubernetes/test/e2e/perftype
+k8s.io/kubernetes/test/e2e/scheduling
 k8s.io/kubernetes/test/e2e/storage/podlogs
 k8s.io/kubernetes/test/e2e/storage/utils
 k8s.io/kubernetes/test/e2e/testing-manifests
@@ -1607,6 +1619,16 @@ k8s.io/kubernetes/third_party/forked/golang/expansion
 # k8s.io/legacy-cloud-providers v0.0.0 => k8s.io/legacy-cloud-providers v0.25.0
 ## explicit; go 1.19
 k8s.io/legacy-cloud-providers/gce
+# k8s.io/metrics v0.25.0 => k8s.io/metrics v0.25.0
+## explicit; go 1.19
+k8s.io/metrics/pkg/apis/custom_metrics
+k8s.io/metrics/pkg/apis/custom_metrics/v1beta1
+k8s.io/metrics/pkg/apis/custom_metrics/v1beta2
+k8s.io/metrics/pkg/apis/external_metrics
+k8s.io/metrics/pkg/apis/external_metrics/v1beta1
+k8s.io/metrics/pkg/client/custom_metrics
+k8s.io/metrics/pkg/client/custom_metrics/scheme
+k8s.io/metrics/pkg/client/external_metrics
 # k8s.io/mount-utils v0.25.0 => k8s.io/mount-utils v0.25.1-rc.0
 ## explicit; go 1.19
 k8s.io/mount-utils

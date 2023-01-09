@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	ginkgo "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	autoscaling "k8s.io/api/autoscaling/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,8 +36,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	podsecurity "k8s.io/pod-security-admission/api"
 
-	ginkgo "github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
+	"k8s.io/kubernetes/test/e2e/instrumentation/monitoring"
 )
 
 type resourceRecommendation struct {
@@ -404,3 +405,74 @@ func deleteRecommender(c clientset.Interface) error {
 	}
 	return fmt.Errorf("vpa recommender not found")
 }
+
+var _ = RecommenderExternalMetricsE2eDescribe("VPA CRD object", func() {
+	f := framework.NewDefaultFramework("vertical-pod-autoscaling")
+	f.NamespacePodSecurityEnforceLevel = podsecurity.LevelBaseline
+
+	var (
+		vpaCRD       *vpa_types.VerticalPodAutoscaler
+		vpaClientSet vpa_clientset.Interface
+	)
+
+	ginkgo.BeforeEach(func() {
+		ginkgo.By("Setting up a hamster deployment")
+		_ = SetupHamsterDeployment(
+			f,       /* framework */
+			"100m",  /* cpu */
+			"100Mi", /* memeory */
+			1,       /* number of replicas */
+		)
+
+		ginkgo.By("Setting up a VPA CRD")
+		vpaCRD = NewVPA(f, "hamster-vpa", hamsterTargetRef)
+		InstallVPA(f, vpaCRD)
+
+		vpaClientSet = getVpaClientSet(f)
+	})
+
+	ginkgo.It("serves recommendation", func() {
+		ginkgo.By("Waiting for recommendation to be filled")
+		_, err := WaitForRecommendationPresent(vpaClientSet, vpaCRD)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("doesn't drop lower/upper after recommender's restart", func() {
+
+		o := getVpaObserver(vpaClientSet)
+
+		ginkgo.By("Waiting for recommendation to be filled")
+		_, err := WaitForRecommendationPresent(vpaClientSet, vpaCRD)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		ginkgo.By("Drain diffs")
+	out:
+		for {
+			select {
+			case recommendationDiff := <-o.channel:
+				fmt.Println("Dropping recommendation diff", recommendationDiff)
+			default:
+				break out
+			}
+		}
+		ginkgo.By("Deleting recommender")
+		gomega.Expect(deleteRecommender(f.ClientSet)).To(gomega.BeNil())
+		ginkgo.By("Accumulating diffs after restart")
+		time.Sleep(5 * time.Minute)
+		changeDetected := false
+	finish:
+		for {
+			select {
+			case recommendationDiff := <-o.channel:
+				fmt.Println("checking recommendation diff", recommendationDiff)
+				changeDetected = true
+				gomega.Expect(recommendationDiff.oldMissing).To(gomega.Equal(false))
+				gomega.Expect(recommendationDiff.newMissing).To(gomega.Equal(false))
+				gomega.Expect(recommendationDiff.diff.lower).Should(gomega.BeNumerically(">=", 0))
+				gomega.Expect(recommendationDiff.diff.upper).Should(gomega.BeNumerically("<=", 0))
+			default:
+				break finish
+			}
+		}
+		gomega.Expect(changeDetected).To(gomega.Equal(true))
+	})
+})

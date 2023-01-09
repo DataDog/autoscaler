@@ -54,7 +54,7 @@ type VerticalPodAutoscaler struct {
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Specification of the behavior of the autoscaler.
-	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status.
 	Spec VerticalPodAutoscalerSpec `json:"spec" protobuf:"bytes,2,name=spec"`
 
 	// Current information about the autoscaler.
@@ -120,7 +120,7 @@ type PodUpdatePolicy struct {
 }
 
 // UpdateMode controls when autoscaler applies changes to the pod resoures.
-// +kubebuilder:validation:Enum=Off;Initial;Recreate;Auto
+// +kubebuilder:validation:Enum=Off;Initial;Recreate;Auto;Trigger
 type UpdateMode string
 
 const (
@@ -137,9 +137,13 @@ const (
 	UpdateModeRecreate UpdateMode = "Recreate"
 	// UpdateModeAuto means that autoscaler assigns resources on pod creation
 	// and additionally can update them during the lifetime of the pod,
-	// using any available update method. Currently this is equivalent to
+	// using any available update method. Currently, this is equivalent to
 	// Recreate, which is the only available update method.
 	UpdateModeAuto UpdateMode = "Auto"
+	// UpdateModeTrigger means that the autoscaler assigns resource when
+	// the controlling workload (Deployement, Statefulset) or the pod has
+	// the `vpaTrigger: true` annotation.
+	UpdateModeTrigger UpdateMode = "Trigger"
 )
 
 // PodResourcePolicy controls how autoscaler computes the recommended resources
@@ -323,7 +327,7 @@ type VerticalPodAutoscalerCheckpoint struct {
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Specification of the checkpoint.
-	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status.
 	// +optional
 	Spec VerticalPodAutoscalerCheckpointSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 

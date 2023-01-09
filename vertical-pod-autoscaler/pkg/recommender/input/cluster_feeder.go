@@ -142,8 +142,10 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 func newMetricsClient(config *rest.Config, namespace string, clusterState *model.ClusterState, externalClientOptions *metrics.ExternalClientOptions) metrics.MetricsClient {
 	if externalClientOptions != nil {
 		externalSource := metrics.NewExternalClient(config, clusterState, *externalClientOptions)
+		klog.V(1).Infof("Using external metrics")
 		return metrics.NewMetricsClient(externalSource, namespace)
 	}
+	klog.V(1).Infof("Using Metrics API Metrics.")
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
 	return metrics.NewMetricsClient(metrics.NewPodMetricsesSource(metricsGetter), namespace)
 }

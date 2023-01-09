@@ -103,6 +103,7 @@ func main() {
 			resourceMetrics[apiv1.ResourceMemory] = *externalMemoryMetric
 		}
 		externalClientOptions = &metrics2.ExternalClientOptions{ResourceMetrics: resourceMetrics, PodNamespaceLabel: *podNamespaceLabel, PodNameLabel: *podNameLabel, CtrNamespaceLabel: *ctrNamespaceLabel, CtrPodNameLabel: *ctrPodNameLabel, CtrNameLabel: *ctrNameLabel}
+		klog.V(1).Infof("Using External Metrics: %+v", externalClientOptions)
 	}
 	recommender := routines.NewRecommender(config, *checkpointsGCInterval, useCheckpoints, *vpaObjectNamespace, *recommenderName, postProcessors, externalClientOptions)
 

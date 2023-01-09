@@ -333,3 +333,4 @@ subjects:
   - kind: ServiceAccount
     name: vpa-updater
     namespace: kube-system
+---

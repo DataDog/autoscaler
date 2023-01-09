@@ -23,6 +23,7 @@ function print_help {
   echo "ERROR! Usage: run-e2e.sh <suite>"
   echo "<suite> should be one of:"
   echo " - recommender"
+  echo " - recommender-externalmetrics"
   echo " - updater"
   echo " - admission-controller"
   echo " - actuation"
@@ -42,7 +43,7 @@ fi
 SUITE=$1
 
 case ${SUITE} in
-  recommender|updater|admission-controller|actuation|full-vpa)
+  recommender|recommender-externalmetrics|updater|admission-controller|actuation|full-vpa)
     ${SCRIPT_ROOT}/hack/vpa-down.sh
     ${SCRIPT_ROOT}/hack/deploy-for-e2e.sh ${SUITE}
     ${SCRIPT_ROOT}/hack/run-e2e-tests.sh ${SUITE}

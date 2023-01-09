@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 # Copyright 2018 The Kubernetes Authors.
 #
@@ -44,7 +44,7 @@ fi
 SUITE=$1
 
 case ${SUITE} in
-  recommender|updater|admission-controller)
+  recommender|recommender-externalmetrics|updater|admission-controller)
     COMPONENTS="${SUITE}"
     ;;
   full-vpa)
@@ -59,7 +59,9 @@ case ${SUITE} in
     ;;
 esac
 
-export REGISTRY=gcr.io/`gcloud config get-value core/project`
+#export REGISTRY=gcr.io/`gcloud config get-value core/project`
+# KIND registry
+export REGISTRY=localhost:5001
 export TAG=latest
 
 echo "Configuring registry authentication"
@@ -69,6 +71,8 @@ gcloud auth configure-docker -q
 for i in ${COMPONENTS}; do
   if [ $i == admission-controller ] ; then
     (cd ${SCRIPT_ROOT}/pkg/${i} && bash ./gencerts.sh || true)
+  elif [ $i == recommender-externalmetrics ] ; then
+    i=recommender
   fi
   ALL_ARCHITECTURES=amd64 make --directory ${SCRIPT_ROOT}/pkg/${i} release
 done
@@ -78,5 +82,19 @@ kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-rbac.yaml
 
 for i in ${COMPONENTS}; do
   ${SCRIPT_ROOT}/hack/vpa-process-yaml.sh  ${SCRIPT_ROOT}/deploy/${i}-deployment.yaml | kubectl create -f -
+done
+
+for i in ${COMPONENTS}; do
+  if [ $i == recommender-externalmetrics ] ; then
+     kubectl create namespace monitoring
+     kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-configmap.yaml
+     kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-rbac.yaml
+     # This is actually for prometheus-adapter, which helm installs (correctly, this is also the wrong ns)
+     # kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-services.yaml
+     kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-deployment.yaml
+     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+     helm repo update
+     helm install prometheus-adapter prometheus-community/prometheus-adapter
+  fi
 done
 

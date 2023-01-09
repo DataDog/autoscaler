@@ -64,9 +64,9 @@ endif
 
 .PHONY: push-multi-arch
 push-multi-arch:
-	docker manifest create --amend $(REGISTRY)/${FULL_COMPONENT}:$(TAG) $(shell echo $(ALL_ARCHITECTURES) | sed -e "s~[^ ]*~$(REGISTRY)/${FULL_COMPONENT}\-&:$(TAG)~g")
-	@for arch in $(ALL_ARCHITECTURES); do docker manifest annotate --arch $${arch} $(REGISTRY)/${FULL_COMPONENT}:$(TAG) $(REGISTRY)/${FULL_COMPONENT}-$${arch}:${TAG}; done
-	docker manifest push --purge $(REGISTRY)/${FULL_COMPONENT}:$(TAG)
+	docker manifest create --insecure --amend $(REGISTRY)/${FULL_COMPONENT}:$(TAG) $(shell echo $(ALL_ARCHITECTURES) | sed -e "s~[^ ]*~$(REGISTRY)/${FULL_COMPONENT}\-&:$(TAG)~g")
+	@for arch in $(ALL_ARCHITECTURES); do docker manifest annotate  --arch $${arch} $(REGISTRY)/${FULL_COMPONENT}:$(TAG) $(REGISTRY)/${FULL_COMPONENT}-$${arch}:${TAG}; done
+	docker manifest push --insecure --purge $(REGISTRY)/${FULL_COMPONENT}:$(TAG)
 
 docker-builder:
 	docker build -t vpa-autoscaling-builder ../../builder

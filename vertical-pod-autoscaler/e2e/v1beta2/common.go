@@ -42,14 +42,15 @@ import (
 )
 
 const (
-	recommenderComponent         = "recommender"
-	updateComponent              = "updater"
-	admissionControllerComponent = "admission-controller"
-	fullVpaSuite                 = "full-vpa"
-	actuationSuite               = "actuation"
-	pollInterval                 = 10 * time.Second
-	pollTimeout                  = 15 * time.Minute
-	cronJobsWaitTimeout          = 15 * time.Minute
+	recommenderComponent                = "recommender"
+	recommenderExternalMetricsComponent = "recommender-externalmetrics"
+	updateComponent                     = "updater"
+	admissionControllerComponent        = "admission-controller"
+	fullVpaSuite                        = "full-vpa"
+	actuationSuite                      = "actuation"
+	pollInterval                        = 10 * time.Second
+	pollTimeout                         = 15 * time.Minute
+	cronJobsWaitTimeout                 = 15 * time.Minute
 	// VpaEvictionTimeout is a timeout for VPA to restart a pod if there are no
 	// mechanisms blocking it (for example PDB).
 	VpaEvictionTimeout = 3 * time.Minute
@@ -79,6 +80,11 @@ func E2eDescribe(scenario, name string, body func()) bool {
 // RecommenderE2eDescribe describes a VPA recommender e2e test.
 func RecommenderE2eDescribe(name string, body func()) bool {
 	return E2eDescribe(recommenderComponent, name, body)
+}
+
+// RecommenderExternalMetricsE2eDescribe describes a VPA recommender e2e test.
+func RecommenderExternalMetricsE2eDescribe(name string, body func()) bool {
+	return E2eDescribe(recommenderExternalMetricsComponent, name, body)
 }
 
 // UpdaterE2eDescribe describes a VPA updater e2e test.

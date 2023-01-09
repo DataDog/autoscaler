@@ -40,7 +40,7 @@ if [ $# -gt 2 ]; then
 fi
 
 ACTION=$1
-COMPONENTS="vpa-v1-crd-gen vpa-rbac updater-deployment recommender-deployment admission-controller-deployment"
+COMPONENTS="vpa-v1-crd-gen vpa-rbac updater-deployment recommender-deployment admission-controller-deployment recommender-externalmetrics-deployment"
 case ${ACTION} in
 delete|diff|print) COMPONENTS+=" vpa-beta2-crd" ;;
 esac
@@ -56,6 +56,11 @@ for i in $COMPONENTS; do
     elif [ ${ACTION} == delete ] ; then
       (bash ${SCRIPT_ROOT}/pkg/admission-controller/rmcerts.sh || true)
       (bash ${SCRIPT_ROOT}/pkg/admission-controller/delete-webhook.sh || true)
+    fi
+  fi
+  if [ $i == recommender-externalmetrics-deployment ] ; then
+    if [ ${ACTION} == delete ] ; then
+      helm uninstall prometheus-adapter
     fi
   fi
   if [[ ${ACTION} == print ]]; then
