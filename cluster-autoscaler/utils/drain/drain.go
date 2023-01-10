@@ -222,7 +222,7 @@ func GetPodsForDeletionOnNodeDrain(
 			if HasLocalStorage(pod) && skipNodesWithLocalStorage {
 				return []*apiv1.Pod{}, []*apiv1.Pod{}, &BlockingPod{Pod: pod, Reason: LocalStorageRequested}, fmt.Errorf("pod with local storage present: %s", pod.Name)
 			}
-			if hasNotSafeToEvictAnnotation(pod) {
+			if HasNotSafeToEvictAnnotation(pod) {
 				return []*apiv1.Pod{}, []*apiv1.Pod{}, &BlockingPod{Pod: pod, Reason: NotSafeToEvictAnnotation}, fmt.Errorf("pod annotated as not safe to evict present: %s", pod.Name)
 			}
 		}
@@ -285,8 +285,8 @@ func hasSafeToEvictAnnotation(pod *apiv1.Pod) bool {
 	return pod.GetAnnotations()[PodSafeToEvictKey] == "true"
 }
 
-// This checks if pod has PodSafeToEvictKey annotation set to false
-func hasNotSafeToEvictAnnotation(pod *apiv1.Pod) bool {
+// HasNotSafeToEvictAnnotation checks if pod has PodSafeToEvictKey annotation set to false
+func HasNotSafeToEvictAnnotation(pod *apiv1.Pod) bool {
 	return pod.GetAnnotations()[PodSafeToEvictKey] == "false"
 }
 

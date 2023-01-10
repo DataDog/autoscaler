@@ -34,6 +34,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/metrics"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/daemonset"
+	"k8s.io/autoscaler/cluster-autoscaler/utils/drain"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	pod_util "k8s.io/autoscaler/cluster-autoscaler/utils/pod"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -143,6 +144,10 @@ func (e Evictor) DrainNodeWithPods(ctx *acontext.AutoscalingContext, node *apiv1
 		for _, pod := range pods {
 			podreturned, err := ctx.ClientSet.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 			if err == nil && (podreturned == nil || podreturned.Spec.NodeName == node.Name) {
+				if podreturned != nil && drain.HasNotSafeToEvictAnnotation(podreturned) {
+					klog.Warningf("Pod %s recently marked as unsafe to evict", pod.Name)
+					return evictionResults, errors.NewAutoscalerError(errors.TransientError, "Pod %s recently marked as unsafe to evict", pod.Name)
+				}
 				klog.V(1).Infof("Not deleted yet %s/%s", pod.Namespace, pod.Name)
 				allGone = false
 				break
@@ -157,6 +162,13 @@ func (e Evictor) DrainNodeWithPods(ctx *acontext.AutoscalingContext, node *apiv1
 			klog.V(1).Infof("All pods removed from %s", node.Name)
 			// Let the deferred function know there is no need for cleanup
 			return evictionResults, nil
+		}
+
+		if n, err := ctx.ClientSet.CoreV1().Nodes().Get(context.TODO(), node.Name, metav1.GetOptions{}); err == nil {
+			if n.Annotations["cluster-autoscaler.kubernetes.io/scale-down-disabled"] == "true" {
+				klog.V(1).Infof("Node %s recently marked as blocked from scaling down", n.Name)
+				return evictionResults, errors.NewAutoscalerError(errors.TransientError, "Node %s recently marked as blocked from scaling down", n.Name)
+			}
 		}
 	}
 
