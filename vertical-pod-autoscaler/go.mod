@@ -19,7 +19,10 @@ require (
 	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
 )
 
+require github.com/DataDog/datadog-api-client-go v1.16.0
+
 require (
+	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

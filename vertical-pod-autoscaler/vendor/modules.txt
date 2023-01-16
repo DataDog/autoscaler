@@ -1,3 +1,10 @@
+# github.com/DataDog/datadog-api-client-go v1.16.0
+## explicit; go 1.17
+github.com/DataDog/datadog-api-client-go
+github.com/DataDog/datadog-api-client-go/api/v1/datadog
+# github.com/DataDog/zstd v1.5.0
+## explicit; go 1.14
+github.com/DataDog/zstd
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
