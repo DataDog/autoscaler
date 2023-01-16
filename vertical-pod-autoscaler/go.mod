@@ -19,7 +19,10 @@ require (
 	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed
 )
 
+require github.com/DataDog/datadog-api-client-go v1.16.0
+
 require (
+	github.com/DataDog/zstd v1.5.0 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
