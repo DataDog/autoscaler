@@ -19,6 +19,7 @@ package input
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -27,6 +28,15 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/informers"
+	kube_client "k8s.io/client-go/kubernetes"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	v1lister "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	klog "k8s.io/klog/v2"
+	resourceclient "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
+
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	vpa_clientset "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned"
 	vpa_api "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned/typed/autoscaling.k8s.io/v1"
@@ -40,14 +50,6 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target"
 	metrics_recommender "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/recommender"
 	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
-	"k8s.io/client-go/informers"
-	kube_client "k8s.io/client-go/kubernetes"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	v1lister "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
-	klog "k8s.io/klog/v2"
-	resourceclient "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
 )
 
 const (
@@ -140,6 +142,11 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 }
 
 func newMetricsClient(config *rest.Config, namespace, clientName string) metrics.MetricsClient {
+	// Once the upstream hardcode on client name will be fixed we would be able to switch on `clientName` in that constructor
+	if ddKubeClusterName := os.Getenv("K8S_CLUSTER_NAME"); ddKubeClusterName != "" && clientName == "default-metrics-client" {
+		return metrics.NewMetricsClient(metrics.NewDatadogClient(10*time.Second, ddKubeClusterName, nil), namespace, "datadog")
+	}
+
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
 	return metrics.NewMetricsClient(metricsGetter, namespace, clientName)
 }
