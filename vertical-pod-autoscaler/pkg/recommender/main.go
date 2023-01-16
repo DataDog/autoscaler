@@ -73,6 +73,11 @@ var (
 	postProcessorCPUasInteger = flag.Bool("cpu-integer-post-processor-enabled", false, "Enable the cpu-integer recommendation post processor. The post processor will round up CPU recommendations to a whole CPU for pods which were opted in by setting an appropriate label on VPA object (experimental)")
 )
 
+// Datadog metrics flags
+var (
+	metricsSource = flag.String("source", "metrics-server", "Specifies metrics source. Supported values: metrics-server (default), datadog")
+)
+
 func main() {
 	klog.InitFlags(nil)
 	kube_flag.InitFlags()
