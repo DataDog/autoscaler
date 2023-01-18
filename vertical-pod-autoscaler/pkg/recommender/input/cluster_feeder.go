@@ -145,8 +145,6 @@ func newMetricsClient(config *rest.Config, namespace, clientName string) metrics
 	if ddKubeClusterName := os.Getenv("K8S_CLUSTER_NAME"); ddKubeClusterName != "" {
 		return metrics.NewMetricsClient(metrics.NewDatadogClient(10*time.Second, ddKubeClusterName), namespace, "datadog")
 	}
-	// As we run this code only in datadog for new there is no point in going further if the datadog client is not correctly set
-	panic("env variable K8S_CLUSTER_NAME not defined")
 
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
 	return metrics.NewMetricsClient(metricsGetter, namespace, clientName)
