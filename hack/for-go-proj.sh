@@ -52,6 +52,9 @@ for project_name in ${PROJECT_NAMES[*]}; do
     project=${CONTRIB_ROOT}/${project_name}
     echo "${CMD}ing ${project}"
     cd "${project}"
+    if [[ $project_name == vertical-pod-autoscaler ]];then
+      go mod vendor
+    fi
     case "${CMD}" in
       "test")
         if [[ -n $(find . -name "Godeps.json") ]]; then
