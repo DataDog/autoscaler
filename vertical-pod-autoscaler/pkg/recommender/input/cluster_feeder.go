@@ -19,6 +19,7 @@ package input
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -140,6 +141,11 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 }
 
 func newMetricsClient(config *rest.Config, namespace, clientName string) metrics.MetricsClient {
+	// Once the upstream hardcode on client name will be fixed we would be able to switch on `clientName` in that constructor
+	if ddKubeClusterName := os.Getenv("K8S_CLUSTER_NAME"); ddKubeClusterName != "" {
+		return metrics.NewMetricsClient(metrics.NewDatadogClient(10*time.Second, ddKubeClusterName), namespace, "datadog")
+	}
+
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
 	return metrics.NewMetricsClient(metricsGetter, namespace, clientName)
 }
