@@ -82,9 +82,15 @@ type ClusterStateFeeder interface {
 	// LoadRealTimeMetrics updates clusterState with current usage metrics of containers.
 	LoadRealTimeMetrics()
 
+	// ObserveOOMs lets observer observe the OOMs. To call in case you don't use LoadRealTimeMetrics()
+	ObserveOOMs(observer OOMObserver)
+
 	// GarbageCollectCheckpoints removes historical checkpoints that don't have a matching VPA.
 	GarbageCollectCheckpoints()
 }
+
+// OOMObserver defines an observer for OOMs
+type OOMObserver func(model.ContainerID, time.Time, model.ResourceAmount) error
 
 // ClusterStateFeederFactory makes instances of ClusterStateFeeder.
 type ClusterStateFeederFactory struct {
@@ -483,12 +489,18 @@ func (feeder *clusterStateFeeder) LoadRealTimeMetrics() {
 		}
 	}
 	klog.V(3).Infof("ClusterSpec fed with #%v ContainerUsageSamples for #%v containers. Dropped #%v samples.", sampleCount, len(containersMetrics), droppedSampleCount)
+	feeder.ObserveOOMs(feeder.clusterState.RecordOOM)
+
+	metrics_recommender.RecordAggregateContainerStatesCount(feeder.clusterState.StateMapSize())
+}
+
+func (feeder *clusterStateFeeder) ObserveOOMs(observer OOMObserver) {
 Loop:
 	for {
 		select {
 		case oomInfo := <-feeder.oomChan:
 			klog.V(3).Infof("OOM detected %+v", oomInfo)
-			if err = feeder.clusterState.RecordOOM(oomInfo.ContainerID, oomInfo.Timestamp, oomInfo.Memory); err != nil {
+			if err := observer(oomInfo.ContainerID, oomInfo.Timestamp, oomInfo.Memory); err != nil {
 				klog.Warningf("Failed to record OOM %+v. Reason: %+v", oomInfo, err)
 			}
 		default:
