@@ -1,0 +1,114 @@
+# This config creates a deployment with two pods, each requesting 100 millicores
+# and trying to utilize slightly above 500 millicores (repeatedly using CPU for
+# 0.5s and sleeping 0.5s).
+# It also creates a corresponding Vertical Pod Autoscaler that adjusts the
+# requests.
+# Note that the update mode is left unset, so it defaults to "Auto" mode.
+---
+apiVersion: "autoscaling.k8s.io/v1"
+kind: VerticalPodAutoscaler
+metadata:
+  name: hamster-vpa
+  annotations:
+    vpa.datadoghq.com/metric-cpu-hamster: datadogmetric@default:hamster-cpu
+    vpa.datadoghq.com/metric-memory-hamster: datadogmetric@default:hamster-memory
+spec:
+  # recommenders field can be unset when using the default recommender.
+  # When using an alternative recommender, the alternative recommender's name
+  # can be specified as the following in a list.
+  # recommenders:
+  #   - name: 'alternative'
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: hamster
+  recommenders:
+    - name: recommender-external
+  updatePolicy:
+    updateMode: Recreate
+  resourcePolicy:
+    containerPolicies:
+      - containerName: '*'
+        minAllowed:
+          cpu: 100m
+          memory: 50Mi
+        maxAllowed:
+          cpu: 1
+          memory: 500Mi
+        controlledResources: [ "cpu", "memory" ]
+---
+# Associated DatadogMetric
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: hamster-cpu
+spec:
+  # We scale down the nanocore value to millicores (it's actually nanoseconds per second)
+  query: avg:container.cpu.usage{host:minikube,container_name:k8s_hamster*}.rollup(max, 60) / 1000000
+  maxAge: "10m"
+---
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: hamster-memory
+spec:
+  query: avg:container.memory.usage{host:minikube,container_name:k8s_hamster*}.rollup(max, 60)
+  maxAge: "10m"
+---
+# Fake HPA to enable the DatadogMetric
+# TODO: Remove these once we have a way to enable the DatadogMetric without HPA/WPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-fake-hamster
+spec:
+  metrics:
+    - external:
+        metric:
+          name: datadogmetric@default:hamster-cpu
+        target:
+          averageValue: "1"
+          type: AverageValue
+      type: External
+    - external:
+        metric:
+          name: datadogmetric@default:hamster-memory
+        target:
+          averageValue: "1"
+          type: AverageValue
+      type: External
+  minReplicas: 1
+  maxReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fake
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hamster
+spec:
+  selector:
+    matchLabels:
+      app: hamster
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: hamster
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534 # nobody
+      containers:
+        - name: hamster
+          image: k8s.gcr.io/ubuntu-slim:0.1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 50Mi
+          command: [ "/bin/sh" ]
+          args:
+            - "-c"
+            - "while true; do timeout 0.5s yes >/dev/null; sleep 0.5s; done"
