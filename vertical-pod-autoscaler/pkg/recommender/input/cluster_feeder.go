@@ -143,7 +143,7 @@ func NewClusterStateFeeder(config *rest.Config, clusterState *model.ClusterState
 func newMetricsClient(config *rest.Config, namespace, clientName string) metrics.MetricsClient {
 	// Once the upstream hardcode on client name will be fixed we would be able to switch on `clientName` in that constructor
 	if ddKubeClusterName := os.Getenv("K8S_CLUSTER_NAME"); ddKubeClusterName != "" {
-		return metrics.NewMetricsClient(metrics.NewDatadogClient(10*time.Second, ddKubeClusterName), namespace, "datadog")
+		return metrics.NewMetricsClient(metrics.NewDatadogClient(10*time.Second, ddKubeClusterName, nil), namespace, "datadog")
 	}
 
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
