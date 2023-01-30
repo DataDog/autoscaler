@@ -583,13 +583,22 @@ func instanceStatusFromVM(vm compute.VirtualMachineScaleSetVM) *cloudprovider.In
 	if vm.ProvisioningState == nil {
 		return nil
 	}
-
 	status := &cloudprovider.InstanceStatus{}
 	switch *vm.ProvisioningState {
 	case string(compute.ProvisioningStateDeleting):
 		status.State = cloudprovider.InstanceDeleting
 	case string(compute.ProvisioningStateCreating):
 		status.State = cloudprovider.InstanceCreating
+	case string(compute.ProvisioningStateFailed):
+		status.State = cloudprovider.InstanceCreating
+		status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
+			ErrorClass:   cloudprovider.OutOfResourcesErrorClass,
+			ErrorCode:    "provisioning-state-failed",
+			ErrorMessage: "Azure failed to provision a node for this node group",
+		}
+		if resourceName, err := convertResourceGroupNameToLower("azure://" + *vm.ID); err == nil {
+			klog.Warningf("Provisioning has failed for VM: %s", resourceName)
+		}
 	default:
 		status.State = cloudprovider.InstanceRunning
 	}
