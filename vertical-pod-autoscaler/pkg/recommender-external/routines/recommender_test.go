@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	v1lister "k8s.io/client-go/listers/core/v1"
 
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender-external"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender-external/input"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender-external/model"
 
@@ -121,7 +122,7 @@ func NewOomObserverMock() *oomObserverMock {
 // TODO: Build a real integration test.
 func TestBasic(t *testing.T) {
 	clusterState := upstream_model.NewClusterState(0)
-	recommenderName := input.DefaultRecommenderName
+	recommenderName := main.DefaultRecommenderName
 	var postProcessors []upstream_routines.RecommendationPostProcessor
 
 	controllerFetcher := &controllerFetcherMock{}

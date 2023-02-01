@@ -24,7 +24,6 @@ import (
 	kube_flag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
-	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender-external/input"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender-external/routines"
 
 	"k8s.io/autoscaler/vertical-pod-autoscaler/common"
@@ -32,8 +31,11 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics"
 )
 
+// DefaultRecommenderName is the default recommender name.
+const DefaultRecommenderName = "recommender-external"
+
 var (
-	recommenderName        = flag.String("recommender-name", input.DefaultRecommenderName, "Set the recommender name. ExternalRecommender will generate recommendations for VPAs that configure the same recommender name. If the recommender name is left as default it will also generate recommendations that don't explicitly specify recommender. You shouldn't run two recommenders with the same name in a cluster.")
+	recommenderName        = flag.String("recommender-name", DefaultRecommenderName, "Set the recommender name. ExternalRecommender will generate recommendations for VPAs that configure the same recommender name. If the recommender name is left as default it will also generate recommendations that don't explicitly specify recommender. You shouldn't run two recommenders with the same name in a cluster.")
 	metricsFetcherInterval = flag.Duration("recommender-interval", 1*time.Minute, `How often metrics should be fetched`)
 	address                = flag.String("address", ":8942", "The address to expose Prometheus metrics.")
 	kubeconfig             = flag.String("kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
