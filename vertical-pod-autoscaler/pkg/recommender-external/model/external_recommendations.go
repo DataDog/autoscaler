@@ -36,6 +36,7 @@ const (
 // different.
 type ExternalRecommendationsState struct {
 	// VPA objects in the cluster.
+	// Use ThreadSafeStore if we ever need parallelism.
 	Vpas map[upstream_model.VpaID]*VpaRecommendationState
 
 	lastGC     time.Time
@@ -66,6 +67,7 @@ type ContainerRecommendationState struct {
 }
 
 // ContainerNameToRecommendation maps a container name to raw recommended resources from the external metrics.
+// We do not use uptream's RecommendedPodResources because we do not support upper/lower bounds.
 type ContainerNameToRecommendation map[string]upstream_model.Resources
 
 // NewExternalRecommendationsState returns a new ExternalRecommendations

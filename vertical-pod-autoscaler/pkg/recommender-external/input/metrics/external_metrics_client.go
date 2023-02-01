@@ -49,6 +49,7 @@ type metricsClient struct {
 
 // GetExternalMetric gets all the values of a given external metric
 // that match the specified selector.
+// TODO: Review all that when we actually use it
 func (c *metricsClient) GetExternalMetric(metricName, namespace string, selector labels.Selector) ([]int64, time.Time, error) {
 	metrics, err := c.client.NamespacedMetrics(namespace).List(metricName, selector)
 	recommender_metrics.RecordMetricsServerResponse(err, c.clientName)
