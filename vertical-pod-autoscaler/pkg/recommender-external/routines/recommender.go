@@ -39,6 +39,9 @@ import (
 	vpa_utils "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
 )
 
+// DefaultRecommenderName is the default recommender name.
+const DefaultRecommenderName = "recommender-external"
+
 const (
 	// AggregateContainerStateGCInterval defines how often expired AggregateContainerStates are garbage collected.
 	AggregateContainerStateGCInterval         = 1 * time.Hour
