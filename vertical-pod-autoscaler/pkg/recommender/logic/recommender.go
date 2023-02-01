@@ -25,10 +25,18 @@ import (
 )
 
 var (
-	safetyMarginFraction = flag.Float64("recommendation-margin-fraction", 0.15, `Fraction of usage added as the safety margin to the recommended request`)
-	podMinCPUMillicores  = flag.Float64("pod-recommendation-min-cpu-millicores", 25, `Minimum CPU recommendation for a pod`)
-	podMinMemoryMb       = flag.Float64("pod-recommendation-min-memory-mb", 250, `Minimum memory recommendation for a pod`)
-	targetCPUPercentile  = flag.Float64("target-cpu-percentile", 0.9, "CPU usage percentile that will be used as a base for CPU target recommendation. Doesn't affect CPU lower bound, CPU upper bound nor memory recommendations.")
+	// SafetyMarginFraction sets the fraction of usage added as the safety margin to the recommended request
+	SafetyMarginFraction = flag.Float64("recommendation-margin-fraction", 0.15, `Fraction of usage added as the safety margin to the recommended request`)
+	// PodMinCPUMillicores sets the minimum CPU recommendation for a pod
+	PodMinCPUMillicores = flag.Float64("pod-recommendation-min-cpu-millicores", 25, `Minimum CPU recommendation for a pod`)
+	// PodMinMemoryMb sets the minimum memory recommendation for a pod
+	PodMinMemoryMb      = flag.Float64("pod-recommendation-min-memory-mb", 250, `Minimum memory recommendation for a pod`)
+	targetCPUPercentile = flag.Float64("target-cpu-percentile", 0.9, "CPU usage percentile that will be used as a base for CPU target recommendation. Doesn't affect CPU lower bound, CPU upper bound nor memory recommendations.")
+
+	// This is to avoid changing the code bellow
+	safetyMarginFraction = SafetyMarginFraction
+	podMinCPUMillicores  = PodMinCPUMillicores
+	podMinMemoryMb       = PodMinMemoryMb
 )
 
 // PodResourceRecommender computes resource recommendation for a Vpa object.
@@ -144,6 +152,16 @@ func CreatePodResourceRecommender() PodResourceRecommender {
 	// 60m history  : *0.95
 	lowerBoundEstimator = WithConfidenceMultiplier(0.001, -2.0, lowerBoundEstimator)
 
+	return &podResourceRecommender{
+		targetEstimator,
+		lowerBoundEstimator,
+		upperBoundEstimator}
+}
+
+// NewPodResourceRecommender creates a new pod resource recommender.
+func NewPodResourceRecommender(targetEstimator,
+	lowerBoundEstimator,
+	upperBoundEstimator ResourceEstimator) PodResourceRecommender {
 	return &podResourceRecommender{
 		targetEstimator,
 		lowerBoundEstimator,
