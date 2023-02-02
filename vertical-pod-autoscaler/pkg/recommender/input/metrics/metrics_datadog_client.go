@@ -313,8 +313,15 @@ func (c *clientWrapper) QueryMetrics(context context.Context, interval time.Dura
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error when calling `MetricsApi.QueryMetrics` on %s: %v\n", query, err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", httpResponse)
+		return datadog.MetricsQueryResponse{}, err
 	} else {
 		klog.V(1).Infof("queryMetrics('%s'): got response with %d series from %d to %d", query, len(resp.GetSeries()), resp.GetFromDate(), resp.GetToDate())
+	}
+
+	if httpResponse == nil {
+		err = fmt.Errorf("nil HTTPResponse from datadog QueryMetrics")
+		klog.Errorf(err.Error())
+		return datadog.MetricsQueryResponse{}, err
 	}
 
 	headers := httpResponse.Header
