@@ -19,6 +19,8 @@ package input
 import (
 	"strings"
 
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/client/external_metrics"
@@ -69,36 +71,92 @@ func NewExternalRecommendationsStateFeeder(config *rest.Config, clusterState *up
 }
 
 func (e externalRecommendationsStateFeeder) LoadVPAs() {
+	// Add or update existing VPAs in the model.
+	vpaKeys := make(map[upstream_model.VpaID]bool)
 	for _, vpa := range e.clusterState.Vpas {
 		e.externalRecommendationsState.AddOrUpdateVpa(*vpa)
+		vpaKeys[vpa.ID] = true
 	}
-	//FIXME: Delete non-existent VPAs from the model.
+
+	klog.V(3).Infof("Updated %d VPAs.", len(vpaKeys))
+
+	// Delete non-existent VPAs from the model.
+	for vpaID := range e.externalRecommendationsState.Vpas {
+		if _, exists := vpaKeys[vpaID]; !exists {
+			klog.V(3).Infof("Deleting VPA %v", vpaID)
+			if err := e.externalRecommendationsState.DeleteVpa(vpaID); err != nil {
+				klog.Errorf("Deleting VPA %v failed: %v", vpaID, err)
+			}
+		}
+	}
 }
 
 func (e externalRecommendationsStateFeeder) LoadMetrics() {
-
-	for vpaId, vpa := range e.clusterState.Vpas {
+	for _, vpa := range e.clusterState.Vpas {
 		klog.V(1).Infof("vpa %s %d", vpa.ID.VpaName, vpa.PodCount)
 
-		// We ignore VPAs that don't have any matching pods to reduce the API traffic.
-		if vpa.PodCount == 0 {
-			continue
-		}
+		containersToResourcesAndMetrics := GetVpaExternalMetrics(AnnotationsMap(vpa.Annotations))
+		errs := e.loadMetrics(vpa, containersToResourcesAndMetrics)
 
-		// TODO implement me for real.
-		// - Look for matching annotations.
-		// TODO add code to extract container name + value
-		for key, value := range vpa.Annotations {
-			if strings.HasPrefix(key, VpaAnnotationPrefix) {
-				klog.V(1).Infof("Found %s:%s on %+v", key, value, vpaId)
-			}
+		for _, err := range errs {
+			// TODO: Add an event to the VPA object.
+			// TODO: Add a metric to track this.
+			klog.V(0).ErrorS(err, "Got an error")
 		}
-		// TODO: do an external metric call to get values
-		// TODO: maybe filter on vpa.ResourcePolicy.ContainerPolicies
-		e.externalRecommendationsState.AddContainerRecommendation(vpaId, "fake", nil)
-		// TODO: use e.metricsClient.GetExternalMetric()
-		// TODO: Add events to the VPA in case we don't get a new recommendation.
 	}
+}
+
+func (e externalRecommendationsStateFeeder) loadMetrics(vpa *upstream_model.Vpa, containersToResourcesAndMetrics ContainersToResourcesAndMetrics) []error {
+	errs := make([]error, 0)
+	for container, resourceToMetrics := range containersToResourcesAndMetrics {
+		recommendation := make(upstream_model.Resources)
+		for resource, metric := range resourceToMetrics {
+			value, err := e.loadMetric(vpa, resource, metric)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			recommendation[resource] = value
+		}
+		if len(recommendation) == 0 {
+			klog.V(1).Infof("Got an empty recommendation for VPA %s, Container %s: %+v", vpa.ID, container, resourceToMetrics)
+		}
+		e.externalRecommendationsState.AddContainerRecommendation(vpa.ID, container, recommendation)
+	}
+	return errs
+}
+
+func (e externalRecommendationsStateFeeder) loadMetric(vpa *upstream_model.Vpa, resource upstream_model.ResourceName, metric string) (upstream_model.ResourceAmount, error) {
+	metricName, metricSelector, err := e.getMetricNameAndSelector(metric)
+	if err != nil {
+		return -1, err
+	}
+
+	value, _, err := e.metricsClient.GetExternalMetric(metricName, vpa.ID.Namespace, metricSelector)
+	if err != nil {
+		return 0, err
+	}
+
+	return upstream_model.ResourceAmount(value), nil
+}
+
+func (e externalRecommendationsStateFeeder) getMetricNameAndSelector(metric string) (string, labels.Selector, error) {
+	metricName := metric
+	metricSelector := labels.Everything()
+
+	// If there's a `{` we assume it's a metric selector.
+	if i := strings.Index(metric, "{"); i != -1 {
+		metricName = metric[:i]
+		labelSelector, err := v1.ParseToLabelSelector(metric[i:])
+		if err != nil {
+			return "", nil, err
+		}
+		metricSelector, err = v1.LabelSelectorAsSelector(labelSelector)
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	return metricName, metricSelector, nil
 }
 
 func newMetricsClient(config *rest.Config, namespace, clientName string) metrics.MetricsClient {
