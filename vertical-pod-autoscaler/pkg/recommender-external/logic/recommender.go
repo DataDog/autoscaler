@@ -55,6 +55,7 @@ func NewPodResourceRecommender(containerNameToRecommendedResources model.Contain
 func (r *podResourceRecommender) GetRecommendedPodResources(containerNameToAggregateStateMap upstream_model.ContainerNameToAggregateStateMap) upstream_logic.RecommendedPodResources {
 	var recommendation = make(upstream_logic.RecommendedPodResources)
 	if len(r.containerNameToRecommendedResources) == 0 {
+		klog.V(5).Infof("Returning empty recommendations.")
 		return recommendation
 	}
 

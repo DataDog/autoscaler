@@ -16,15 +16,88 @@ limitations under the License.
 
 package input
 
+import (
+	"fmt"
+	"strings"
+
+	"k8s.io/klog/v2"
+
+	upstream_model "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
+)
+
 const (
 	// VpaAnnotationsDomain is the prefix for each vpa annotations.
 	// TODO: There's nothing datadog specific here, but it's a custom recommender, so we need to namespace the annotations somehow
-	VpaAnnotationsDomain = "vpa.datadoghq.com/"
+	VpaAnnotationsDomain = "vpa.datadoghq.com"
+
 	// VpaAnnotationPrefix is the prefix for all annotations.
+	// The full annotation looks like `vpa.datadoghq.com/metric-<resource>-<container>`
 	// TODO: Rework that once we support a third resource.
 	VpaAnnotationPrefix = VpaAnnotationsDomain + "/metric-"
-	// CpuRecommendationQuery is the prefix for cpu metrics
-	CpuRecommendationQuery = VpaAnnotationPrefix + "cpu-"
-	// MemoryRecommendationQuery is the prefix for memory metrics.
-	MemoryRecommendationQuery = VpaAnnotationPrefix + "memory-"
 )
+
+var (
+	// SupportedResources gives us the list of resources we can handle and configure using annotaitons.
+	SupportedResources = []upstream_model.ResourceName{upstream_model.ResourceCPU, upstream_model.ResourceMemory}
+)
+
+type ContainersToResourcesAndMetrics map[string]map[upstream_model.ResourceName]string
+type AnnotationsMap map[string]string
+
+func NewContainersToResourcesAndMetrics() ContainersToResourcesAndMetrics {
+	return make(ContainersToResourcesAndMetrics)
+}
+
+func (c ContainersToResourcesAndMetrics) AddMetric(container string, resource upstream_model.ResourceName, metric string) {
+	if _, ok := c[container]; !ok {
+		c[container] = make(map[upstream_model.ResourceName]string)
+	}
+	c[container][resource] = metric
+}
+
+func (c ContainersToResourcesAndMetrics) ParseAndFromAnnotation(k, v string) error {
+	container, resource, err := ParseAnnotation(k)
+	if err != nil {
+		return err
+	}
+	c.AddMetric(container, resource, v)
+	return nil
+}
+
+func ParseAnnotation(k string) (container string, resource upstream_model.ResourceName, err error) {
+	// Here we have `vpa.datadoghq.com/metric-<resource>-<container>`
+
+	a := strings.TrimPrefix(k, VpaAnnotationPrefix)
+	// Then: `<resource>-<container>`
+
+	for _, resource = range SupportedResources {
+		prefix := string(resource + "-")
+		if strings.HasPrefix(a, prefix) {
+			container = strings.TrimPrefix(a, prefix)
+			// Then: `<container>`
+
+			return container, resource, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("can't recognize %s", k)
+}
+
+func IsVpaExternalMetricAnnotation(annotation string) bool {
+	return strings.HasPrefix(annotation, VpaAnnotationPrefix)
+}
+
+func GetVpaExternalMetrics(annotations AnnotationsMap) ContainersToResourcesAndMetrics {
+	c := NewContainersToResourcesAndMetrics()
+	for k, v := range annotations {
+		if IsVpaExternalMetricAnnotation(k) {
+			klog.V(6).Infof("Found %s:%s", k, v)
+			err := c.ParseAndFromAnnotation(k, v)
+			if err != nil {
+				klog.V(2).ErrorS(err, fmt.Sprintf("Can't parse %s:%s", k, v))
+			}
+		}
+	}
+	klog.V(6).Infof("Found %+v", c)
+	return c
+}
