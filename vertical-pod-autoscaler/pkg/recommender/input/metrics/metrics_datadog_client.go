@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,13 +57,13 @@ type ddclientPodMetrics struct {
 	ExtraTagsClause string // Something to shove into the query, where it'll add more AND clauses.
 }
 
-func (d ddclientMetrics) PodMetricses(namespace string) resourceclient.PodMetricsInterface {
+func (d *ddclientMetrics) PodMetricses(namespace string) resourceclient.PodMetricsInterface {
 	klog.Infof("ddclientMetrics.PodMetricses(namespace:%s)", namespace)
 	return &ddclientPodMetrics{ddConfig: d.ddConfig, Namespace: namespace, Client: d.Client,
 		QueryInterval: d.QueryInterval, ClusterName: d.ClusterName, ExtraTagsClause: d.ExtraTagsClause}
 }
 
-func (d ddclientPodMetrics) queryMetrics(ctx context.Context, queryStr string) (datadog.MetricsQueryResponse, error) {
+func (d *ddclientPodMetrics) queryMetrics(ctx context.Context, queryStr string) (datadog.MetricsQueryResponse, error) {
 	ctxWithCredential, err := getCtx(ctx, d.ddConfig)
 	if err != nil {
 		return datadog.MetricsQueryResponse{}, err
@@ -156,7 +156,7 @@ func makeResourceList(cpu float64, mem float64) map[v1.ResourceName]resource.Qua
 // timestamp on both cpu and rss.  As we're doing periodic sampling, that's fine.  The most
 // recent timestamp may be partial data.
 // Presumes that all values are for the same pod (tag: pod_name).
-func (d ddclientPodMetrics) aggregatePodMetrics(podName string, cpuResp []datadog.MetricsQueryMetadata,
+func (d *ddclientPodMetrics) aggregatePodMetrics(podName string, cpuResp []datadog.MetricsQueryMetadata,
 	memResp []datadog.MetricsQueryMetadata) *v1beta1.PodMetrics {
 	// Go by container.
 	containersMem := classifyByTag(memResp, "container_name", "unknown-container")
@@ -227,7 +227,7 @@ FindTimestamp:
 
 }
 
-func (d ddclientPodMetrics) Get(ctx context.Context, podName string, _ metav1.GetOptions) (*v1beta1.PodMetrics, error) {
+func (d *ddclientPodMetrics) Get(ctx context.Context, podName string, _ metav1.GetOptions) (*v1beta1.PodMetrics, error) {
 	nsClause := ""
 	if len(d.Namespace) > 0 {
 		nsClause = fmt.Sprintf(" AND kube_namespace:%s ", d.Namespace)
@@ -246,7 +246,7 @@ func (d ddclientPodMetrics) Get(ctx context.Context, podName string, _ metav1.Ge
 	return d.aggregatePodMetrics(podName, cpuResp.GetSeries(), memResp.GetSeries()), nil
 }
 
-func (d ddclientPodMetrics) List(ctx context.Context, _ metav1.ListOptions) (*v1beta1.PodMetricsList, error) {
+func (d *ddclientPodMetrics) List(ctx context.Context, _ metav1.ListOptions) (*v1beta1.PodMetricsList, error) {
 	nsClause := ""
 	if len(d.Namespace) > 0 {
 		nsClause = fmt.Sprintf(" AND kube_namespace:%s ", d.Namespace)
@@ -262,6 +262,8 @@ func (d ddclientPodMetrics) List(ctx context.Context, _ metav1.ListOptions) (*v1
 		return nil, err
 	}
 
+	// TODO there is a potential issue here as we are losing the namespace! STS pod can have the same name in different namespaces!
+	// This function is called most of the time (always) with d.namespace=""
 	podCpus := classifyByTag(cpuResp.GetSeries(), "pod_name", "unknown-pod")
 	podMems := classifyByTag(memResp.GetSeries(), "pod_name", "unknown-pod")
 
@@ -295,7 +297,7 @@ func newDatadogClientWithFactory(queryInterval time.Duration, cluster string, ex
 		}
 
 	}
-	return ddclientMetrics{Client: apiClient, QueryInterval: -queryInterval, ClusterName: cluster, ExtraTagsClause: clause}
+	return &ddclientMetrics{Client: apiClient, QueryInterval: -queryInterval, ClusterName: cluster, ExtraTagsClause: clause}
 }
 
 type clientWrapper struct {
@@ -314,9 +316,8 @@ func (c *clientWrapper) QueryMetrics(context context.Context, interval time.Dura
 		fmt.Fprintf(os.Stderr, "Error when calling `MetricsApi.QueryMetrics` on %s: %v\n", query, err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", httpResponse)
 		return datadog.MetricsQueryResponse{}, err
-	} else {
-		klog.V(1).Infof("queryMetrics('%s'): got response with %d series from %d to %d", query, len(resp.GetSeries()), resp.GetFromDate(), resp.GetToDate())
 	}
+	klog.V(1).Infof("queryMetrics('%s'): got response with %d series from %d to %d", query, len(resp.GetSeries()), resp.GetFromDate(), resp.GetToDate())
 
 	if httpResponse == nil {
 		err = fmt.Errorf("nil HTTPResponse from datadog QueryMetrics")
