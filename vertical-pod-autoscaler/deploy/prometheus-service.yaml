@@ -7,7 +7,26 @@ spec:
   selector: 
     app: prometheus
   ports:
-  - protocol: TCP
+  - name: prometheus
+    protocol: TCP
     port: 9090
-    targetPort: 9090
+    targetPort: prometheus
+  - name: pushgateway
+    protocol: TCP
+    port: 9091
+    targetPort: pushgateway
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+spec:
+  selector:
+    app.kubernetes.io/name: prometheus-adapter
+  ports:
+  - name: api
+    protocol: TCP
+    port: 443
+    targetPort: https
 

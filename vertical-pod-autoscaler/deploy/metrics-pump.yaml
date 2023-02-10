@@ -1,0 +1,35 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-pump
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-pump
+  template:
+    metadata:
+      labels:
+        app: metrics-pump
+    spec:
+      serviceAccountName: metrics-pump
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534 # nobody
+      containers:
+      - name: metrics-pump
+        image: write-metrics:0210_1435
+        imagePullPolicy: Never
+        args:
+        - /emit-metrics.py
+        - --dest
+        - prometheus.monitoring.svc:9091
+        resources:
+          limits:
+            cpu: 200m
+            memory: 1000Mi
+          requests:
+            cpu: 50m
+            memory: 500Mi

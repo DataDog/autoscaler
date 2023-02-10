@@ -89,12 +89,12 @@ for i in ${COMPONENTS}; do
      kubectl create namespace monitoring
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-configmap.yaml
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-rbac.yaml
-     # This is actually for prometheus-adapter, which helm installs (correctly, this is also the wrong ns)
-     # kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-services.yaml
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-deployment.yaml
+     kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-service.yaml
+     # This is for prometheus-adapter (making prom an external-metrics-provider), which helm installs
      helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
      helm repo update
-     helm install prometheus-adapter prometheus-community/prometheus-adapter
+     helm install --set prometheus.url=http://prometheus.monitoring.svc prometheus-adapter prometheus-community/prometheus-adapter
   fi
 done
 

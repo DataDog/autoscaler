@@ -20,6 +20,8 @@ import (
 	"context"
 	k8sapiv1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -76,25 +78,29 @@ func NewExternalClient(c *rest.Config, clusterState *model.ClusterState, options
 	}
 }
 
-func (s *externalMetricsClient) containerId(value externalmetricsv1beta1.ExternalMetricValue) *model.ContainerID {
-	podNS, hasPodNS := value.MetricLabels[s.options.PodNamespaceLabel]
-	podName, hasPodName := value.MetricLabels[s.options.PodNameLabel]
-	ctrName, hasCtrName := value.MetricLabels[s.options.CtrNameLabel]
-	if hasPodNS && hasPodName && hasCtrName {
-		return &model.ContainerID{
-			PodID:         model.PodID{Namespace: podNS, PodName: podName},
-			ContainerName: ctrName,
-		}
-	}
-	return nil
-}
+// Get all VPAs in the namespace
+// - We already do this in the cluster state feeder!  It's in its clusterState member.
+//   We just have to feed it into here somehow.
+// - use the 'PodSelector' there as the input to the external api.
+// Send out the queries.
 
 type podContainerResourceMap map[model.PodID]map[string]k8sapiv1.ResourceList
 
-func (s *externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalMetricValueList, name k8sapiv1.ResourceName, resourceMap podContainerResourceMap) {
+func (s *externalMetricsClient) addMetrics(list *externalmetricsv1beta1.ExternalMetricValueList, name k8sapiv1.ResourceName, resourceMap podContainerResourceMap, namespace, podName string) {
 	for _, val := range list.Items {
-		if id := s.containerId(val); id != nil {
-			resourceMap[id.PodID][id.ContainerName][name] = val.Value
+		ctrName, hasCtrName := val.MetricLabels[s.options.CtrNameLabel]
+		if hasCtrName {
+			podId := model.PodID{
+				Namespace: namespace,
+				PodName:   podName,
+			}
+			if resourceMap[podId] == nil {
+				resourceMap[podId] = make(map[string]k8sapiv1.ResourceList)
+			}
+			if resourceMap[podId][ctrName] == nil {
+				resourceMap[podId][ctrName] = make(k8sapiv1.ResourceList)
+			}
+			resourceMap[podId][ctrName][name] = val.Value
 		}
 	}
 }
@@ -106,7 +112,9 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 	//   We just have to feed it into here somehow.
 	// - use the 'PodSelector' there as the input to the external api.
 	// Send out the queries.
-	nsClient := s.externalClient.NamespacedMetrics(namespace)
+
+	// Get all the Pods.  Match them to VPAs here and then query each pod.  Otherwise we won't be able to fill
+	// the PodMetricsList.
 
 	for _, vpa := range s.clusterState.Vpas {
 		if vpa.PodCount == 0 {
@@ -116,32 +124,43 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 			continue
 		}
 		workloadValues := make(podContainerResourceMap)
+		nsClient := s.externalClient.NamespacedMetrics(vpa.ID.Namespace)
 
 		var selectedTimestamp v1.Time
 		var selectedWindows time.Duration
 		for resourceName, metricName := range s.options.ResourceMetrics {
-			m, err := nsClient.List(metricName, vpa.PodSelector)
-			if err != nil {
-				return nil, err // Do we want to error or do we prefer to skip ?
-			}
-			if m == nil || len(m.Items) == 0 {
-				continue
-			}
-			s.addMetrics(m, resourceName, workloadValues)
+			pods := s.clusterState.GetMatchingPods(vpa)
+			for _, pod := range pods {
+				podNameReq, err := labels.NewRequirement("pod", selection.Equals, []string{pod.PodName})
+				if err != nil {
+					return nil, err
+				}
+				selector := vpa.PodSelector.Add(*podNameReq)
+				m, err := nsClient.List(metricName, selector)
+				if err != nil {
+					return nil, err // Do we want to error or do we prefer to skip ?
+				}
+				if m == nil || len(m.Items) == 0 {
+					continue
+				}
+				klog.V(2).Infof("External Metrics Query for VPA %+v: resource %+v, metric %+v, %d items", vpa.ID, resourceName, metricName, len(m.Items))
+				s.addMetrics(m, resourceName, workloadValues, vpa.ID.Namespace, pod.PodName)
 
-			if !m.Items[0].Timestamp.Time.IsZero() {
-				selectedTimestamp = m.Items[0].Timestamp
-				if m.Items[0].WindowSeconds != nil {
-					selectedWindows = time.Duration(*m.Items[0].WindowSeconds) * time.Second
+				if !m.Items[0].Timestamp.Time.IsZero() {
+					selectedTimestamp = m.Items[0].Timestamp
+					if m.Items[0].WindowSeconds != nil {
+						selectedWindows = time.Duration(*m.Items[0].WindowSeconds) * time.Second
+					}
 				}
 			}
+
 		}
 
 		for podId, cmaps := range workloadValues {
 			podMets := v1beta1.PodMetrics{
 				TypeMeta:   v1.TypeMeta{},
 				ObjectMeta: v1.ObjectMeta{Name: podId.PodName, Namespace: podId.Namespace},
-				Timestamp:  selectedTimestamp, // I am not sure this is correct. Need to rework Timestamp and Window... which one should we use?
+				Timestamp:  selectedTimestamp, // I am not sure that this is correct. Need to rework Timestamp and Window... which one should we use?
 				Window:     v1.Duration{Duration: selectedWindows},
 				Containers: make([]v1beta1.ContainerMetrics, len(cmaps)),
 			}

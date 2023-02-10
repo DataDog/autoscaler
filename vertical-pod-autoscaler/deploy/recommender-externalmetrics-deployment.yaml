@@ -20,12 +20,23 @@ spec:
         runAsUser: 65534 # nobody
       containers:
       - name: recommender
-        image: k8s.gcr.io/autoscaling/vpa-recommender:0.12.0
-        imagePullPolicy: IfNotPresent
+        image: localhost:5001/vpa-recommender:0127_1310
+        imagePullPolicy: Never
+        command: ["/dlv"]
         args:
+          - --listen=:40000
+          - --headless=true
+          - --log=true
+          - --log-output=debugger,debuglineerr,gdbwire,lldbout,rpc
+          - --accept-multiclient
+          - --api-version=2
+          - exec
+          - /recommender-amd64
+          - --
           - --use-external-metrics=true
           - --external-metrics-cpu-metric=cpu
           - --external-metrics-memory-metric=mem
+          - --v=4
         resources:
           limits:
             cpu: 200m
@@ -36,3 +47,5 @@ spec:
         ports:
         - name: prometheus
           containerPort: 8942
+        - name: delve
+          containerPort: 40000
