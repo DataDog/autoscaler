@@ -41,13 +41,18 @@ var (
 	SupportedResources = []upstream_model.ResourceName{upstream_model.ResourceCPU, upstream_model.ResourceMemory}
 )
 
+// ContainersToResourcesAndMetrics maps a contaienr name to associated resource names and metrics.
 type ContainersToResourcesAndMetrics map[string]map[upstream_model.ResourceName]string
+
+// AnnotationsMap is simply a map of annotations to values
 type AnnotationsMap map[string]string
 
+// NewContainersToResourcesAndMetrics creates a ContainersToResourcesAndMetrics
 func NewContainersToResourcesAndMetrics() ContainersToResourcesAndMetrics {
 	return make(ContainersToResourcesAndMetrics)
 }
 
+// AddMetric adds a container, resource and associated metric
 func (c ContainersToResourcesAndMetrics) AddMetric(container string, resource upstream_model.ResourceName, metric string) {
 	if _, ok := c[container]; !ok {
 		c[container] = make(map[upstream_model.ResourceName]string)
@@ -55,6 +60,7 @@ func (c ContainersToResourcesAndMetrics) AddMetric(container string, resource up
 	c[container][resource] = metric
 }
 
+// ParseAndFromAnnotation parses a container, resource to metric annotation
 func (c ContainersToResourcesAndMetrics) ParseAndFromAnnotation(k, v string) error {
 	container, resource, err := ParseAnnotation(k)
 	if err != nil {
@@ -64,6 +70,7 @@ func (c ContainersToResourcesAndMetrics) ParseAndFromAnnotation(k, v string) err
 	return nil
 }
 
+// ParseAnnotation parses a container, resource to metric annotation
 func ParseAnnotation(k string) (container string, resource upstream_model.ResourceName, err error) {
 	// Here we have `vpa.datadoghq.com/metric-<resource>-<container>`
 
@@ -83,10 +90,12 @@ func ParseAnnotation(k string) (container string, resource upstream_model.Resour
 	return "", "", fmt.Errorf("can't recognize %s", k)
 }
 
+// IsVpaExternalMetricAnnotation returns true if an annotation configures a metric for a container and resource
 func IsVpaExternalMetricAnnotation(annotation string) bool {
 	return strings.HasPrefix(annotation, VpaAnnotationPrefix)
 }
 
+// GetVpaExternalMetrics returns the map of containers, resource to metrics
 func GetVpaExternalMetrics(annotations AnnotationsMap) ContainersToResourcesAndMetrics {
 	c := NewContainersToResourcesAndMetrics()
 	for k, v := range annotations {
