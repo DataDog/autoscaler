@@ -35,19 +35,6 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 )
 
-// PowerStates reflect the operational state of a VMSS VM
-// From https://learn.microsoft.com/en-us/dotnet/api/microsoft.azure.management.compute.fluent.powerstate?view=azure-dotnet
-const (
-	PowerStatePrefix       = "PowerState/"
-	PowerStateStarting     = "PowerState/starting"
-	PowerStateRunning      = "PowerState/running"
-	PowerStateStopping     = "PowerState/stopping"
-	PowerStateStopped      = "PowerState/stopped"
-	PowerStateDeallocating = "PowerState/deallocating"
-	PowerStateDeallocated  = "PowerState/deallocated"
-	PowerStateUnknown      = "PowerState/unknown"
-)
-
 var (
 	defaultVmssInstancesRefreshPeriod = 5 * time.Minute
 	vmssContextTimeout                = 3 * time.Minute
@@ -308,13 +295,37 @@ func (scaleSet *ScaleSet) GetScaleSetVms() ([]compute.VirtualMachineScaleSetVM, 
 	defer cancel()
 
 	resourceGroup := scaleSet.manager.config.ResourceGroup
-	vmList, rerr := scaleSet.manager.azClient.virtualMachineScaleSetVMsClient.List(ctx, resourceGroup, scaleSet.Name, "instanceView")
+	vmList, rerr := scaleSet.manager.azClient.virtualMachineScaleSetVMsClient.List(ctx, resourceGroup, scaleSet.Name, "")
 	klog.V(4).Infof("GetScaleSetVms: scaleSet.Name: %s, vmList: %v", scaleSet.Name, vmList)
 	if rerr != nil {
 		klog.Errorf("VirtualMachineScaleSetVMsClient.List failed for %s: %v", scaleSet.Name, rerr)
 		return nil, rerr
 	}
 
+	return vmList, nil
+}
+
+// GetScaleSetVms returns list of nodes for flexible scale set.
+func (scaleSet *ScaleSet) GetFlexibleScaleSetVms() ([]compute.VirtualMachine, *retry.Error) {
+	klog.V(4).Infof("GetFlexibleScaleSetVms: starts")
+	ctx, cancel := getContextWithTimeout(vmssContextTimeout)
+	defer cancel()
+
+	vmssInfo, err := scaleSet.getVMSSFromCache()
+
+	if err != nil {
+		klog.Errorf("Failed to get information for VMSS (%q): %v", scaleSet.Name, err)
+		var rerr = &retry.Error{
+			RawError: err,
+		}
+		return nil, rerr
+	}
+	vmList, rerr := scaleSet.manager.azClient.virtualMachinesClient.ListVmssFlexVMsWithoutInstanceView(ctx, *vmssInfo.ID)
+	klog.V(4).Infof("GetFlexibleScaleSetVms: scaleSet.Name: %s, vmList: %v", scaleSet.Name, vmList)
+	if rerr != nil {
+		klog.Errorf("VirtualMachineScaleSetVMsClient.List failed for %s: %v", scaleSet.Name, rerr)
+		return nil, rerr
+	}
 	return vmList, nil
 }
 
@@ -524,20 +535,47 @@ func (scaleSet *ScaleSet) Nodes() ([]cloudprovider.Instance, error) {
 	splay := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(scaleSet.instancesRefreshJitter + 1)
 	lastRefresh := time.Now().Add(-time.Second * time.Duration(splay))
 
-	vms, rerr := scaleSet.GetScaleSetVms()
-	if rerr != nil {
-		if isAzureRequestsThrottled(rerr) {
-			// Log a warning and update the instance refresh time so that it would retry after cache expiration
-			klog.Warningf("GetScaleSetVms() is throttled with message %v, would return the cached instances", rerr)
-			scaleSet.lastInstanceRefresh = lastRefresh
-			return scaleSet.instanceCache, nil
-		}
-		return nil, rerr.Error()
+	set, err := scaleSet.getVMSSFromCache()
+
+	if err != nil {
+		klog.Errorf("failed to get information for VMSS: %s, error: %v", scaleSet.Name, err)
+		return nil, err
 	}
 
-	scaleSet.instanceCache = buildInstanceCache(vms)
-	scaleSet.lastInstanceRefresh = lastRefresh
-	klog.V(4).Infof("Nodes: returns")
+	if set.VirtualMachineScaleSetProperties.OrchestrationMode == compute.Uniform {
+		vms, rerr := scaleSet.GetScaleSetVms()
+		if rerr != nil {
+			if isAzureRequestsThrottled(rerr) {
+				// Log a warning and update the instance refresh time so that it would retry after cache expiration
+				klog.Warningf("GetScaleSetVms() is throttled with message %v, would return the cached instances", rerr)
+				scaleSet.lastInstanceRefresh = lastRefresh
+				return scaleSet.instanceCache, nil
+			}
+			return nil, rerr.Error()
+		}
+
+		scaleSet.instanceCache = buildInstanceCache(vms)
+		scaleSet.lastInstanceRefresh = lastRefresh
+		klog.V(4).Infof("Nodes: returns")
+
+	} else {
+		vms, rerr := scaleSet.GetFlexibleScaleSetVms()
+		if rerr != nil {
+			if isAzureRequestsThrottled(rerr) {
+				// Log a warning and update the instance refresh time so that it would retry after cache expiration
+				klog.Warningf("GetFlexibleScaleSetVms() is throttled with message %v, would return the cached instances", rerr)
+				scaleSet.lastInstanceRefresh = lastRefresh
+				return scaleSet.instanceCache, nil
+			}
+			return nil, rerr.Error()
+		}
+
+		scaleSet.instanceCache = buildInstanceCacheForFlexVms(vms)
+		scaleSet.lastInstanceRefresh = lastRefresh
+		klog.V(4).Infof("Nodes: returns")
+
+	}
+
 	return scaleSet.instanceCache, nil
 }
 
@@ -562,6 +600,33 @@ func buildInstanceCache(vms []compute.VirtualMachineScaleSetVM) []cloudprovider.
 		instances = append(instances, cloudprovider.Instance{
 			Id:     "azure://" + resourceID,
 			Status: instanceStatusFromVM(vm),
+		})
+	}
+
+	return instances
+}
+
+// Note that the GetFlexibleScaleSetVms() results is not used directly because for the List endpoint,
+// their resource ID format is not consistent with Get endpoint
+func buildInstanceCacheForFlexVms(vms []compute.VirtualMachine) []cloudprovider.Instance {
+	instances := []cloudprovider.Instance{}
+
+	for _, vm := range vms {
+		// The resource ID is empty string, which indicates the instance may be in deleting state.
+		if len(*vm.ID) == 0 {
+			continue
+		}
+
+		resourceID, err := convertResourceGroupNameToLower(*vm.ID)
+		if err != nil {
+			// This shouldn't happen. Log a warning message for tracking.
+			klog.Warningf("buildInstanceCache.convertResourceGroupNameToLower failed with error: %v", err)
+			continue
+		}
+
+		instances = append(instances, cloudprovider.Instance{
+			Id:     "azure://" + resourceID,
+			Status: instanceStatusFromFlexVM(vm),
 		})
 	}
 
@@ -603,24 +668,6 @@ func instanceStatusFromVM(vm compute.VirtualMachineScaleSetVM) *cloudprovider.In
 		status.State = cloudprovider.InstanceDeleting
 	case string(compute.ProvisioningStateCreating):
 		status.State = cloudprovider.InstanceCreating
-	case string(compute.ProvisioningStateFailed):
-		// Provisioning can fail both during instance creation (e.g. due to no available capacity)
-		// or after the instances is running (e.g. failure to provision/attach a new network adapter).
-		// Per https://learn.microsoft.com/en-us/azure/virtual-machines/states-billing#provisioning-states
-		// ProvisioningState represents the most recent provisioning state, therefore
-		// only report InstanceCreating errors when the instance has not yet started running
-		if vmIsRunning, err := vmReportsRunningPowerState(vm); err == nil && !vmIsRunning {
-			klog.V(4).Infof("VMSS VM %s reports not running due to failed provisioning state", *vm.ID)
-			status.State = cloudprovider.InstanceCreating
-			status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
-				ErrorClass:   cloudprovider.OutOfResourcesErrorClass,
-				ErrorCode:    "provisioning-state-failed",
-				ErrorMessage: "Azure failed to provision a node for this node group",
-			}
-		} else {
-			klog.V(5).Infof("VMSS VM %s reports a failed provisioning state but is running", *vm.ID)
-			status.State = cloudprovider.InstanceRunning
-		}
 	default:
 		status.State = cloudprovider.InstanceRunning
 	}
@@ -628,49 +675,23 @@ func instanceStatusFromVM(vm compute.VirtualMachineScaleSetVM) *cloudprovider.In
 	return status
 }
 
-func vmReportsRunningPowerState(vm compute.VirtualMachineScaleSetVM) (bool, error) {
-	if vm.InstanceView == nil || vm.InstanceView.Statuses == nil {
-		klog.V(6).Infof("No instanceView.statuses available for %s", *vm.ID)
-		return false, fmt.Errorf("missing instanceView.statuses for %s", *vm.ID)
+// instanceStatusFromVM converts the VM provisioning state to cloudprovider.InstanceStatus
+func instanceStatusFromFlexVM(vm compute.VirtualMachine) *cloudprovider.InstanceStatus {
+	if vm.ProvisioningState == nil {
+		return nil
 	}
 
-	// PowerState is not set if the VM is still creating (or has failed creation),
-	// so the absence of a PowerState is treated the same as a VM that is stopped
-	powerState, err := powerStateFromStatuses(*vm.InstanceView.Statuses)
-	if err != nil {
-		klog.V(6).Infof("No power state set for %s (%v)", *vm.ID, err)
-		return false, nil
+	status := &cloudprovider.InstanceStatus{}
+	switch *vm.ProvisioningState {
+	case string(compute.ProvisioningStateDeleting):
+		status.State = cloudprovider.InstanceDeleting
+	case string(compute.ProvisioningStateCreating):
+		status.State = cloudprovider.InstanceCreating
+	default:
+		status.State = cloudprovider.InstanceRunning
 	}
 
-	klog.V(6).Infof("Power state for %s is %s", *vm.ID, powerState)
-	return powerState == PowerStateRunning || powerState == PowerStateStarting, nil
-}
-
-func powerStateFromStatuses(statuses []compute.InstanceViewStatus) (string, error) {
-	for _, status := range statuses {
-		if status.Code == nil || !strings.HasPrefix(*status.Code, PowerStatePrefix) {
-			continue
-		}
-
-		if !isKnownPowerState(*status.Code) {
-			return "", fmt.Errorf("unrecognized power state: %s", *status.Code)
-		}
-		return *status.Code, nil
-	}
-	return "", fmt.Errorf("no power state status")
-}
-
-func isKnownPowerState(powerState string) bool {
-	knownPowerStates := map[string]bool{
-		PowerStateStarting:     true,
-		PowerStateRunning:      true,
-		PowerStateStopping:     true,
-		PowerStateStopped:      true,
-		PowerStateDeallocating: true,
-		PowerStateDeallocated:  true,
-		PowerStateUnknown:      true,
-	}
-	return knownPowerStates[powerState]
+	return status
 }
 
 func (scaleSet *ScaleSet) invalidateInstanceCache() {
