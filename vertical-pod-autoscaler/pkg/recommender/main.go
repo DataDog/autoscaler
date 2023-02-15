@@ -24,7 +24,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/common"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/history"
-	metrics2 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
+	input_metrics "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/routines"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics"
@@ -93,7 +93,7 @@ func main() {
 		&routines.CappingPostProcessor{},
 	}
 
-	var externalClientOptions *metrics2.ExternalClientOptions = nil
+	var externalClientOptions *input_metrics.ExternalClientOptions = nil
 	if *useExternalMetrics {
 		resourceMetrics := map[apiv1.ResourceName]string{}
 		if externalCpuMetric != nil && *externalCpuMetric != "" {
@@ -102,7 +102,7 @@ func main() {
 		if externalMemoryMetric != nil && *externalMemoryMetric != "" {
 			resourceMetrics[apiv1.ResourceMemory] = *externalMemoryMetric
 		}
-		externalClientOptions = &metrics2.ExternalClientOptions{ResourceMetrics: resourceMetrics, PodNamespaceLabel: *podNamespaceLabel, PodNameLabel: *podNameLabel, CtrNamespaceLabel: *ctrNamespaceLabel, CtrPodNameLabel: *ctrPodNameLabel, CtrNameLabel: *ctrNameLabel}
+		externalClientOptions = &input_metrics.ExternalClientOptions{ResourceMetrics: resourceMetrics, PodNamespaceLabel: *podNamespaceLabel, PodNameLabel: *podNameLabel, CtrNamespaceLabel: *ctrNamespaceLabel, CtrPodNameLabel: *ctrPodNameLabel, CtrNameLabel: *ctrNameLabel}
 		klog.V(1).Infof("Using External Metrics: %+v", externalClientOptions)
 	}
 	recommender := routines.NewRecommender(config, *checkpointsGCInterval, useCheckpoints, *vpaObjectNamespace, *recommenderName, postProcessors, externalClientOptions)

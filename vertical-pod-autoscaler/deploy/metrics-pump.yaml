@@ -20,12 +20,13 @@ spec:
         runAsUser: 65534 # nobody
       containers:
       - name: metrics-pump
-        image: write-metrics:0210_1435
+        image: write-metrics:0215_1457
         imagePullPolicy: Never
         args:
         - /emit-metrics.py
         - --dest
         - prometheus.monitoring.svc:9091
+        - --all
         resources:
           limits:
             cpu: 200m

@@ -23,6 +23,7 @@ function print_help {
   echo "ERROR! Usage: run-e2e.sh <suite>"
   echo "<suite> should be one of:"
   echo " - recommender"
+  echo " - recommender-externalmetrics"
   echo " - updater"
   echo " - admission-controller"
   echo " - actuation"
@@ -41,11 +42,24 @@ fi
 
 SUITE=$1
 
+# Test for KIND cluster
+# add getopt for kind cluster config, and whether to preserve cluster after.
+# To create a cluster old enough to take
+#kind create cluster --image=kindest/node:v1.21.2
+# I might be able to run this on modern k8s now that I've fixed the CRDs.
+# the deprecated CRDs running here.
+kind load docker-image write-metrics:0215_1457
+
 case ${SUITE} in
-  recommender|updater|admission-controller|actuation|full-vpa)
+  recommender|recommender-externalmetrics|updater|admission-controller|actuation|full-vpa)
     ${SCRIPT_ROOT}/hack/vpa-down.sh
-    ${SCRIPT_ROOT}/hack/deploy-for-e2e.sh ${SUITE}
-    ${SCRIPT_ROOT}/hack/run-e2e-tests.sh ${SUITE}
+    ${SCRIPT_ROOT}/hack/deploy-for-e2e-locally.sh ${SUITE}
+
+    if [ ${SUITE} == recommender-externalmetrics ]; then
+       ${SCRIPT_ROOT}/hack/run-e2e-tests.sh recommender
+    else
+      ${SCRIPT_ROOT}/hack/run-e2e-tests.sh ${SUITE}
+    fi
     ;;
   *)
     print_help

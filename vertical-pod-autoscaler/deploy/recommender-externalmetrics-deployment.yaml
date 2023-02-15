@@ -20,19 +20,10 @@ spec:
         runAsUser: 65534 # nobody
       containers:
       - name: recommender
-        image: localhost:5001/vpa-recommender:0127_1310
+        image: localhost:5001/vpa-recommender-amd64:latest
         imagePullPolicy: Never
-        command: ["/dlv"]
         args:
-          - --listen=:40000
-          - --headless=true
-          - --log=true
-          - --log-output=debugger,debuglineerr,gdbwire,lldbout,rpc
-          - --accept-multiclient
-          - --api-version=2
-          - exec
           - /recommender-amd64
-          - --
           - --use-external-metrics=true
           - --external-metrics-cpu-metric=cpu
           - --external-metrics-memory-metric=mem
