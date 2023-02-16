@@ -51,8 +51,10 @@ func newTestVMSSList(cap int64, name, loc string) []compute.VirtualMachineScaleS
 				Capacity: to.Int64Ptr(cap),
 				Name:     to.StringPtr("Standard_D4_v2"),
 			},
-			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{},
-			Location:                         to.StringPtr(loc),
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				OrchestrationMode: compute.Uniform,
+			},
+			Location: to.StringPtr(loc),
 		},
 	}
 }
@@ -251,6 +253,7 @@ func TestIncreaseSizeOnVMSSUpdating(t *testing.T) {
 			},
 			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
 				ProvisioningState: to.StringPtr(string(compute.ProvisioningStateUpdating)),
+				OrchestrationMode: compute.Uniform,
 			},
 		},
 	}
@@ -335,6 +338,9 @@ func TestDeleteNodes(t *testing.T) {
 			Sku: &compute.Sku{
 				Capacity: &vmssCapacity,
 			},
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				OrchestrationMode: compute.Uniform,
+			},
 		},
 	}
 	expectedVMSSVMs := newTestVMSSVMList(3)
@@ -392,6 +398,9 @@ func TestDeleteNodes(t *testing.T) {
 			Sku: &compute.Sku{
 				Capacity: &vmssCapacity,
 			},
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				OrchestrationMode: compute.Uniform,
+			},
 		},
 	}
 	mockVMSSClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup).Return(expectedScaleSets, nil).AnyTimes()
@@ -429,6 +438,9 @@ func TestDeleteNodeUnregistered(t *testing.T) {
 			Name: &vmssName,
 			Sku: &compute.Sku{
 				Capacity: &vmssCapacity,
+			},
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				OrchestrationMode: compute.Uniform,
 			},
 		},
 	}
@@ -516,6 +528,9 @@ func TestDeleteNoConflictRequest(t *testing.T) {
 			Name: &vmssName,
 			Sku: &compute.Sku{
 				Capacity: &vmssCapacity,
+			},
+			VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
+				OrchestrationMode: compute.Uniform,
 			},
 		},
 	}
