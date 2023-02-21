@@ -12,11 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/distroless/static:latest
-MAINTAINER Krzysztof Grygiel "kgrygiel@google.com"
+FROM golang:1.19 as build-env
 
 ARG ARCH
-COPY recommender-$ARCH /recommender
 
-ENTRYPOINT ["/recommender"]
-CMD ["--v=4", "--stderrthreshold=info", "--prometheus-address=http://prometheus.monitoring.svc"]
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+#ADD . /dockerdev
+#WORKDIR /dockerdev
+
+#RUN go build -gcflags="all=-N -l" ./...
+#RUN go build -gcflags="all=-N -l" -o /recommender
+
+FROM golang:1.19
+
+ARG ARCH
+EXPOSE 8000 40000
+WORKDIR /
+COPY --from=build-env /go/bin/dlv /dlv
+# Make this last as this is the only part that will change.
+COPY recommender-$ARCH /
+
+CMD ["/dlv", "--listen=:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/recommender", "--use-external-metrics=true", "--external-metrics-cpu-metric=cpu", "--external-metrics-memory-metric=mem", "--v", "4" ]

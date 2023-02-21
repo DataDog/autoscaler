@@ -45,10 +45,22 @@ SUITE=$1
 # Test for KIND cluster
 # add getopt for kind cluster config, and whether to preserve cluster after.
 # To create a cluster old enough to take
+echo "Deleting KIND cluster 'kind'."
+if kind delete cluster -n kind -q;
+then true # ignore deleting a non-existent cluster.
+fi
+echo "Creating KIND cluster 'kind' with builtin registry."
+${SCRIPT_ROOT}/hack/kind-with-registry.sh
 #kind create cluster --image=kindest/node:v1.21.2
 # I might be able to run this on modern k8s now that I've fixed the CRDs.
 # the deprecated CRDs running here.
-kind load docker-image write-metrics:0215_1457
+
+echo "Building metrics-pump image"
+docker build -t localhost:5001/write-metrics:dev -f ${SCRIPT_ROOT}/deploy/Dockerfile.externalmetrics-writer ${SCRIPT_ROOT}/hack
+echo "  pushing image to local registry"
+docker push localhost:5001/write-metrics:dev
+
+#kind load docker-image write-metrics:0215_1457
 
 case ${SUITE} in
   recommender|recommender-externalmetrics|updater|admission-controller|actuation|full-vpa)

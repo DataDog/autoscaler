@@ -60,7 +60,6 @@ case ${SUITE} in
     ;;
 esac
 
-#export REGISTRY=gcr.io/`gcloud config get-value core/project`
 # KIND registry
 export REGISTRY=localhost:5001
 export TAG=latest
@@ -79,12 +78,8 @@ for i in ${COMPONENTS}; do
   kind load docker-image ${REGISTRY}/vpa-${i}-amd64:${TAG}
 done
 
-#kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-v1-crd-gen.yaml
 kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-rbac.yaml
-#kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-crd.yaml
 kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-v1-crd.yaml
-#kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-beta-crd.yaml
-#kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-beta2-crd.yaml
 
 for i in ${COMPONENTS}; do
   kubectl apply -f ${SCRIPT_ROOT}/deploy/${i}-deployment.yaml
@@ -100,21 +95,12 @@ for i in ${COMPONENTS}; do
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-rbac.yaml
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-deployment.yaml
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-service.yaml
-     #prometheus-rbac.yaml
-     #prometheus-service.yaml
-     #prometheus-vpa.yaml
-     #prometheus-configmap.yaml
-     #prometheus-deployment.yaml
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-adapter-api-service.yaml
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-adapter-configmap.yaml
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-adapter-deployment.yaml
 
      kubectl apply -f ${SCRIPT_ROOT}/deploy/metrics-pump.yaml
      echo " ** MONITORING NAMESPACE AND PROMETHEUS AND METRICS-PUMP ARE READY ** "
-     # This is for prometheus-adapter (making prom an external-metrics-provider), which helm installs
-     #helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-     #helm repo update
-     #helm install --set prometheus.url=http://prometheus.monitoring.svc prometheus-adapter prometheus-community/prometheus-adapter
   fi
 done
 

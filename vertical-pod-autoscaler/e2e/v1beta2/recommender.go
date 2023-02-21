@@ -35,8 +35,6 @@ import (
 	klog "k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	podsecurity "k8s.io/pod-security-admission/api"
-
-	"k8s.io/kubernetes/test/e2e/instrumentation/monitoring"
 )
 
 type resourceRecommendation struct {
@@ -257,7 +255,7 @@ var _ = RecommenderE2eDescribe("VPA CRD object", func() {
 		_ = SetupHamsterDeployment(
 			f,       /* framework */
 			"100m",  /* cpu */
-			"100Mi", /* memeory */
+			"100Mi", /* memory */
 			1,       /* number of replicas */
 		)
 
