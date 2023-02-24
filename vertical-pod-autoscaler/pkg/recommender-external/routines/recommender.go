@@ -109,14 +109,14 @@ func (r *recommender) UpdateVPAs() {
 			continue
 		}
 
-		klog.V(5).Infof("Found for %+v: %q", key, vpaRecommendation.Containers)
+		klog.V(5).Infof("Container(s) found for vpa %+v: %q", key, vpaRecommendation.Containers)
 
 		resources := r.podResourceRecommenderFactory.
 			Make(GetContainerNameToRecommendedResources(vpa, vpaRecommendation)).
 			GetRecommendedPodResources(GetContainerNameToAggregateStateMap(vpa))
 		had := vpa.HasRecommendation()
 
-		klog.V(5).Infof("Found recommendation %+v (had: %v)", resources, had)
+		klog.V(5).Infof("Found recommendation for %+v: %+v (had: %v)", key, resources, had)
 
 		listOfResourceRecommendation := upstream_logic.MapToListOfRecommendedContainerResources(resources)
 
@@ -124,7 +124,7 @@ func (r *recommender) UpdateVPAs() {
 			listOfResourceRecommendation = postProcessor.Process(vpa, listOfResourceRecommendation, observedVpa.Spec.ResourcePolicy)
 		}
 
-		klog.V(5).Infof("Updating with recommendation %+v", listOfResourceRecommendation)
+		klog.V(5).Infof("Updating %+v with recommendation %+v", key, listOfResourceRecommendation)
 
 		vpa.UpdateRecommendation(listOfResourceRecommendation)
 		if vpa.HasRecommendation() && !had {
