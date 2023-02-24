@@ -95,7 +95,7 @@ func (e externalRecommendationsStateFeeder) LoadMetrics() {
 	for _, vpa := range e.clusterState.Vpas {
 		klog.V(1).Infof("vpa %s %d", vpa.ID.VpaName, vpa.PodCount)
 
-		containersToResourcesAndMetrics := GetVpaExternalMetrics(AnnotationsMap(vpa.Annotations))
+		containersToResourcesAndMetrics := GetVpaExternalMetrics(vpa.Annotations)
 		errs := e.loadMetrics(vpa, containersToResourcesAndMetrics)
 
 		for _, err := range errs {
@@ -107,7 +107,8 @@ func (e externalRecommendationsStateFeeder) LoadMetrics() {
 }
 
 func (e externalRecommendationsStateFeeder) loadMetrics(vpa *upstream_model.Vpa, containersToResourcesAndMetrics ContainersToResourcesAndMetrics) []error {
-	errs := make([]error, 0)
+	var errs []error
+
 	for container, resourceToMetrics := range containersToResourcesAndMetrics {
 		recommendation := make(upstream_model.Resources)
 		for resource, metric := range resourceToMetrics {
@@ -129,7 +130,7 @@ func (e externalRecommendationsStateFeeder) loadMetrics(vpa *upstream_model.Vpa,
 func (e externalRecommendationsStateFeeder) loadMetric(vpa *upstream_model.Vpa, resource upstream_model.ResourceName, metric string) (upstream_model.ResourceAmount, error) {
 	metricName, metricSelector, err := e.getMetricNameAndSelector(metric)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 
 	value, _, err := e.metricsClient.GetExternalMetric(metricName, vpa.ID.Namespace, metricSelector)

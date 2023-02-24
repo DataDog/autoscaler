@@ -44,38 +44,36 @@ var (
 // ContainersToResourcesAndMetrics maps a contaienr name to associated resource names and metrics.
 type ContainersToResourcesAndMetrics map[string]map[upstream_model.ResourceName]string
 
-// AnnotationsMap is simply a map of annotations to values
-type AnnotationsMap map[string]string
-
 // NewContainersToResourcesAndMetrics creates a ContainersToResourcesAndMetrics
 func NewContainersToResourcesAndMetrics() ContainersToResourcesAndMetrics {
 	return make(ContainersToResourcesAndMetrics)
 }
 
-// AddMetric adds a container, resource and associated metric
-func (c ContainersToResourcesAndMetrics) AddMetric(container string, resource upstream_model.ResourceName, metric string) {
+// addMetric adds a container, resource and associated metric
+func (c ContainersToResourcesAndMetrics) addMetric(container string, resource upstream_model.ResourceName, metric string) {
 	if _, ok := c[container]; !ok {
 		c[container] = make(map[upstream_model.ResourceName]string)
 	}
 	c[container][resource] = metric
 }
 
-// ParseAndFromAnnotation parses a container, resource to metric annotation
-func (c ContainersToResourcesAndMetrics) ParseAndFromAnnotation(k, v string) error {
-	container, resource, err := ParseAnnotation(k)
+// parseAnnotationKV parses a container, resource to metric annotation
+func (c ContainersToResourcesAndMetrics) parseAnnotationKV(k, v string) error {
+	container, resource, err := parseAnnotationKey(k)
 	if err != nil {
 		return err
 	}
-	c.AddMetric(container, resource, v)
+	c.addMetric(container, resource, v)
 	return nil
 }
 
-// ParseAnnotation parses a container, resource to metric annotation
-func ParseAnnotation(k string) (container string, resource upstream_model.ResourceName, err error) {
-	// Here we have `vpa.datadoghq.com/metric-<resource>-<container>`
+// parseAnnotationKey parses a container, resource to metric annotation
+func parseAnnotationKey(k string) (container string, resource upstream_model.ResourceName, err error) {
+	// Here we have vpa.datadoghq.com/metric-* and we expect * to match <resource>-<container>
 
 	a := strings.TrimPrefix(k, VpaAnnotationPrefix)
-	// Then: `<resource>-<container>`
+
+	// Now we expect to have: `<resource>-<container>`
 
 	for _, resource = range SupportedResources {
 		prefix := string(resource + "-")
@@ -90,18 +88,18 @@ func ParseAnnotation(k string) (container string, resource upstream_model.Resour
 	return "", "", fmt.Errorf("can't recognize %s", k)
 }
 
-// IsVpaExternalMetricAnnotation returns true if an annotation configures a metric for a container and resource
-func IsVpaExternalMetricAnnotation(annotation string) bool {
+// isVpaExternalMetricAnnotation returns true if an annotation configures a metric for a container and resource
+func isVpaExternalMetricAnnotation(annotation string) bool {
 	return strings.HasPrefix(annotation, VpaAnnotationPrefix)
 }
 
 // GetVpaExternalMetrics returns the map of containers, resource to metrics
-func GetVpaExternalMetrics(annotations AnnotationsMap) ContainersToResourcesAndMetrics {
+func GetVpaExternalMetrics(annotations map[string]string) ContainersToResourcesAndMetrics {
 	c := NewContainersToResourcesAndMetrics()
 	for k, v := range annotations {
-		if IsVpaExternalMetricAnnotation(k) {
+		if isVpaExternalMetricAnnotation(k) {
 			klog.V(6).Infof("Found %s:%s", k, v)
-			err := c.ParseAndFromAnnotation(k, v)
+			err := c.parseAnnotationKV(k, v)
 			if err != nil {
 				klog.V(2).ErrorS(err, fmt.Sprintf("Can't parse %s:%s", k, v))
 			}
