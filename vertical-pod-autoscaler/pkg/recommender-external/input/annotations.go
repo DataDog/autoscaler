@@ -67,6 +67,10 @@ func (c ContainersToResourcesAndMetrics) parseAnnotationKV(k, v string) error {
 	return nil
 }
 
+func AnnotationKey(container string, cpu upstream_model.ResourceName) string {
+	return VpaAnnotationPrefix + string(cpu) + "-" + container
+}
+
 // parseAnnotationKey parses a container, resource to metric annotation
 func parseAnnotationKey(k string) (container string, resource upstream_model.ResourceName, err error) {
 	// Here we have vpa.datadoghq.com/metric-* and we expect * to match <resource>-<container>
