@@ -24,10 +24,6 @@ function print_help {
   echo "<suite> should be one of:"
   echo " - recommender"
   echo " - recommender-externalmetrics"
-  echo " - updater"
-  echo " - admission-controller"
-  echo " - actuation"
-  echo " - full-vpa"
 }
 
 if [ $# -eq 0 ]; then
@@ -63,10 +59,12 @@ docker push localhost:5001/write-metrics:dev
 #kind load docker-image write-metrics:0215_1457
 
 case ${SUITE} in
-  recommender|recommender-externalmetrics|updater|admission-controller|actuation|full-vpa)
+  recommender|recommender-externalmetrics)
     ${SCRIPT_ROOT}/hack/vpa-down.sh
+    echo " ** Deploying for suite ${SUITE}"
     ${SCRIPT_ROOT}/hack/deploy-for-e2e-locally.sh ${SUITE}
 
+    echo " ** Running suite ${SUITE}"
     if [ ${SUITE} == recommender-externalmetrics ]; then
        ${SCRIPT_ROOT}/hack/run-e2e-tests.sh recommender
     else

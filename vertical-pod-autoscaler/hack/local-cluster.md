@@ -4,10 +4,17 @@ with `-locally` as part of their names.  They use Kubernetes in Docker (`kind`) 
 cluster in Docker.  Using them will require `docker` and `kind` in your `PATH`.
 
 ## External Metrics Tests
-The external metrics tests (`recommender-externalmetrics`, available on the `-lacolly` variants)
+The external metrics tests (`recommender-externalmetrics`, available on the `-locally` variants)
 use a stack of 4 additional programs to support testing:
 
 1. `hack/emit-metrics.py` to generate random CPU and RAM metrics for every pod in the local cluster.
 2. Prometheus Pushgateway to accept metrics from `hack/emit-metrics`.
 3. Prometheus to store the metrics accepted by the Pushgateway.
 4. Prometheus Adapter to provide an External Metrics interface to Prometheus.
+
+The External Metrics tests run by configuring a `recommender` to use the External Metrics interface
+from the Prometheus Adapter.  With that configuration, it runs the standard `recommender` test suite. 
+
+## Non-recommender tests
+The `recommender` and `recommender-externalmetrics` test work locally, but none of the others do;
+they require more Makefile work.

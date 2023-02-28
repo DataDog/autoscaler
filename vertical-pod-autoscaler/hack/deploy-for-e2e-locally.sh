@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 # Copyright 2018 The Kubernetes Authors.
 #
@@ -25,10 +25,6 @@ function print_help {
   echo "<suite> should be one of:"
   echo " - recommender"
   echo " - recommender-externalmetrics"
-  echo " - updater"
-  echo " - admission-controller"
-  echo " - actuation"
-  echo " - full-vpa"
   echo "If component is not specified all above will be started."
 }
 
@@ -45,14 +41,8 @@ fi
 SUITE=$1
 
 case ${SUITE} in
-  recommender|recommender-externalmetrics|updater|admission-controller)
+  recommender|recommender-externalmetrics)
     COMPONENTS="${SUITE}"
-    ;;
-  full-vpa)
-    COMPONENTS="recommender updater admission-controller"
-    ;;
-  actuation)
-    COMPONENTS="updater admission-controller"
     ;;
   *)
     print_help
@@ -64,9 +54,10 @@ esac
 export REGISTRY=localhost:5001
 export TAG=latest
 
-#echo "Configuring registry authentication"
-#mkdir -p "${HOME}/.docker"
-#gcloud auth configure-docker -q
+kubectl apply -f ${SCRIPT_ROOT}/deploy/vpa-rbac.yaml
+# Other-versioned CRDs are irrelevant as we're running a modern-ish cluster.
+kubectl apply -f ${SCRIPT_ROOT}/deploy/vpa-v1-crd.yaml
+kubectl apply -f ${SCRIPT_ROOT}/deploy/k8s-metrics-server.yaml
 
 for i in ${COMPONENTS}; do
   if [ $i == admission-controller ] ; then
@@ -78,17 +69,9 @@ for i in ${COMPONENTS}; do
   kind load docker-image ${REGISTRY}/vpa-${i}-amd64:${TAG}
 done
 
-kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-rbac.yaml
-kubectl create -f ${SCRIPT_ROOT}/deploy/vpa-v1-crd.yaml
-
-for i in ${COMPONENTS}; do
-  kubectl apply -f ${SCRIPT_ROOT}/deploy/${i}-deployment.yaml
-#  ${SCRIPT_ROOT}/hack/vpa-process-yaml.sh  ${SCRIPT_ROOT}/deploy/${i}-deployment.yaml | kubectl create -f -
-done
 
 for i in ${COMPONENTS}; do
   if [ $i == recommender-externalmetrics ] ; then
-     echo " ** Creating monitoring namespace and adding prometheus and metrics-pump ** "
      kubectl delete namespace monitoring --ignore-not-found=true
      kubectl create namespace monitoring
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-configmap.yaml
@@ -100,7 +83,6 @@ for i in ${COMPONENTS}; do
      kubectl apply -f ${SCRIPT_ROOT}/deploy/prometheus-adapter-deployment.yaml
 
      kubectl apply -f ${SCRIPT_ROOT}/deploy/metrics-pump.yaml
-     echo " ** MONITORING NAMESPACE AND PROMETHEUS AND METRICS-PUMP ARE READY ** "
   fi
+  kubectl apply -f ${SCRIPT_ROOT}/deploy/${i}-deployment.yaml
 done
-
