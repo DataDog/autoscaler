@@ -67,6 +67,7 @@ func (c ContainersToResourcesAndMetrics) parseAnnotationKV(k, v string) error {
 	return nil
 }
 
+// AnnotationKey creates an annotation key from a container and resource name.
 func AnnotationKey(container string, cpu upstream_model.ResourceName) string {
 	return VpaAnnotationPrefix + string(cpu) + "-" + container
 }
