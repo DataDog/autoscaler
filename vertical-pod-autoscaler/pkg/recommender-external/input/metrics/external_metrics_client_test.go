@@ -39,6 +39,6 @@ func TestGetMetric(t *testing.T) {
 	value, time, err := fakeMetricsClient.GetExternalMetric("qps", "fake", labels.Everything())
 
 	assert.NoError(t, err)
-	assert.Equal(t, 1, value)
+	assert.Equal(t, int64(1), value)
 	assert.NotZero(t, time)
 }
