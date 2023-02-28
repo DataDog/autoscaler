@@ -37,6 +37,7 @@ type metricsClientTestCase struct {
 	metrics map[string]metricsQueryTestCase
 }
 
+// NewMetricsClientTestCase creates a new test case with pre-defined metrics.
 func NewMetricsClientTestCase() *metricsClientTestCase {
 
 	testCase := &metricsClientTestCase{
@@ -61,6 +62,7 @@ func NewMetricsClientTestCase() *metricsClientTestCase {
 	return testCase
 }
 
+// NewEmptyMetricsClientTestCase creates a new  test cacse with no metrics.
 func NewEmptyMetricsClientTestCase() *metricsClientTestCase {
 	return &metricsClientTestCase{}
 }
