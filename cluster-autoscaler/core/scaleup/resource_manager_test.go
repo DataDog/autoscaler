@@ -78,41 +78,68 @@ func TestDeltaForNode(t *testing.T) {
 }
 
 type resourceLeftTestCase struct {
-	nodeGroupConfig nodeGroupConfig
-	clusterCPULimit int64
-	clusterMemLimit int64
-	expectedOutput  ResourcesLimits
+	nodeGroupConfig  []nodeGroupConfig
+	missingNodeInfos map[string]bool
+	clusterCPULimit  int64
+	clusterMemLimit  int64
+	expectedOutput   ResourcesLimits
 }
 
 func TestResourcesLeft(t *testing.T) {
 	testCases := []resourceLeftTestCase{
 		{
 			// cpu left: 1000 - 8 * 5 = 960; memory left: 1000 - 16 * 5 = 920
-			nodeGroupConfig: nodeGroupConfig{Name: "ng1", Min: 3, Max: 10, Size: 5, CPU: 8, Mem: 16},
+			nodeGroupConfig: []nodeGroupConfig{{Name: "ng1", Min: 3, Max: 10, Size: 5, CPU: 8, Mem: 16}},
 			clusterCPULimit: 1000,
 			clusterMemLimit: 1000,
 			expectedOutput:  ResourcesLimits{"cpu": 960, "memory": 920},
 		},
 		{
 			// cpu left: 1000 - 4 * 100 = 600; memory left: 1000 - 8 * 100 = 200
-			nodeGroupConfig: nodeGroupConfig{Name: "ng2", Min: 3, Max: 100, Size: 100, CPU: 4, Mem: 8},
+			nodeGroupConfig: []nodeGroupConfig{{Name: "ng2", Min: 3, Max: 100, Size: 100, CPU: 4, Mem: 8}},
 			clusterCPULimit: 1000,
 			clusterMemLimit: 1000,
 			expectedOutput:  ResourcesLimits{"cpu": 600, "memory": 200},
 		},
+		{
+			// cpu left: 1000 - (10 * 4 + 10 * 2) = 940; memory left: 1000 - (10 * 8 + 10 * 4) = 880
+			nodeGroupConfig: []nodeGroupConfig{
+				{Name: "ng3", Min: 3, Max: 100, Size: 10, CPU: 4, Mem: 8},
+				{Name: "ng4", Min: 3, Max: 100, Size: 10, CPU: 2, Mem: 4}},
+			clusterCPULimit: 1000,
+			clusterMemLimit: 1000,
+			expectedOutput:  ResourcesLimits{"cpu": 940, "memory": 880},
+		},
+		{
+			// cpu left: 1000 - 10 * 4 = 960; memory left: 1000 - 10 * 8 = 920 (ng6 is missing nodeInfo and is ignored)
+			nodeGroupConfig: []nodeGroupConfig{
+				{Name: "ng5", Min: 3, Max: 100, Size: 10, CPU: 4, Mem: 8},
+				{Name: "ng6", Min: 0, Max: 100, Size: 2, CPU: 2, Mem: 4}},
+			missingNodeInfos: map[string]bool{"ng6": true},
+			clusterCPULimit:  1000,
+			clusterMemLimit:  1000,
+			expectedOutput:   ResourcesLimits{"cpu": 960, "memory": 920},
+		},
 	}
 
 	for _, testCase := range testCases {
-		cp := newCloudProvider(t, 1000, 1000)
+		cp := newCloudProvider(t, testCase.clusterCPULimit, testCase.clusterMemLimit)
 		ctx := newContext(t, cp)
 		processors := test.NewTestProcessors(&ctx)
 
-		ng := testCase.nodeGroupConfig
-		_, nodes := newNodeGroup(t, cp, ng.Name, ng.Min, ng.Max, ng.Size, ng.CPU, ng.Mem)
-		nodeInfos, _ := nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(nil).Process(&ctx, nodes, []*appsv1.DaemonSet{}, nil, time.Now())
+		var allNodes, nodesWithNodeInfo []*corev1.Node
+		for _, ng := range testCase.nodeGroupConfig {
+			_, newNodes := newNodeGroup(t, cp, ng.Name, ng.Min, ng.Max, ng.Size, ng.CPU, ng.Mem)
+			allNodes = append(allNodes, newNodes...)
+			if !testCase.missingNodeInfos[ng.Name] {
+				nodesWithNodeInfo = append(nodesWithNodeInfo, newNodes...)
+			}
+
+		}
+		nodeInfos, _ := nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(nil).Process(&ctx, nodesWithNodeInfo, []*appsv1.DaemonSet{}, nil, time.Now())
 
 		rm := NewResourceManager(processors.CustomResourcesProcessor)
-		left, err := rm.ResourcesLeft(&ctx, nodeInfos, nodes)
+		left, err := rm.ResourcesLeft(&ctx, nodeInfos, allNodes)
 		assert.NoError(t, err)
 		assert.Equal(t, testCase.expectedOutput, left)
 	}

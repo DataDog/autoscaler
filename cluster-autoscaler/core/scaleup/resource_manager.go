@@ -214,7 +214,8 @@ func (m *ResourceManager) coresMemoryTotal(ctx *context.AutoscalingContext, node
 
 		nodeInfo, found := nodeInfos[nodeGroup.Id()]
 		if !found {
-			return 0, 0, errors.NewAutoscalerError(errors.CloudProviderError, "No node info for: %s", nodeGroup.Id())
+			klog.Infof("skipping nodegroup %s in total cores/memory calculation", nodeGroup.Id())
+			continue
 		}
 
 		if currentSize > 0 {
@@ -243,7 +244,8 @@ func (m *ResourceManager) customResourcesTotal(ctx *context.AutoscalingContext, 
 
 		nodeInfo, found := nodeInfos[nodeGroup.Id()]
 		if !found {
-			return nil, errors.NewAutoscalerError(errors.CloudProviderError, "No node info for: %s", nodeGroup.Id())
+			klog.Infof("skipping nodegroup %s in total custom resources calculation", nodeGroup.Id())
+			continue
 		}
 
 		if currentSize > 0 {
