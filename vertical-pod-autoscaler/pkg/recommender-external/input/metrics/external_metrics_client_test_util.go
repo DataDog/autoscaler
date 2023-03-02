@@ -81,14 +81,16 @@ func (tc *metricsClientTestCase) CreateFakeMetricsClient() MetricsClient {
 
 		value, found := tc.metrics[q]
 
-		if found && value.error == nil {
-			metric := emapi.ExternalMetricValue{
-				Timestamp:  metav1.Time{Time: value.time},
-				MetricName: q,
-				Value:      *resource.NewMilliQuantity(int64(value.value), resource.DecimalSI),
-			}
-			metrics.Items = append(metrics.Items, metric)
+		if !found || value.error != nil {
+			return true, metrics, value.error
 		}
+
+		metric := emapi.ExternalMetricValue{
+			Timestamp:  metav1.Time{Time: value.time},
+			MetricName: q,
+			Value:      *resource.NewMilliQuantity(int64(value.value), resource.DecimalSI),
+		}
+		metrics.Items = append(metrics.Items, metric)
 
 		return true, metrics, value.error
 	})

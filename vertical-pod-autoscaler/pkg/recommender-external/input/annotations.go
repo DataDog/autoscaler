@@ -103,13 +103,15 @@ func GetVpaExternalMetrics(annotations map[string]string) ContainersToResourcesA
 	c := NewContainersToResourcesAndMetrics()
 	for k, v := range annotations {
 		if isVpaExternalMetricAnnotation(k) {
-			klog.V(6).Infof("Found %s:%s", k, v)
+			klog.V(6).Infof("Found annotation with relevant prefix %s:%s", k, v)
 			err := c.parseAnnotationKV(k, v)
 			if err != nil {
 				klog.V(2).ErrorS(err, fmt.Sprintf("Can't parse %s:%s", k, v))
 			}
 		}
 	}
-	klog.V(6).Infof("Found %+v", c)
+	if len(c) > 0 {
+		klog.V(6).Infof("Found %+v", c)
+	}
 	return c
 }

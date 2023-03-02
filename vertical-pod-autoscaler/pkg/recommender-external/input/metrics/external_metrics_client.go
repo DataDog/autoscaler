@@ -56,13 +56,15 @@ func (c *metricsClient) GetExternalMetric(metricName, namespace string, selector
 		return 0, time.Time{}, fmt.Errorf("unable to fetch metrics from external metrics API: %v", err)
 	}
 
-	if len(metrics.Items) == 0 {
+	points := len(metrics.Items)
+	idx := points - 1
+
+	if points == 0 {
 		return 0, time.Time{}, fmt.Errorf("no metrics returned from external metrics API")
 	}
 
-	klog.V(6).Infof("Got %d points: %+v", len(metrics.Items), metrics.Items)
+	klog.V(6).Infof("Got %d points, taking the last one: %+v", points, metrics.Items[idx])
 
-	idx := len(metrics.Items) - 1
 	value := metrics.Items[idx].Value.Value()
 	timestamp := metrics.Items[idx].Timestamp.Time
 

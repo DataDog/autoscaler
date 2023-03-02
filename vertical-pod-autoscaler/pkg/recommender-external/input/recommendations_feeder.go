@@ -70,12 +70,13 @@ func NewExternalRecommendationsStateFeeder(config *rest.Config, clusterState *up
 	}.Make()
 }
 
-func (e externalRecommendationsStateFeeder) LoadVPAs() {
+// LoadVPAs loads VPAs from the cluster state to the recommendation state.
+func (e *externalRecommendationsStateFeeder) LoadVPAs() {
 	// Add or update existing VPAs in the model.
-	vpaKeys := make(map[upstream_model.VpaID]bool)
+	vpaKeys := make(map[upstream_model.VpaID]struct{})
 	for _, vpa := range e.clusterState.Vpas {
 		e.externalRecommendationsState.AddOrUpdateVpa(*vpa)
-		vpaKeys[vpa.ID] = true
+		vpaKeys[vpa.ID] = struct{}{}
 	}
 
 	klog.V(3).Infof("Updated %d VPAs.", len(vpaKeys))
@@ -91,9 +92,10 @@ func (e externalRecommendationsStateFeeder) LoadVPAs() {
 	}
 }
 
-func (e externalRecommendationsStateFeeder) LoadMetrics() {
+// LoadMetrics loads metrics from external metrics to the recommendation state.
+func (e *externalRecommendationsStateFeeder) LoadMetrics() {
 	for _, vpa := range e.clusterState.Vpas {
-		klog.V(1).Infof("vpa %s %d", vpa.ID.VpaName, vpa.PodCount)
+		klog.V(1).Infof("Loading metrics for vpa %s covering %d pods", vpa.ID.VpaName, vpa.PodCount)
 
 		containersToResourcesAndMetrics := GetVpaExternalMetrics(vpa.Annotations)
 		errs := e.loadMetrics(vpa, containersToResourcesAndMetrics)
@@ -106,7 +108,7 @@ func (e externalRecommendationsStateFeeder) LoadMetrics() {
 	}
 }
 
-func (e externalRecommendationsStateFeeder) loadMetrics(vpa *upstream_model.Vpa, containersToResourcesAndMetrics ContainersToResourcesAndMetrics) []error {
+func (e *externalRecommendationsStateFeeder) loadMetrics(vpa *upstream_model.Vpa, containersToResourcesAndMetrics ContainersToResourcesAndMetrics) []error {
 	var errs []error
 
 	for container, resourceToMetrics := range containersToResourcesAndMetrics {
@@ -127,7 +129,7 @@ func (e externalRecommendationsStateFeeder) loadMetrics(vpa *upstream_model.Vpa,
 	return errs
 }
 
-func (e externalRecommendationsStateFeeder) loadMetric(vpa *upstream_model.Vpa, resource upstream_model.ResourceName, metric string) (upstream_model.ResourceAmount, error) {
+func (e *externalRecommendationsStateFeeder) loadMetric(vpa *upstream_model.Vpa, resource upstream_model.ResourceName, metric string) (upstream_model.ResourceAmount, error) {
 	metricName, metricSelector, err := e.getMetricNameAndSelector(metric)
 	if err != nil {
 		return 0, err
@@ -141,7 +143,7 @@ func (e externalRecommendationsStateFeeder) loadMetric(vpa *upstream_model.Vpa, 
 	return upstream_model.ResourceAmount(value), nil
 }
 
-func (e externalRecommendationsStateFeeder) getMetricNameAndSelector(metric string) (string, labels.Selector, error) {
+func (e *externalRecommendationsStateFeeder) getMetricNameAndSelector(metric string) (string, labels.Selector, error) {
 	metricName := metric
 	metricSelector := labels.Everything()
 
