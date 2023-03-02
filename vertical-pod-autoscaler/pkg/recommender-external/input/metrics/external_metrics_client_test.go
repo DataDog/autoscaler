@@ -15,3 +15,30 @@ limitations under the License.
 */
 
 package metrics
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/labels"
+)
+
+func TestGetEmptyMetric(t *testing.T) {
+	tc := NewEmptyMetricsClientTestCase()
+	emptyMetricsClient := tc.CreateFakeMetricsClient()
+
+	_, _, err := emptyMetricsClient.GetExternalMetric("qps", "fake", labels.Everything())
+
+	assert.Error(t, err)
+}
+
+func TestGetMetric(t *testing.T) {
+	tc := NewMetricsClientTestCase()
+	fakeMetricsClient := tc.CreateFakeMetricsClient()
+
+	value, time, err := fakeMetricsClient.GetExternalMetric("qps", "fake", labels.Everything())
+
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), value)
+	assert.NotZero(t, time)
+}

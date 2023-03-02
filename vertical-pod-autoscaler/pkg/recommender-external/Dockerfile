@@ -19,4 +19,4 @@ ARG ARCH
 COPY recommender-external-$ARCH /recommender-external
 
 ENTRYPOINT ["/recommender-external"]
-CMD ["--v=4", "--stderrthreshold=info"]
+CMD ["--v=10", "--stderrthreshold=info", "--pod-recommendation-min-memory-mb=0.0001"]

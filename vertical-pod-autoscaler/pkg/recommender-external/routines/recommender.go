@@ -95,6 +95,8 @@ func (r *recommender) UpdateVPAs() {
 			VpaName:   observedVpa.Name,
 		}
 
+		klog.V(5).Infof("Observing %+v", key)
+
 		vpa, found := r.clusterState.Vpas[key]
 		if !found {
 			klog.Infof("We do not know this VPA yet: %+v", key)
@@ -107,16 +109,22 @@ func (r *recommender) UpdateVPAs() {
 			continue
 		}
 
+		klog.V(5).Infof("Container(s) found for vpa %+v: %q", key, vpaRecommendation.Containers)
+
 		resources := r.podResourceRecommenderFactory.
 			Make(GetContainerNameToRecommendedResources(vpa, vpaRecommendation)).
-			GetRecommendedPodResources(upstream_routines.GetContainerNameToAggregateStateMap(vpa))
+			GetRecommendedPodResources(GetContainerNameToAggregateStateMap(vpa))
 		had := vpa.HasRecommendation()
+
+		klog.V(5).Infof("Found recommendation for %+v: %+v (had: %v)", key, resources, had)
 
 		listOfResourceRecommendation := upstream_logic.MapToListOfRecommendedContainerResources(resources)
 
 		for _, postProcessor := range r.recommendationPostProcessor {
 			listOfResourceRecommendation = postProcessor.Process(vpa, listOfResourceRecommendation, observedVpa.Spec.ResourcePolicy)
 		}
+
+		klog.V(5).Infof("Updating %+v with recommendation %+v", key, listOfResourceRecommendation)
 
 		vpa.UpdateRecommendation(listOfResourceRecommendation)
 		if vpa.HasRecommendation() && !had {
@@ -172,7 +180,7 @@ func (r *recommender) RunOnce() {
 	r.UpdateVPAs()
 	timer.ObserveStep("UpdateVPAs")
 
-	klog.V(3).Infof("ClusterState is tracking %d aggregated container states", r.clusterState.StateMapSize())
+	klog.V(3).Infof("ClusterState is tracking %d - %d aggregated container states", r.clusterState.StateMapSize(), r.externalRecommendationsState.Size())
 }
 
 func (r *recommender) ObserverOOM(containerID upstream_model.ContainerID, timestamp time.Time, requestedMemory upstream_model.ResourceAmount) error {

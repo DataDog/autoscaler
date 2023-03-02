@@ -34,9 +34,27 @@ func GetContainerNameToRecommendedResources(vpa *upstream_model.Vpa, vpaRecommen
 		autoscalingDisabled := containerResourcePolicy != nil && containerResourcePolicy.Mode != nil &&
 			*containerResourcePolicy.Mode == vpa_types.ContainerScalingModeOff
 
-		if !autoscalingDisabled && len(state.RawRecommendation) == 0 {
+		if !autoscalingDisabled && len(state.RawRecommendation) != 0 {
 			filteredContainerNameToRecommendation[containerName] = state.RawRecommendation
 		}
 	}
 	return filteredContainerNameToRecommendation
+}
+
+// GetContainerNameToAggregateStateMap returns ContainerNameToAggregateStateMap for pods.
+// Same as upstream method without the `aggregatedContainerState.TotalSamplesCount > 0` check.
+func GetContainerNameToAggregateStateMap(vpa *upstream_model.Vpa) upstream_model.ContainerNameToAggregateStateMap {
+	containerNameToAggregateStateMap := vpa.AggregateStateByContainerName()
+	filteredContainerNameToAggregateStateMap := make(upstream_model.ContainerNameToAggregateStateMap)
+
+	for containerName, aggregatedContainerState := range containerNameToAggregateStateMap {
+		containerResourcePolicy := api_utils.GetContainerResourcePolicy(containerName, vpa.ResourcePolicy)
+		autoscalingDisabled := containerResourcePolicy != nil && containerResourcePolicy.Mode != nil &&
+			*containerResourcePolicy.Mode == vpa_types.ContainerScalingModeOff
+		if !autoscalingDisabled {
+			aggregatedContainerState.UpdateFromPolicy(containerResourcePolicy)
+			filteredContainerNameToAggregateStateMap[containerName] = aggregatedContainerState
+		}
+	}
+	return filteredContainerNameToAggregateStateMap
 }
