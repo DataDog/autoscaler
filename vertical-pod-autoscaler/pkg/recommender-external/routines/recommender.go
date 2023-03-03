@@ -235,7 +235,7 @@ func NewExternalRecommender(config *rest.Config, namespace string, recommenderNa
 
 	return RecommenderFactory{
 		ClusterState:                       clusterState,
-		ClusterStateFeeder:                 upstream_input.NewClusterStateFeeder(config, clusterState, true, namespace, "default-metrics-client", recommenderName),
+		ClusterStateFeeder:                 upstream_input.NewClusterStateFeeder(config, clusterState, true, namespace, "external-metrics-client", recommenderName),
 		ControllerFetcher:                  controllerFetcher,
 		ExternalRecommendationsState:       externalRecommendationState,
 		ExternalRecommendationsStateFeeder: input.NewExternalRecommendationsStateFeeder(config, clusterState, externalRecommendationState, namespace, "external-metrics-client"),
