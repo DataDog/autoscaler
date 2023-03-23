@@ -60,7 +60,7 @@ func main() {
 
 	healthCheck := metrics.NewHealthCheck(*metricsFetcherInterval*5, true)
 	metrics.Initialize(*address, healthCheck)
-	
+
 	var postProcessors []upstream_routines.RecommendationPostProcessor
 	if *postProcessorCPUasInteger {
 		postProcessors = append(postProcessors, &upstream_routines.IntegerCPUPostProcessor{})
