@@ -59,6 +59,7 @@ func main() {
 	config := common.CreateKubeConfigOrDie(*kubeconfig, float32(*kubeApiQps), int(*kubeApiBurst))
 
 	healthCheck := metrics.NewHealthCheck(*metricsFetcherInterval*5, true)
+	metrics.Initialize(*address, healthCheck)
 
 	var postProcessors []upstream_routines.RecommendationPostProcessor
 	if *postProcessorCPUasInteger {
