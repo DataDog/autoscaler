@@ -115,6 +115,9 @@ func PodFromPodTemplateSpec(objectMeta *metav1.ObjectMeta, podTemplateSpec *v1.P
 	}
 	// We also need to propagate the trigger annotation that was likely set on the parent.
 	if annotations.HasVpaTrigger(objectMeta) {
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
 		pod.Annotations[annotations.VpaTriggerLabel] = annotations.VpaTriggerEnabled
 	}
 	if pod.Name == "" {
