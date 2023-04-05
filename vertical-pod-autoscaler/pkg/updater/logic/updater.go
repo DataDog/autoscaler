@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
-
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -66,6 +65,7 @@ type updater struct {
 	useAdmissionControllerStatus bool
 	statusValidator              status.Validator
 	controllerFetcher            controllerfetcher.ControllerFetcher
+	podLabelSelector             labels.Selector
 }
 
 // NewUpdater creates Updater with given configuration
@@ -84,6 +84,7 @@ func NewUpdater(
 	controllerFetcher controllerfetcher.ControllerFetcher,
 	priorityProcessor priority.PriorityProcessor,
 	namespace string,
+	podLabelSelector labels.Selector,
 ) (Updater, error) {
 	evictionRateLimiter := getRateLimiter(evictionRateLimit, evictionRateBurst)
 	factory, err := eviction.NewPodsEvictionRestrictionFactory(kubeClient, minReplicasForEvicition, evictionToleranceFraction)
@@ -107,6 +108,7 @@ func NewUpdater(
 			status.AdmissionControllerStatusName,
 			statusNamespace,
 		),
+		podLabelSelector: podLabelSelector,
 	}, nil
 }
 
@@ -148,9 +150,10 @@ func (u *updater) RunOnce(ctx context.Context) {
 			continue
 		}
 
+		podSelectorRequirements, _ := u.podLabelSelector.Requirements()
 		vpas = append(vpas, &vpa_api_util.VpaWithSelector{
 			Vpa:      vpa,
-			Selector: selector,
+			Selector: selector.Add(podSelectorRequirements...),
 		})
 	}
 
