@@ -25,6 +25,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender-external/routines"
+	metrics_quality "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/quality"
+	metrics_recommender "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/recommender"
 
 	"k8s.io/autoscaler/vertical-pod-autoscaler/common"
 	upstream_routines "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/routines"
@@ -60,6 +62,8 @@ func main() {
 
 	healthCheck := metrics.NewHealthCheck(*metricsFetcherInterval*5, true)
 	metrics.Initialize(*address, healthCheck)
+	metrics_recommender.Register()
+	metrics_quality.Register()
 
 	var postProcessors []upstream_routines.RecommendationPostProcessor
 	if *postProcessorCPUasInteger {
@@ -67,10 +71,6 @@ func main() {
 	}
 	// CappingPostProcessor, should always come in the last position for post-processing
 	postProcessors = append(postProcessors, &upstream_routines.CappingPostProcessor{})
-
-	// TODO:
-	// - Set keys in file?
-	// - Allow to override host?
 
 	recommender := routines.NewExternalRecommender(config, *vpaObjectNamespace, *recommenderName, postProcessors)
 
