@@ -32,9 +32,11 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender-external/model"
 	upstream_input "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input"
 	controllerfetcher "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/controller_fetcher"
+	input_metrics "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/input/metrics"
 	upstream_logic "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/logic"
 	upstream_model "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 	upstream_routines "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/routines"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/target"
 	metrics_recommender "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/recommender"
 	vpa_utils "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
 )
@@ -230,12 +232,26 @@ func NewExternalRecommender(config *rest.Config, namespace string, recommenderNa
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	factory := informers.NewSharedInformerFactoryWithOptions(kubeClient, defaultResyncPeriod, informers.WithNamespace(namespace))
 	controllerFetcher := controllerfetcher.NewControllerFetcher(config, kubeClient, factory, scaleCacheEntryFreshnessTime, scaleCacheEntryLifetime, scaleCacheEntryJitterFactor)
-
+	podLister, oomObserver := upstream_input.NewPodListerAndOOMObserver(kubeClient, namespace)
 	externalRecommendationState := model.NewExternalRecommendationsState(AggregateContainerStateGCInterval)
+
+	clusterStateFeeder := upstream_input.ClusterStateFeederFactory{
+		PodLister:           podLister,
+		OOMObserver:         oomObserver,
+		KubeClient:          kubeClient,
+		MetricsClient:       input_metrics.NewMetricsClient(config, namespace, "default-metrics-client"),
+		VpaCheckpointClient: vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
+		VpaLister:           vpa_utils.NewVpasLister(vpa_clientset.NewForConfigOrDie(config), make(chan struct{}), namespace),
+		ClusterState:        clusterState,
+		SelectorFetcher:     target.NewVpaTargetSelectorFetcher(config, kubeClient, factory),
+		MemorySaveMode:      true,
+		ControllerFetcher:   controllerFetcher,
+		RecommenderName:     recommenderName,
+	}.Make()
 
 	return RecommenderFactory{
 		ClusterState:                       clusterState,
-		ClusterStateFeeder:                 upstream_input.NewClusterStateFeeder(config, clusterState, true, namespace, "external-metrics-client", recommenderName),
+		ClusterStateFeeder:                 clusterStateFeeder,
 		ControllerFetcher:                  controllerFetcher,
 		ExternalRecommendationsState:       externalRecommendationState,
 		ExternalRecommendationsStateFeeder: input.NewExternalRecommendationsStateFeeder(config, clusterState, externalRecommendationState, namespace, "external-metrics-client"),

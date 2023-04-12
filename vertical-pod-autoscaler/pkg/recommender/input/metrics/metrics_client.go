@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"context"
+	"os"
 	"time"
 
 	k8sapiv1 "k8s.io/api/core/v1"
@@ -59,6 +60,11 @@ type metricsClient struct {
 // NewMetricsClient creates new instance of MetricsClient, which is used by recommender.
 // namespace limits queries to particular namespace, use k8sapiv1.NamespaceAll to select all namespaces.
 func NewMetricsClient(config *rest.Config, namespace, clientName string) MetricsClient {
+	// Once the upstream hardcode on client name will be fixed we would be able to switch on `clientName` in that constructor
+	if ddKubeClusterName := os.Getenv("K8S_CLUSTER_NAME"); ddKubeClusterName != "" && clientName == "default-metrics-client" {
+		return newMetricsClient(NewDatadogClient(10*time.Second, ddKubeClusterName, nil), namespace, "datadog")
+	}
+
 	metricsGetter := resourceclient.NewForConfigOrDie(config)
 	return newMetricsClient(metricsGetter, namespace, clientName)
 }
