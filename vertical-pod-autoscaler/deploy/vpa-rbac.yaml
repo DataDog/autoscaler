@@ -5,6 +5,20 @@ metadata:
   name: system:metrics-reader
 rules:
   - apiGroups:
+      - "custom.metrics.k8s.io"
+    resources:
+      - "*"
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - "external.metrics.k8s.io"
+    resources:
+      - "*"
+    verbs:
+      - get
+      - list
+  - apiGroups:
       - "metrics.k8s.io"
     resources:
       - pods
@@ -357,3 +371,4 @@ subjects:
   - kind: ServiceAccount
     name: vpa-updater
     namespace: kube-system
+---

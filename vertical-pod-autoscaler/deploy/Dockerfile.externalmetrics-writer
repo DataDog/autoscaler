@@ -1,0 +1,4 @@
+FROM python:3.10-slim
+RUN pip3 install kubernetes argparse requests
+
+COPY emit-metrics.py /
