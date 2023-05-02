@@ -43,6 +43,10 @@ import (
 // Implements ControllerFetcher
 type controllerFetcherMock struct{}
 
+func (c *controllerFetcherMock) GetPodTemplateFromTopMostWellKnown(controller *controllerfetcher.ControllerKeyWithAPIVersion) (*apiv1.PodTemplateSpec, error) {
+	return nil, nil
+}
+
 func (c *controllerFetcherMock) FindTopMostWellKnownOrScalable(controller *controllerfetcher.ControllerKeyWithAPIVersion) (*controllerfetcher.ControllerKeyWithAPIVersion, error) {
 	return nil, nil
 }
