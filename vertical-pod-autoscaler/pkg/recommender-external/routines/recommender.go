@@ -239,7 +239,7 @@ func NewExternalRecommender(config *rest.Config, namespace string, recommenderNa
 		PodLister:           podLister,
 		OOMObserver:         oomObserver,
 		KubeClient:          kubeClient,
-		MetricsClient:       input_metrics.NewMetricsClient(config, namespace, "default-metrics-client"),
+		MetricsClient:       input_metrics.NewMetricsClient(config, namespace, "external-metrics-client"),
 		VpaCheckpointClient: vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
 		VpaLister:           vpa_utils.NewVpasLister(vpa_clientset.NewForConfigOrDie(config), make(chan struct{}), namespace),
 		ClusterState:        clusterState,
