@@ -35,6 +35,19 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 )
 
+// PowerStates reflect the operational state of a VMSS VM
+// From https://learn.microsoft.com/en-us/java/api/com.microsoft.azure.management.compute.powerstate?view=azure-java-stable
+const (
+	PowerStatePrefix       = "PowerState/"
+	PowerStateStarting     = "PowerState/starting"
+	PowerStateRunning      = "PowerState/running"
+	PowerStateStopping     = "PowerState/stopping"
+	PowerStateStopped      = "PowerState/stopped"
+	PowerStateDeallocating = "PowerState/deallocating"
+	PowerStateDeallocated  = "PowerState/deallocated"
+	PowerStateUnknown      = "PowerState/unknown"
+)
+
 var (
 	defaultVmssInstancesRefreshPeriod = 5 * time.Minute
 	vmssContextTimeout                = 3 * time.Minute
@@ -295,7 +308,7 @@ func (scaleSet *ScaleSet) GetScaleSetVms() ([]compute.VirtualMachineScaleSetVM, 
 	defer cancel()
 
 	resourceGroup := scaleSet.manager.config.ResourceGroup
-	vmList, rerr := scaleSet.manager.azClient.virtualMachineScaleSetVMsClient.List(ctx, resourceGroup, scaleSet.Name, "")
+	vmList, rerr := scaleSet.manager.azClient.virtualMachineScaleSetVMsClient.List(ctx, resourceGroup, scaleSet.Name, "instanceView")
 	klog.V(4).Infof("GetScaleSetVms: scaleSet.Name: %s, vmList: %v", scaleSet.Name, vmList)
 	if rerr != nil {
 		klog.Errorf("VirtualMachineScaleSetVMsClient.List failed for %s: %v", scaleSet.Name, rerr)
@@ -612,18 +625,26 @@ func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
 	switch vms := vmList.(type) {
 	case []compute.VirtualMachineScaleSetVM:
 		for _, vm := range vms {
-			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState)
+			powerState := PowerStateRunning
+			if vm.InstanceView != nil && vm.InstanceView.Statuses != nil {
+				powerState = powerStateFromStatuses(*vm.InstanceView.Statuses)
+			}
+			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
 		}
 	case []compute.VirtualMachine:
 		for _, vm := range vms {
-			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState)
+			powerState := PowerStateRunning
+			if vm.InstanceView != nil && vm.InstanceView.Statuses != nil {
+				powerState = powerStateFromStatuses(*vm.InstanceView.Statuses)
+			}
+			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
 		}
 	}
 
 	return instances
 }
 
-func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisioningState *string) {
+func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisioningState *string, powerState string) {
 	// The resource ID is empty string, which indicates the instance may be in deleting state.
 	if len(*id) == 0 {
 		return
@@ -638,7 +659,7 @@ func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisi
 
 	*instances = append(*instances, cloudprovider.Instance{
 		Id:     "azure://" + resourceID,
-		Status: instanceStatusFromProvisioningState(provisioningState),
+		Status: instanceStatusFromProvisioningStateAndPowerState(resourceID, provisioningState, powerState),
 	})
 }
 
@@ -666,12 +687,12 @@ func (scaleSet *ScaleSet) setInstanceStatusByProviderID(providerID string, statu
 }
 
 // instanceStatusFromProvisioningState converts the VM provisioning state to cloudprovider.InstanceStatus
-func instanceStatusFromProvisioningState(provisioningState *string) *cloudprovider.InstanceStatus {
+func instanceStatusFromProvisioningStateAndPowerState(resourceId string, provisioningState *string, powerState string) *cloudprovider.InstanceStatus {
 	if provisioningState == nil {
 		return nil
 	}
 
-	klog.V(5).Infof("Getting vm instance provisioning state %s", *provisioningState)
+	klog.V(5).Infof("Getting vm instance provisioning state %s for %s", *provisioningState, resourceId)
 
 	status := &cloudprovider.InstanceStatus{}
 	switch *provisioningState {
@@ -680,17 +701,60 @@ func instanceStatusFromProvisioningState(provisioningState *string) *cloudprovid
 	case string(compute.ProvisioningStateCreating):
 		status.State = cloudprovider.InstanceCreating
 	case string(compute.ProvisioningStateFailed):
-		status.State = cloudprovider.InstanceCreating
-		status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
-			ErrorClass:   cloudprovider.OutOfResourcesErrorClass,
-			ErrorCode:    "provisioning-state-failed",
-			ErrorMessage: "Azure failed to provision a node for this node group",
+		// Provisioning can fail both during instance creation or after the instance is running.
+		// Per https://learn.microsoft.com/en-us/azure/virtual-machines/states-billing#provisioning-states
+		// ProvisioningState represents the most recent provisioning state, therefore only report
+		// InstanceCreating errors when the power state indicates the instance has not yet started running
+		if !isRunningPowerState(powerState) {
+			klog.V(4).Infof("VMSS VM %s reports not running due to failed provisioning state", resourceId)
+			status.State = cloudprovider.InstanceCreating
+			status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
+				ErrorClass:   cloudprovider.OutOfResourcesErrorClass,
+				ErrorCode:    "provisioning-state-failed",
+				ErrorMessage: "Azure failed to provision a node for this node group",
+			}
+		} else {
+			klog.V(5).Infof("VMSS VM %s reports a failed provisioning state but is running", resourceId)
+			status.State = cloudprovider.InstanceRunning
 		}
 	default:
 		status.State = cloudprovider.InstanceRunning
 	}
 
 	return status
+}
+
+func powerStateFromStatuses(statuses []compute.InstanceViewStatus) string {
+	for _, status := range statuses {
+		if status.Code == nil || !strings.HasPrefix(*status.Code, PowerStatePrefix) {
+			continue
+		}
+
+		if isKnownPowerState(*status.Code) {
+			return *status.Code
+		}
+	}
+
+	// PowerState is not set if the VM is still creating (or has failed creation),
+	// so the absence of a PowerState is treated the same as a VM that is stopped
+	return PowerStateStopped
+}
+
+func isRunningPowerState(powerState string) bool {
+	return powerState == PowerStateRunning || powerState == PowerStateStarting
+}
+
+func isKnownPowerState(powerState string) bool {
+	knownPowerStates := map[string]bool{
+		PowerStateStarting:     true,
+		PowerStateRunning:      true,
+		PowerStateStopping:     true,
+		PowerStateStopped:      true,
+		PowerStateDeallocating: true,
+		PowerStateDeallocated:  true,
+		PowerStateUnknown:      true,
+	}
+	return knownPowerStates[powerState]
 }
 
 func (scaleSet *ScaleSet) invalidateInstanceCache() {
