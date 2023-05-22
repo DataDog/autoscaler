@@ -23,10 +23,11 @@ import (
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
+
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/annotations"
 	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -115,20 +116,28 @@ func (calc *UpdatePriorityCalculator) AddPod(pod *apiv1.Pod, now time.Time) {
 		}
 	}
 
+	klog.V(2).Infof("quick OOM %v", quickOOM)
+	klog.V(2).Infof("updatePriority.OutsideRecommendedRange %v", updatePriority.OutsideRecommendedRange)
+
 	// The update is allowed in following cases:
 	// - the request is outside the recommended range for some container.
 	// - the pod lives for at least 24h and the resource diff is >= MinChangePriority.
 	// - a vpa scaled container OOMed in less than evictAfterOOMThreshold.
 	if !updatePriority.OutsideRecommendedRange && !quickOOM {
+		klog.V(2).Infof("pod.Status.StartTime %v", pod.Status.StartTime)
 		if pod.Status.StartTime == nil {
 			// TODO: Set proper condition on the VPA.
 			klog.V(4).Infof("not updating pod %v/%v, missing field pod.Status.StartTime", pod.Namespace, pod.Name)
 			return
 		}
+		klog.V(2).Infof("now %v", now.Format(time.RFC3339))
+		klog.V(2).Infof("StartTime+podLifetimeUpdateThreshold %v", pod.Status.StartTime.Add(*podLifetimeUpdateThreshold).Format(time.RFC3339))
 		if now.Before(pod.Status.StartTime.Add(*podLifetimeUpdateThreshold)) {
 			klog.V(4).Infof("not updating a short-lived pod %v/%v, request within recommended range", pod.Namespace, pod.Name)
 			return
 		}
+		klog.V(2).Infof("updatePriority.ResourceDiff %v", updatePriority.ResourceDiff)
+		klog.V(2).Infof("calc.config.MinChangePriority %v", calc.config.MinChangePriority)
 		if updatePriority.ResourceDiff < calc.config.MinChangePriority {
 			klog.V(4).Infof("not updating pod %v/%v, resource diff too low: %v", pod.Namespace, pod.Name, updatePriority)
 			return
