@@ -39,10 +39,10 @@ const (
 // - upscaleIfMoreReplicasThan is the minimum number of replicas to allow a vertical upscale
 //
 // In other words:
-// - If we have less than <downscaleIfLessReplicasThan> replicas, we will allow the pods to be smaller, the intent it to keep the number
-//   of pods above <downscaleIfLessReplicasThan>. This allows you to improve resource utilisation to avoid having few very big and underutilised pods.
-// - If we have more than <upscaleIfMoreReplicasThan> replicas, we will allow the pods to be bigger, the intent it to keep the number
-//   of pods below <upscaleIfMoreReplicasThan>. This allows you to reduce the pressure on the k8s control plane.
+//   - If we have less than <downscaleIfLessReplicasThan> replicas, we will allow the pods to be smaller, the intent it to keep the number
+//     of pods above <downscaleIfLessReplicasThan>. This allows you to improve resource utilisation to avoid having few very big and underutilised pods.
+//   - If we have more than <upscaleIfMoreReplicasThan> replicas, we will allow the pods to be bigger, the intent it to keep the number
+//     of pods below <upscaleIfMoreReplicasThan>. This allows you to reduce the pressure on the k8s control plane.
 //
 // Any resource increase is considered an upscale, any resource decrease is considered a downscale. This means that they
 // are not mutually exclusive. When controlling multiple resources it makes sense to use another processor (`maintainedRatio` policy) to ensure
@@ -72,7 +72,7 @@ func (r *ReplicaRestrictionsPostProcessor) Process(vpa *model.Vpa, recommendatio
 		return recommendation
 	}
 
-	if *vpa.UpdateMode != vpa_types.UpdateModeOff  && *vpa.UpdateMode != vpa_types.UpdateModeTrigger {
+	if *vpa.UpdateMode != vpa_types.UpdateModeOff && *vpa.UpdateMode != vpa_types.UpdateModeTrigger {
 		klog.Errorf("Skipping ReplicaRestrictionsPostProcessor for vpa %s/%s due to update mode: %s", vpa.ID.Namespace, vpa.ID.VpaName, vpa.UpdateMode)
 		return recommendation
 	}
@@ -102,7 +102,7 @@ func (r *ReplicaRestrictionsPostProcessor) Process(vpa *model.Vpa, recommendatio
 func readRangeFromVPAAnnotations(vpa *model.Vpa) ([]int, error) {
 
 	for key, value := range vpa.Annotations {
-		if key != vpaPostProcessorPrefix +vpaPostProcessorReplicaRestrictedRangeSuffix {
+		if key != vpaPostProcessorPrefix+vpaPostProcessorReplicaRestrictedRangeSuffix {
 			continue
 		}
 
