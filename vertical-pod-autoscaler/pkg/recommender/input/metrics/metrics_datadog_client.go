@@ -18,11 +18,12 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"regexp"
-	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,8 @@ import (
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1alpha1"
 	resourceclient "k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1"
+
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 )
 
 type ddclientMetrics struct {
@@ -96,33 +99,6 @@ func classifyByTag(values []datadog.MetricsQueryMetadata, tagKey string, emptyTa
 	return result
 }
 
-type containerResourceData map[float64]map[string]map[string]float64 // timestamp/container/resourceName
-
-func aggregateResourceData(values map[string][]datadog.MetricsQueryMetadata, resourceName string,
-	transform func(datadog.MetricsQueryMetadata, float64) float64,
-	dest containerResourceData) {
-	for containerName, ress := range values {
-		for _, res := range ress {
-			for rowIdx, row := range res.Pointlist {
-				if len(row) > 1 && row[0] != nil && row[1] != nil {
-					timestamp := *row[0]
-					value := transform(res, *row[1])
-					if dest[timestamp] == nil {
-						dest[timestamp] = make(map[string]map[string]float64)
-					}
-					if dest[timestamp][containerName] == nil {
-						dest[timestamp][containerName] = make(map[string]float64)
-					}
-					dest[timestamp][containerName][resourceName] = value
-				} else {
-					klog.V(2).Infof("Got short row for container %v: row[%d]=%v",
-						containerName, rowIdx, row)
-				}
-			}
-		}
-	}
-}
-
 // Returns the number of whole hypercores (e.g., a hyperthread in Intel parlance) indicated by this
 // raw measurement.
 func scaleCpuToCores(met datadog.MetricsQueryMetadata, value float64) float64 {
@@ -145,80 +121,87 @@ func scaleMemToBytes(met datadog.MetricsQueryMetadata, value float64) float64 {
 	return value * *scale
 }
 
-func makeResourceList(cpu float64, mem float64) map[v1.ResourceName]resource.Quantity {
-	return map[v1.ResourceName]resource.Quantity{
-		v1.ResourceCPU:    *resource.NewMilliQuantity(int64(cpu*1000.0), resource.DecimalSI),
-		v1.ResourceMemory: *resource.NewQuantity(int64(mem), resource.BinarySI),
-	}
-}
-
-// This API is only really designed for 1 snapshot value!  My timestamp handling here is mostly a
-// problem of not screwing up something simple and subtle.  So, scan the list for the _least_ recent
-// timestamp on both cpu and rss.  As we're doing periodic sampling, that's fine.  The most
-// recent timestamp may be partial data.
-// Presumes that all values are for the same pod (tag: pod_name).
-func aggregatePodMetrics(namespace, podName string, cpuResp []datadog.MetricsQueryMetadata,
-	memResp []datadog.MetricsQueryMetadata) *v1beta1.PodMetrics {
-	// Go by container.
-	containersMem := classifyByTag(memResp, "container_name", "unknown-container")
-	containersCpu := classifyByTag(cpuResp, "container_name", "unknown-container")
-
+func createPodMetrics(namespace, podName string, metricsPerResource map[model.ResourceName][]datadog.MetricsQueryMetadata) *v1beta1.PodMetrics {
 	if namespace == "" {
-		var ok bool
-		namespace, ok = findFirstTagOccurrence("kube_namespace", cpuResp, memResp)
-		if !ok {
-			klog.Errorf("Can't extract kube_namespace from series")
+		allMetrics := [][]datadog.MetricsQueryMetadata{}
+		for _, m := range metricsPerResource {
+			allMetrics = append(allMetrics, m)
+		}
+		var found bool
+		namespace, found = extractNamespaceFromMetrics(allMetrics...)
+		if !found {
+			klog.Errorf("Never found the namespace for podName=%s", podName)
 			return nil
 		}
 	}
 
-	// Map of timestamp -> container_name -> resource (apis.metrics.v1.ResourceName: "cpu", "memory") -> value
-	data := make(containerResourceData)
-	aggregateResourceData(containersMem, "memory", scaleMemToBytes, data)
-	aggregateResourceData(containersCpu, "cpu", scaleCpuToCores, data)
-
-	timestamps := make([]float64, 0, len(data))
-	for t := range data {
-		timestamps = append(timestamps, t)
-	}
-	sort.Float64s(timestamps)
-	selection := -1.0
-FindTimestamp:
-	for t := 0; t < len(timestamps); t++ {
-		ts := data[timestamps[t]]
-		for container := range ts {
-			if _, mem := ts[container]["memory"]; mem {
-				if _, cpu := ts[container]["cpu"]; !cpu {
-					// Note the '!' above.  This is if there's no cpu while there is mem.
-					continue
+	containerMetrics := map[string]v1beta1.ContainerMetrics{}
+	for resourceName, serie := range metricsPerResource {
+		perContainer := classifyByTag(serie, "container_name", "unknown-container")
+		for containerName, ress := range perContainer {
+			var maxValue float64
+			var maxQuantity resource.Quantity
+			var valueIsSet bool
+			for _, res := range ress {
+				for rowIdx, row := range res.Pointlist {
+					if len(row) > 1 && row[0] != nil && row[1] != nil {
+						if *row[1] >= maxValue { // >= and not > to capture the 0 values also
+							maxValue = *row[1]
+							maxQuantity = ddMetricsToQuantityFuncs[resourceName](res, maxValue)
+							valueIsSet = true
+						}
+					} else {
+						klog.V(1).Infof("Got short row for container %v: row[%d]=%v",
+							containerName, rowIdx, row)
+					}
 				}
-			} else {
-				// no mem.
-				continue
 			}
-			selection = timestamps[t]
-			break FindTimestamp
+			if valueIsSet {
+				cm := containerMetrics[containerName]
+				if cm.Name == "" {
+					cm.Name = containerName
+					cm.Usage = map[v1.ResourceName]resource.Quantity{}
+				}
+				cm.Usage[v1.ResourceName(resourceName)] = maxQuantity
+				containerMetrics[containerName] = cm
+			} else {
+				klog.V(1).Infof("Resource %s not set for container %s/%s/%s", resourceName, namespace, podName, containerName)
+			}
 		}
 	}
-	var containers []v1beta1.ContainerMetrics
-	if selection > 0.0 {
-		containers = make([]v1beta1.ContainerMetrics, 0, len(data[selection]))
-		for name, containerData := range data[selection] {
-			containers = append(containers,
-				v1beta1.ContainerMetrics{Name: name, Usage: makeResourceList(containerData["cpu"], containerData["memory"])})
-		}
-	} else {
-		containers = make([]v1beta1.ContainerMetrics, 0)
-		// Reset the selection value to keep the timestamps sane below.
-		selection = 0.0
+	containerMetricsSlice := make([]v1beta1.ContainerMetrics, len(containerMetrics))
+	i := 0
+	for _, cm := range containerMetrics {
+		containerMetricsSlice[i] = cm
+		i++
 	}
 
 	return &v1beta1.PodMetrics{
-		// Built against golang 1.16.6, no time.UnixMilli yet.
 		ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: namespace, UID: types.UID(namespace + "." + podName)},
-		Timestamp:  metav1.Time{Time: time.Unix(int64(selection/1000.0), int64(math.Mod(selection, 1000)*1000000))},
-		Window:     metav1.Duration{Duration: time.Second},
-		Containers: containers}
+		Containers: containerMetricsSlice}
+}
+
+func extractNamespaceFromMetrics(ddMetrics ...[]datadog.MetricsQueryMetadata) (string, bool) {
+	namespace, ok := findFirstTagOccurrence("kube_namespace", ddMetrics...)
+	if !ok {
+		klog.Errorf("Can't extract kube_namespace from series")
+		return "", false
+	}
+	return namespace, true
+}
+
+type transformDDMetricFunc func(datadog.MetricsQueryMetadata, float64) resource.Quantity
+
+var ddMetricsToQuantityFuncs = map[model.ResourceName]transformDDMetricFunc{
+	model.ResourceCPU:    ddMetricsToMilliQuantity,
+	model.ResourceMemory: ddMetricsToQuantity,
+}
+
+func ddMetricsToMilliQuantity(met datadog.MetricsQueryMetadata, value float64) resource.Quantity {
+	return *resource.NewMilliQuantity(int64(scaleCpuToCores(met, value)*1000.0), resource.DecimalSI)
+}
+func ddMetricsToQuantity(met datadog.MetricsQueryMetadata, value float64) resource.Quantity {
+	return *resource.NewQuantity(int64(scaleMemToBytes(met, value)), resource.DecimalSI)
 }
 
 func findFirstTagOccurrence(tagKey string, ddMetrics ...[]datadog.MetricsQueryMetadata) (string, bool) {
@@ -248,18 +231,34 @@ func (d *ddclientPodMetrics) Get(ctx context.Context, podName string, _ metav1.G
 	end := time.Now().Add(-timeShift)
 	start := end.Add(-d.QueryInterval)
 
-	cpuResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("kubernetes.cpu.usage.total{kube_cluster_name:%s%s%s AND pod_name:%s}by{kube_namespace,container_name}",
-		d.ClusterName, nsClause, d.ExtraTagsClause, podName))
+	rollupSeconds := int64(math.Floor(d.QueryInterval.Seconds() / 2))
+	if rollupSeconds == 0 {
+		rollupSeconds = 1
+	}
+	cpuResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("max:kubernetes.cpu.usage.total{kube_cluster_name:%s%s%s AND pod_name:%s}by{kube_namespace,container_name}.rollup(max, %d)",
+		d.ClusterName, nsClause, d.ExtraTagsClause, podName, rollupSeconds))
 	if err != nil {
+		klog.V(1).Infof("Query cpu error, %s", err)
+		klog.Errorf(err.Error())
 		return nil, err
 	}
-	memResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("kubernetes.memory.usage{ kube_cluster_name:%s%s%s AND pod_name:%s}by{kube_namespace,container_name}",
-		d.ClusterName, nsClause, d.ExtraTagsClause, podName))
+	memResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("max:kubernetes.memory.usage{ kube_cluster_name:%s%s%s AND pod_name:%s}by{kube_namespace,container_name}.rollup(max, %d)",
+		d.ClusterName, nsClause, d.ExtraTagsClause, podName, rollupSeconds))
 	if err != nil {
+		klog.V(1).Infof("Query mem error, %s", err)
+		klog.Errorf(err.Error())
 		return nil, err
 	}
 
-	return aggregatePodMetrics(d.Namespace, podName, cpuResp.GetSeries(), memResp.GetSeries()), nil
+	metricsPerResource := map[model.ResourceName][]datadog.MetricsQueryMetadata{
+		model.ResourceCPU:    cpuResp.GetSeries(),
+		model.ResourceMemory: memResp.GetSeries(),
+	}
+	podMetrics := createPodMetrics(d.Namespace, podName, metricsPerResource)
+	podMetrics.Timestamp = metav1.Time{Time: start}
+	podMetrics.Window = metav1.Duration{Duration: d.QueryInterval}
+
+	return podMetrics, nil
 }
 
 func (d *ddclientPodMetrics) List(ctx context.Context, _ metav1.ListOptions) (*v1beta1.PodMetricsList, error) {
@@ -271,36 +270,56 @@ func (d *ddclientPodMetrics) List(ctx context.Context, _ metav1.ListOptions) (*v
 	end := time.Now().Add(-timeShift)
 	start := end.Add(-d.QueryInterval)
 
-	cpuResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("kubernetes.cpu.usage.total{kube_cluster_name:%s%s%s}by{kube_namespace,pod_name,container_name}",
-		d.ClusterName, nsClause, d.ExtraTagsClause))
+	rollupSeconds := int64(math.Floor(d.QueryInterval.Seconds()))
+	if rollupSeconds == 0 {
+		rollupSeconds = 1
+	}
+	cpuResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("max:kubernetes.cpu.usage.total{kube_cluster_name:%s%s%s}by{kube_namespace,pod_name,container_name}.rollup(max, %d)",
+		d.ClusterName, nsClause, d.ExtraTagsClause, rollupSeconds))
 	if err != nil {
+		klog.V(1).Infof("Query cpu error, %s", err)
+		klog.Errorf(err.Error())
 		return nil, err
 	}
-	memResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("kubernetes.memory.usage{kube_cluster_name:%s%s%s}by{kube_namespace,pod_name,container_name}",
-		d.ClusterName, nsClause, d.ExtraTagsClause))
+	memResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("max:kubernetes.memory.usage{ kube_cluster_name:%s%s%s}by{kube_namespace,pod_name,container_name}.rollup(max, %d)",
+		d.ClusterName, nsClause, d.ExtraTagsClause, rollupSeconds))
 	if err != nil {
+		klog.V(1).Infof("Query mem error, %s", err)
+		klog.Errorf(err.Error())
 		return nil, err
 	}
 
-	// TODO there is a potential issue here as we are losing the namespace! STS pod can have the same name in different namespaces!
-	// This function is called most of the time (always) with d.namespace=""
-	return buildPodMetricsListFromDDResponses(d.Namespace, cpuResp, memResp)
-}
-
-func buildPodMetricsListFromDDResponses(namespace string, cpuResp datadog.MetricsQueryResponse, memResp datadog.MetricsQueryResponse) (*v1beta1.PodMetricsList, error) {
+	pml := &v1beta1.PodMetricsList{}
 	podCpus := classifyByTag(cpuResp.GetSeries(), "pod_name", "unknown-pod")
 	podMems := classifyByTag(memResp.GetSeries(), "pod_name", "unknown-pod")
 
-	// already here we have a problem with the assumption that the list for CPU and Mem is the same
-	podItems := make([]v1beta1.PodMetrics, 0, len(podCpus))
-	for podname, cpuVals := range podCpus {
-		podMets := aggregatePodMetrics(namespace, podname, cpuVals, podMems[podname])
-		if podMets != nil {
-			podItems = append(podItems, *podMets)
+	podNames := map[string]struct{}{}
+	for podName := range podCpus {
+		podNames[podName] = struct{}{}
+	}
+	for podName := range podMems {
+		podNames[podName] = struct{}{}
+	}
+	for podName := range podNames {
+		metricsPerResource := map[model.ResourceName][]datadog.MetricsQueryMetadata{}
+		if sCPU, ok := podCpus[podName]; ok {
+			metricsPerResource[model.ResourceCPU] = sCPU
 		}
+		if sMem, ok := podMems[podName]; ok {
+			metricsPerResource[model.ResourceMemory] = sMem
+		}
+
+		podMetrics := createPodMetrics(d.Namespace, podName, metricsPerResource)
+		if podMetrics == nil {
+			continue
+		}
+		podMetrics.Timestamp = metav1.Time{Time: start}
+		podMetrics.Window = metav1.Duration{Duration: d.QueryInterval}
+		pml.Items = append(pml.Items, *podMetrics)
 	}
 
-	return &v1beta1.PodMetricsList{Items: podItems}, nil
+	// TODO there is a potential issue here as we are losing the namespace! STS pod can have the same name in different namespaces!
+	return pml, err
 }
 
 func newDatadogClientWithFactory(queryInterval time.Duration, cluster string, extraTags []string, newApiClient func(*datadog.Configuration) *clientWrapper) resourceclient.PodMetricsesGetter {
@@ -335,14 +354,20 @@ func (c *clientWrapper) QueryMetrics(context context.Context, start, end time.Ti
 	if err != nil {
 		return datadog.MetricsQueryResponse{}, err
 	}
+	reqTime := time.Now()
 	resp, httpResponse, err := c.ApiClient.MetricsApi.QueryMetrics(ctx, start.Unix(), end.Unix(), query)
-
+	respTime := time.Now()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error when calling `MetricsApi.QueryMetrics` on %s: %v\n", query, err)
 		fmt.Fprintf(os.Stderr, "Full HTTP response: %v\n", httpResponse)
 		return datadog.MetricsQueryResponse{}, err
 	}
-	klog.V(1).Infof("queryMetrics('%s'): got response with %d series from %d to %d", query, len(resp.GetSeries()), resp.GetFromDate(), resp.GetToDate())
+	b, _ := json.Marshal(resp)
+	klog.V(1).Infof("queryMetrics('%s'): got response[%s seconds, %d bytes] with %d series from %d to %d",
+		query,
+		strconv.FormatFloat(respTime.Sub(reqTime).Seconds(), 'f', 3, 64),
+		len(b),
+		len(resp.GetSeries()), resp.GetFromDate(), resp.GetToDate())
 
 	if httpResponse == nil {
 		err = fmt.Errorf("nil HTTPResponse from datadog QueryMetrics")

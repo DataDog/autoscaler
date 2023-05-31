@@ -1,0 +1,114 @@
+{
+  "cpu": [
+   {
+    "pointlist": [
+     [
+      1685567040000,
+      981058.0833333334
+     ],
+     [
+      1685567045000,
+      1227235.1666666667
+     ]
+    ],
+    "tag_set": [
+     "container_name:disruption-budget-manager",
+     "kube_namespace:cluster-controllers",
+     "pod_name:disruption-budget-manager-6d758d9d58-6pbpd"
+    ],
+    "unit": [
+     {
+      "family": "cpu",
+      "name": "nanocore",
+      "plural": "nanocores",
+      "scale_factor": 1e-9,
+      "short_name": "ncores"
+     },
+     {}
+    ]
+   },
+   {
+    "pointlist": [
+     [
+      1685567040000,
+      557316.625
+     ],
+     [
+      1685567045000,
+      1114633.25
+     ]
+    ],
+    "tag_set": [
+     "container_name:vaultd-sidecar",
+     "kube_namespace:cluster-controllers",
+     "pod_name:disruption-budget-manager-6d758d9d58-6pbpd"
+    ],
+    "unit": [
+     {
+      "family": "cpu",
+      "name": "nanocore",
+      "plural": "nanocores",
+      "scale_factor": 1e-9,
+      "short_name": "ncores"
+     },
+     {}
+    ]
+   }
+  ],
+  "memory": [
+   {
+    "pointlist": [
+     [
+      1685567040000,
+      79881557.33333333
+     ],
+     [
+      1685567045000,
+      79882922.66666667
+     ]
+    ],
+    "tag_set": [
+     "container_name:disruption-budget-manager",
+     "kube_namespace:cluster-controllers",
+     "pod_name:disruption-budget-manager-6d758d9d58-6pbpd"
+    ],
+    "unit": [
+     {
+      "family": "bytes",
+      "name": "byte",
+      "plural": "bytes",
+      "scale_factor": 1,
+      "short_name": "B"
+     },
+     {}
+    ]
+   },
+   {
+    "pointlist": [
+     [
+      1685567040000,
+      8019968
+     ],
+     [
+      1685567045000,
+      8019968
+     ]
+    ],
+    "tag_set": [
+     "container_name:sidecar-profiler",
+     "kube_namespace:cluster-controllers",
+     "pod_name:disruption-budget-manager-6d758d9d58-6pbpd"
+    ],
+    "unit": [
+     {
+      "family": "bytes",
+      "name": "byte",
+      "plural": "bytes",
+      "scale_factor": 1,
+      "short_name": "B"
+     },
+     {}
+    ]
+   }
+  ]
+ }
