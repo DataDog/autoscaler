@@ -235,14 +235,18 @@ func findFirstTagOccurrence(tagKey string, ddMetrics ...[]datadog.MetricsQueryMe
 	return "", false
 }
 
+const (
+	timeShift = 2 * time.Minute // ensure that we fetch a bit in the past to let time to the intake to digest values
+)
+
 func (d *ddclientPodMetrics) Get(ctx context.Context, podName string, _ metav1.GetOptions) (*v1beta1.PodMetrics, error) {
 	nsClause := ""
 	if len(d.Namespace) > 0 {
 		nsClause = fmt.Sprintf(" AND kube_namespace:%s ", d.Namespace)
 	}
 
-	start := time.Now()
-	end := start.Add(d.QueryInterval)
+	end := time.Now().Add(-timeShift)
+	start := end.Add(-d.QueryInterval)
 
 	cpuResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("kubernetes.cpu.usage.total{kube_cluster_name:%s%s%s AND pod_name:%s}by{kube_namespace,container_name}",
 		d.ClusterName, nsClause, d.ExtraTagsClause, podName))
@@ -264,8 +268,8 @@ func (d *ddclientPodMetrics) List(ctx context.Context, _ metav1.ListOptions) (*v
 		nsClause = fmt.Sprintf(" AND kube_namespace:%s ", d.Namespace)
 	}
 
-	start := time.Now()
-	end := start.Add(d.QueryInterval)
+	end := time.Now().Add(-timeShift)
+	start := end.Add(-d.QueryInterval)
 
 	cpuResp, err := d.queryMetrics(ctx, start, end, fmt.Sprintf("kubernetes.cpu.usage.total{kube_cluster_name:%s%s%s}by{kube_namespace,pod_name,container_name}",
 		d.ClusterName, nsClause, d.ExtraTagsClause))
