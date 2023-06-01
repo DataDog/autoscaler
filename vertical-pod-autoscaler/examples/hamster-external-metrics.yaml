@@ -12,6 +12,7 @@ metadata:
   annotations:
     vpa.datadoghq.com/metric-cpu-hamster: datadogmetric@default:hamster-cpu
     vpa.datadoghq.com/metric-memory-hamster: datadogmetric@default:hamster-memory
+    vpa-post-processor.kubernetes.io/replicaRestrictedRange: "[5, 10]"
 spec:
   # recommenders field can be unset when using the default recommender.
   # When using an alternative recommender, the alternative recommender's name
@@ -42,18 +43,24 @@ apiVersion: datadoghq.com/v1alpha1
 kind: DatadogMetric
 metadata:
   name: hamster-cpu
+  annotations:
+    external-metrics.datadoghq.com/always-active: "true"
 spec:
   # We scale down the nanocore value to millicores (it's actually nanoseconds per second)
   query: avg:container.cpu.usage{host:minikube,container_name:k8s_hamster*}.rollup(max, 60) / 1000000
   maxAge: "10m"
+  timeWindow: "20m"
 ---
 apiVersion: datadoghq.com/v1alpha1
 kind: DatadogMetric
 metadata:
   name: hamster-memory
+  annotations:
+    external-metrics.datadoghq.com/always-active: "true"
 spec:
   query: avg:container.memory.usage{host:minikube,container_name:k8s_hamster*}.rollup(max, 60)
   maxAge: "10m"
+  timeWindow: "20m"
 ---
 # Fake HPA to enable the DatadogMetric
 # TODO: Remove these once we have a way to enable the DatadogMetric without HPA/WPA

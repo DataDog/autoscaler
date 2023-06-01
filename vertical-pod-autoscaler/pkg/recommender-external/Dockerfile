@@ -19,4 +19,11 @@ ARG ARCH
 COPY recommender-external-$ARCH /recommender-external
 
 ENTRYPOINT ["/recommender-external"]
-CMD ["--v=10", "--stderrthreshold=info", "--pod-recommendation-min-memory-mb=0.0001"]
+
+# TODO: Verbose and all features enabled for easier testing. Change this if we want to use this image in production.
+CMD ["--v=10", \
+    "--stderrthreshold=info", \
+    "--pod-recommendation-min-memory-mb=0.0001", \
+    "--resource-ratio-post-processor-enabled", \
+    "--cpu-integer-post-processor-enabled", \
+    "--replica-restrictions-post-processor-enabled"]

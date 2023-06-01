@@ -87,6 +87,8 @@ var (
 	postProcessorCPUasInteger = flag.Bool("cpu-integer-post-processor-enabled", false, "Enable the cpu-integer recommendation post processor. The post processor will round up CPU recommendations to a whole CPU for pods which were opted in by setting an appropriate label on VPA object (experimental)")
 	// Resource ratio post-processor. Ability to ensure that resource ratio is maintained. For example CPU recommendation is done as usual, and the Memory recommendation is computed so that the initial ratio between memory and CPU is maintained. This could be useful for garbage collected languages where the runtime tries to release memory when consumption is closed to the limit, resulting in degraded performances.
 	postProcessorMaintainResourceRatio = flag.Bool("resource-ratio-post-processor-enabled", false, "Enable the resource-ratio recommendation post processor. The post processor will ensure that resource ratio is maintain for pods which were opted in by setting an appropriate label on VPA object (experimental)")
+	// Replica restrictions post-processor.
+	postProcessorReplicaRestrictions = flag.Bool("replica-restrictions-post-processor-enabled", false, "Enable the replica-restrictions recommendation post processor. The post processor will ensure that the allow upscales/downscales based on the currently running number of replicas for controllers which were opted in by setting an appropriate label on VPA object (experimental)")
 )
 
 const (
@@ -125,7 +127,10 @@ func main() {
 		postProcessors = append(postProcessors, &routines.IntegerCPUPostProcessor{})
 	}
 	if *postProcessorMaintainResourceRatio {
-		postProcessors = append(postProcessors, &routines.ResourceRatioRecommendationPostProcessor{ControllerFetcher: controllerFetcher})
+		postProcessors = append(postProcessors, &routines.ReplicaRestrictionsPostProcessor{ControllerFetcher: controllerFetcher})
+	}
+	if *postProcessorReplicaRestrictions {
+		postProcessors = append(postProcessors, &routines.ReplicaRestrictionsPostProcessor{ControllerFetcher: controllerFetcher})
 	}
 	// CappingPostProcessor, should always come in the last position for post-processing
 	postProcessors = append(postProcessors, &routines.CappingPostProcessor{})
