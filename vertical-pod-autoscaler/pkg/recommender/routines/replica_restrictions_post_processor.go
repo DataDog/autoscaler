@@ -199,6 +199,8 @@ func isUpscale(recommendation apiv1.ResourceList, containerOriginalResources api
 
 // isDownscale: detects if the recommendation is a downscale. Any decrease of resources is considered as downscale.
 func isDownscale(recommendation apiv1.ResourceList, containerOriginalResources apiv1.ResourceList) bool {
+	// This only works because in UpdateMode=Trigger the `containerOriginalResources` are the current resources since
+	// it's the controller that is patched and not the pod. Otherwise, we would always reset the requests.
 	for recommendationType := range recommendation {
 		q := containerOriginalResources.Name(recommendationType, resource.DecimalSI).MilliValue()
 		r := recommendation.Name(recommendationType, resource.DecimalSI).MilliValue()
