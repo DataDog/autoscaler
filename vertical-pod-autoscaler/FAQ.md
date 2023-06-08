@@ -184,6 +184,7 @@ Name | Type | Description | Default
 `memory-histogram-decay-half-life` | Duration | The amount of time it takes a historical memory usage sample to lose half of its weight. In other words, a fresh usage sample is twice as 'important' as one with age equal to the half life period. | model.DefaultMemoryHistogramDecayHalfLife
 `cpu-histogram-decay-half-life` | Duration | The amount of time it takes a historical CPU usage sample to lose half of its weight. | model.DefaultCPUHistogramDecayHalfLife
 `cpu-integer-post-processor-enabled` | Bool | Enable the CPU integer recommendation post processor | false
+`safety-margin-modifier-post-processor-enabled` | Bool | Enable the safety margin modifier recommendation post processor | false
 
 ### What are the parameters to VPA updater?
 
