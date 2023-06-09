@@ -1,0 +1,372 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datadog-cluster-agent
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: datadog-cluster-agent
+  template:
+    metadata:
+      labels:
+        app: datadog-cluster-agent
+    spec:
+      serviceAccountName: datadog-cluster-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534 # nobody
+        fsGroup: 65534
+      containers:
+      - name: datadog-cluster-agent
+        image: localhost:5001/datadog/cluster_agent:0607_1737
+        imagePullPolicy: Always
+        ports:
+         - containerPort: 5005
+           name: api
+         - containerPort: 8443
+           name: externalmetrics
+        env:
+        - name: DD_API_KEY
+          value: 33333333333333333333333333333333
+        - name: DD_APP_KEY
+          value: 4444444444444444444444444444444444444444
+        - name: DD_EXTERNAL_METRICS_PROVIDER_ENDPOINT
+          value:  metrics-pump.monitoring.svc.cluster.local
+        - name: DD_EXTERNAL_METRICS_PROVIDER_PORT
+          value: "8443"
+        - name: DD_EXTERNAL_METRICS_PROVIDER_ENABLED
+          value: "true"
+        - name: DD_CLUSTER_CHECKS_ENABLED
+          value: "true"
+        - name: DD_EXTRA_CONFIG_PROVIDERS
+          value: "kube_endpoints kube_services"
+        - name: DD_EXTRA_LISTENERS
+          value: "kube_endpoints kube_services"
+        - name: DD_LOG_LEVEL
+          value: "TRACE"
+        - name: DD_LEADER_ELECTION
+          value: "true"
+        - name: DD_LEADER_LEASE_NAME
+          value: datadog-leader-election
+        - name: DD_CLUSTER_AGENT_TOKEN_NAME
+          value: datadogtoken
+        - name: DD_COLLECT_KUBERNETES_EVENTS
+          value: "true"
+        - name: DD_CLUSTER_AGENT_KUBERNETES_SERVICE_NAME
+          value: datadog-cluster-agent
+        resources:
+          limits:
+            cpu: 200m
+            memory: 1000Mi
+          requests:
+            cpu: 50m
+            memory: 500Mi
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log/datadog
+        - name: certs
+          mountPath: /etc/datadog-agent/certificates
+        - name: debug
+          mountPath: /nonexistent
+      volumes:
+       - name: logs
+         emptyDir: {}
+       - name: certs
+         emptyDir: {}
+       - name: debug
+         emptyDir: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.1
+  creationTimestamp: null
+  name: datadogmetrics.datadoghq.com
+spec:
+  group: datadoghq.com
+  names:
+    kind: DatadogMetric
+    listKind: DatadogMetricList
+    plural: datadogmetrics
+    singular: datadogmetric
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Active')].status
+      name: active
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Valid')].status
+      name: valid
+      type: string
+    - jsonPath: .status.currentValue
+      name: value
+      type: string
+    - jsonPath: .status.autoscalerReferences
+      name: references
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Updated')].lastUpdateTime
+      name: update time
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DatadogMetric allows autoscaling on arbitrary Datadog query
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DatadogMetricSpec defines the desired state of DatadogMetric
+            properties:
+              externalMetricName:
+                description: ExternalMetricName is reserved for internal use
+                type: string
+              maxAge:
+                description: MaxAge provides the max age for the metric query (overrides
+                  the default setting `external_metrics_provider.max_age`)
+                type: string
+              timeWindow:
+                description: TimeWindow provides the time window for the metric query
+                type: string
+              query:
+                description: Query is the raw datadog query
+                type: string
+              bulk:
+                description: Bulk defines the bulk-fetch attributes, if bulk-fetching.
+                type: object
+                properties:
+                   enable:
+                      description: Enable bulk-fetch
+                      type: boolean
+                   indexKeys:
+                      description: IndexKeys are keys to insert into a 'by{}' clause at the end of the query.
+                      type: string
+            type: object
+          status:
+            description: DatadogMetricStatus defines the observed state of DatadogMetric
+            properties:
+              autoscalerReferences:
+                description: List of autoscalers currently using this DatadogMetric
+                type: string
+              conditions:
+                description: Conditions Represents the latest available observations
+                  of a DatadogMetric's current state.
+                items:
+                  description: DatadogMetricCondition describes the state of a DatadogMetric
+                    at a certain point.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another.
+                      format: date-time
+                      type: string
+                    lastUpdateTime:
+                      description: Last time the condition was updated.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of DatadogMetric condition.
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              currentValue:
+                description: Value is the latest value of the metric
+                type: string
+            required:
+            - currentValue
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: datadog-cluster-agent
+  namespace: monitoring
+---
+# Source: metrics-server/templates/clusterrole-aggregated-reader.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: datadog-cluster-agent
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+rules:
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+      - events
+      - componentstatuses
+    verbs:
+      - create
+      - get 
+      - list
+      - watch
+      - update
+  - apiGroups:
+      - metrics.k8s.io
+    resources:
+      - pods
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+    - ""
+    resources:
+    - nodes/metrics
+    verbs:
+    - get
+  - apiGroups:
+    - ""
+    resources:
+      - endpoints
+      - pods
+      - nodes
+      - namespaces
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# Source: metrics-server/templates/clusterrolebinding-auth-delegator.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: datadog-cluster-agent-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: datadog-cluster-agent
+subjects:
+  - kind: ServiceAccount
+    name: datadog-cluster-agent
+    namespace: monitoring
+
+---
+# Source: metrics-server/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: datadog-cluster-agent
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: api
+  selector:
+    app: datadog-cluster-agent
+
+
+---
+
+# Source: metrics-server/templates/apiservice.yaml
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.metrics.k8s.io
+  namespace: monitoring
+spec:
+  group: metrics.k8s.io
+  groupPriorityMinimum: 100
+  insecureSkipTLSVerify: true
+  service:
+    name: datadog-cluster-agent
+    namespace: monitoring
+    port: 443
+  version: v1beta1
+  versionPriority: 100
+
+
+---
+# Hand-written, no separate source.
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: bulk-cpu
+  namespace: monitoring
+spec:
+  query: "kubernetes.cpu.usage.total{kube_cluster_name:general1}"
+  bulk: 
+    indexKeys: kube_namespace,pod_name,container_name
+    enable: True
+
+---
+# Hand-written, no separate source.
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: bulk-mem
+  namespace: monitoring
+spec:
+  query: "kubernetes.mem.usage{kube_cluster_name:general1}"
+  bulk:
+    indexKeys: kube_namespace,pod_name,container_name
+    enable: True
+

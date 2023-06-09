@@ -25,8 +25,8 @@ spec:
         args:
           - /recommender-amd64
           - --use-external-metrics=true
-          - --external-metrics-cpu-metric=cpu
-          - --external-metrics-memory-metric=mem
+          - --external-metrics-cpu-metric=bulk-cpu
+          - --external-metrics-memory-metric=bulk-mem
           - --v=4
         resources:
           limits:
