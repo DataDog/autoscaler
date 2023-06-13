@@ -29,6 +29,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// SafetyMarginModifierPostProcessor is a post processor that, when enabled, allow a user to override the default safety margin
+// added by the recommender via an annotation on the VPA object. The user can specify which resource is impacted, what function is
+// used (e.g.: linear, affine, log, exponential), and the parameters of that function.
 type SafetyMarginModifierPostProcessor struct {
 	DefaultSafetyMarginFactor float64
 }
@@ -69,16 +72,35 @@ func (r *SafetyMarginModifierPostProcessor) Process(vpa *model.Vpa, recommendati
 		}
 		klog.Infof("Apply safety marging modifier on container %s in vpa %s/%s", containerRec.ContainerName, vpa.ID.Namespace, vpa.ID.VpaName)
 
-		r.applyModifier(vpa, containerRec.ContainerName, containerRec.LowerBound, modifier)
-		r.applyModifier(vpa, containerRec.ContainerName, containerRec.Target, modifier)
-		r.applyModifier(vpa, containerRec.ContainerName, containerRec.UpperBound, modifier)
-		r.applyModifier(vpa, containerRec.ContainerName, containerRec.UncappedTarget, modifier)
+		err := r.applyModifier(vpa, containerRec.ContainerName, containerRec.LowerBound, modifier)
+		if err != nil {
+			klog.Errorf("Failed to apply SafetyMarginModifiePostProcessor to vpa %s/%s due to error: %#v", err)
+			return recommendation
+		}
+
+		err = r.applyModifier(vpa, containerRec.ContainerName, containerRec.Target, modifier)
+		if err != nil {
+			klog.Errorf("Failed to apply SafetyMarginModifiePostProcessor to vpa %s/%s due to error: %#v", err)
+			return recommendation
+		}
+
+		err = r.applyModifier(vpa, containerRec.ContainerName, containerRec.UpperBound, modifier)
+		if err != nil {
+			klog.Errorf("Failed to apply SafetyMarginModifiePostProcessor to vpa %s/%s due to error: %#v", err)
+			return recommendation
+		}
+
+		err = r.applyModifier(vpa, containerRec.ContainerName, containerRec.UncappedTarget, modifier)
+		if err != nil {
+			klog.Errorf("Failed to apply SafetyMarginModifiePostProcessor to vpa %s/%s due to error: %#v", err)
+			return recommendation
+		}
 	}
 
 	return updatedRecommendation
 }
 
-func (r *SafetyMarginModifierPostProcessor) applyModifier(vpa *model.Vpa, name string, containerRec v1.ResourceList, modifier safetyMarginModifier) {
+func (r *SafetyMarginModifierPostProcessor) applyModifier(vpa *model.Vpa, name string, containerRec v1.ResourceList, modifier safetyMarginModifier) error {
 	for resourceName, rec := range containerRec {
 		resourceModifier, found := modifier[resourceName]
 		if !found {
@@ -97,32 +119,28 @@ func (r *SafetyMarginModifierPostProcessor) applyModifier(vpa *model.Vpa, name s
 		switch resourceModifier.Function {
 		case linear:
 			if len(resourceModifier.Parameters) != 1 {
-				klog.Errorf("Skipping %s safety margin modifier in vpa %s/%s: linear modifier requires 1 parameter, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
-				continue
+				return fmt.Errorf("skipping %s safety margin modifier from container %s in vpa %s/%s: linear modifier requires 1 parameter, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
 			}
 			newRec = linearModifier(recCopy, r.DefaultSafetyMarginFactor, resourceModifier.Parameters[0])
 		case affine:
 			if len(resourceModifier.Parameters) != 2 {
-				klog.Errorf("Skipping %s safety margin modifier in vpa %s/%s: affine modifier requires 2 parameters, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
-				continue
+				return fmt.Errorf("skipping %s safety margin modifier from container %s in vpa %s/%s: affine modifier requires 2 parameters, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
 			}
 			newRec = affineModifier(recCopy, r.DefaultSafetyMarginFactor, resourceModifier.Parameters[0], resourceModifier.Parameters[1])
 		case log:
 			if len(resourceModifier.Parameters) != 1 {
-				klog.Errorf("Skipping %s safety margin modifier in vpa %s/%s: log modifier requires 1 parameter, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
-				continue
+				return fmt.Errorf("skipping %s safety margin modifier from container %s in vpa %s/%s: log modifier requires 1 parameter, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
 			}
 			newRec = logModifier(recCopy, r.DefaultSafetyMarginFactor, resourceModifier.Parameters[0])
 		case exponential:
 			if len(resourceModifier.Parameters) != 2 {
-				klog.Errorf("Skipping %s safety margin modifier in vpa %s/%s: exponential modifier requires 2 parameters, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
-				continue
+				return fmt.Errorf("skipping %s safety margin modifier from container %s in vpa %s/%s: exponential modifier requires 2 parameters, %d given", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName, len(resourceModifier.Parameters))
 			}
 			newRec = exponentialModifier(recCopy, r.DefaultSafetyMarginFactor, resourceModifier.Parameters[0], resourceModifier.Parameters[1])
 		case undefined:
 			continue
 		default:
-			klog.Errorf("Skipping %s safety margin modifier in vpa %s/%s: specified modifier is not valid", name, vpa.ID.Namespace, vpa.ID.VpaName)
+			return fmt.Errorf("skipping %s safety margin modifier for container %s in vpa %s/%s: specified modifier is not valid", resourceName, name, vpa.ID.Namespace, vpa.ID.VpaName)
 		}
 
 		if resourceName == v1.ResourceCPU {
@@ -131,6 +149,7 @@ func (r *SafetyMarginModifierPostProcessor) applyModifier(vpa *model.Vpa, name s
 			containerRec[resourceName] = *resource.NewQuantity(int64(newRec), resource.DecimalSI)
 		}
 	}
+	return nil
 }
 
 // Undo default safety margin before applying a custom linear safety margin (a * baseRec)
@@ -164,15 +183,18 @@ func readSafetyMarginModifierFromVPAAnnotations(vpa *model.Vpa) map[string]safet
 		}
 
 		safetyMarginModifier := safetyMarginModifier{}
-		safetyMarginFunction := safetyMarginFunction{}
 		if err := json.Unmarshal([]byte(value), &safetyMarginModifier); err != nil {
-			if err := json.Unmarshal([]byte(value), &safetyMarginFunction); err != nil {
-				klog.Errorf("Skipping safety margin modifier definition '%s' for container '%s' in vpa %s/%s due to bad format, error:%#v", value, containerName, vpa.ID.Namespace, vpa.ID.VpaName, err)
-				continue
-			}
-			safetyMarginModifier[v1.ResourceCPU] = safetyMarginFunction
-			safetyMarginModifier[v1.ResourceMemory] = safetyMarginFunction
+			klog.Warningf("Skipping safety margin modifier definition '%s' for container '%s' in vpa %s/%s due to bad format, error:%#v", value, containerName, vpa.ID.Namespace, vpa.ID.VpaName, err)
+			continue
 		}
+
+		// Provide a wildcard modifier if CPU and Memory modifiers are the same
+		if value, found := safetyMarginModifier["*"]; found {
+			delete(safetyMarginModifier, "*")
+			safetyMarginModifier[v1.ResourceCPU] = value
+			safetyMarginModifier[v1.ResourceMemory] = value
+		}
+
 		modifiers[containerName] = safetyMarginModifier
 	}
 	return modifiers

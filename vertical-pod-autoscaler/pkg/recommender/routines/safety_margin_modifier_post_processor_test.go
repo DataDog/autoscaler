@@ -69,7 +69,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Invalid Function",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Sqrt\", \"parameters\": [1.2]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Sqrt\", \"parameters\": [1.2]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -85,7 +85,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "2 containers, 1 matching only",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Linear\", \"parameters\": [1.20]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Linear\", \"parameters\": [1.20]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -103,8 +103,8 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "2 containers, 2 matching",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Linear\", \"parameters\": [1.20]}",
-				vpaPostProcessorPrefix + "container2" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Linear\", \"parameters\": [1.10]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Linear\", \"parameters\": [1.20]}}",
+				vpaPostProcessorPrefix + "container2" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Linear\", \"parameters\": [1.10]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -122,7 +122,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Case Incensitive",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"lIneAR\", \"parameters\": [1.20]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"lIneAR\", \"parameters\": [1.20]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -170,7 +170,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Linear Modifier",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Linear\", \"parameters\": [1.20]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Linear\", \"parameters\": [1.20]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -186,7 +186,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Linear Modifier: Wrong number of parameters",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Linear\", \"parameters\": []}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Linear\", \"parameters\": []}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -218,7 +218,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Affine Modifier: Wrong number of parameters",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Affine\", \"parameters\": [100, 1, 2000]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Affine\", \"parameters\": [100, 1, 2000]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -234,7 +234,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Log Modifier",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Log\", \"parameters\": [100]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Log\", \"parameters\": [100]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -250,7 +250,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Log Modifier: Wrong number of parameters",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Log\", \"parameters\": [100, 1]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Log\", \"parameters\": [100, 1]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -266,7 +266,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Exponential Modifier",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Exponential\", \"parameters\": [0.5, 10]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Exponential\", \"parameters\": [0.5, 10]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -282,7 +282,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 		{
 			name: "Exponential Modifier: Wrong number of parameters",
 			vpa: &model.Vpa{Annotations: map[string]string{
-				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Exponential\", \"parameters\": [0.5]}",
+				vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Exponential\", \"parameters\": [0.5]}}",
 			}},
 			recommendation: &vpa_types.RecommendedPodResources{
 				ContainerRecommendations: []vpa_types.RecommendedContainerResources{
@@ -307,7 +307,7 @@ func TestSafetyMarginModifier_Process(t *testing.T) {
 
 func TestSafetyMarginModifier_IgnoreDefaultSafetyMargin(t *testing.T) {
 	vpa := &model.Vpa{Annotations: map[string]string{
-		vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"function\": \"Linear\", \"parameters\": [1.5]}",
+		vpaPostProcessorPrefix + "container1" + vpaPostProcessorSafetyMarginModifierSuffix: "{\"*\":{\"function\": \"Linear\", \"parameters\": [1.5]}}",
 	}}
 	recommendation := &vpa_types.RecommendedPodResources{
 		ContainerRecommendations: []vpa_types.RecommendedContainerResources{

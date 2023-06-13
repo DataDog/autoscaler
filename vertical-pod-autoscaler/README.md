@@ -339,13 +339,13 @@ this parameter is unique and applies to all VPAs under the recommender. Some app
 This configuration consists in an annotation on your VPA object for each impacted container. The annotation format is the following:
 
 ```
-vpa-post-processor.kubernetes.io/{containerName}_safetyMarginModifier={"function": "Linear", parameters: [1.10]}
+vpa-post-processor.kubernetes.io/{containerName}_safetyMarginModifier={"cpu": {"function": "Linear", parameters: [1.10]}, "memory": {"function": "Linear", parameters: [1.30]}}
 ```
 
-You can also specify a different modifier per resource:
+You can also specify a wildcard modifier:
 
 ```
-vpa-post-processor.kubernetes.io/{containerName}_safetyMarginModifier={"cpu": {"function": "Linear", parameters: [1.10]}, "memory": {"function": "Linear", parameters: [1.30]} }
+vpa-post-processor.kubernetes.io/{containerName}_safetyMarginModifier={"*": {"function": "Linear", parameters: [1.10]}}
 ```
 
 Note: before applying the custom margin modifier, the post processor reverts the default safety margin applied to the recommendation.
