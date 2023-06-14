@@ -89,6 +89,8 @@ var (
 	postProcessorMaintainResourceRatio = flag.Bool("resource-ratio-post-processor-enabled", false, "Enable the resource-ratio recommendation post processor. The post processor will ensure that resource ratio is maintain for pods which were opted in by setting an appropriate label on VPA object (experimental)")
 	// Replica restrictions post-processor.
 	postProcessorReplicaRestrictions = flag.Bool("replica-restrictions-post-processor-enabled", false, "Enable the replica-restrictions recommendation post processor. The post processor will ensure that the allow upscales/downscales based on the currently running number of replicas for controllers which were opted in by setting an appropriate label on VPA object (experimental)")
+	// Safety margin modifier post-processor
+	postProcessorSafetyMarginModifier = flag.Bool("safety-margin-modifier-post-processor-enabled", false, "Enable the safety margin modifier recommendation post processor. The post processor will remove the default safety margin and apply a custom safety margin based on VPA object annotations (experimental)")
 )
 
 const (
@@ -123,6 +125,10 @@ func main() {
 	useCheckpoints := *storage != "prometheus"
 
 	var postProcessors []routines.RecommendationPostProcessor
+	if *postProcessorSafetyMarginModifier {
+		// The safety margin is defined as a fraction of the base recommendation but we want a factor in this post processor.
+		postProcessors = append(postProcessors, &routines.SafetyMarginModifierPostProcessor{DefaultSafetyMarginFactor: (1 + *logic.SafetyMarginFraction)})
+	}
 	if *postProcessorCPUasInteger {
 		postProcessors = append(postProcessors, &routines.IntegerCPUPostProcessor{})
 	}
