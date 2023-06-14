@@ -359,6 +359,13 @@ Name | Parameters | Formula | Description
 | Log | [factor] | recommendation \* (1 + factor \* log10(recommendation)) | Add to the recommendation a value proportional to the logarithm of the base recommendation
 | Exponential | [exponent, factor] | recommendation \* (1 + factor \* recommendation ^ exponent) | Add to the recommendation a value proportional to a power of the base recommendation (note: most of the time, you will want an exponent lower than 1)
 
+Note: as some modifiers' output depend on the scale of the resoure Quantity, here are the units used by the modifiers:
+
+Resource Name | Unit
+|-|-|
+| CPU | millicores
+| Memory | Bytes
+
 
 # Known limitations
 
