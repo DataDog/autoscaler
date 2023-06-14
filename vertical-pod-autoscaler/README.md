@@ -375,6 +375,41 @@ vpa-post-processor.kubernetes.io/{containerName}_integerCPU=true
  ```
  Note that this doesn't prevent scaling down entirely, as Pods may get recreated for different reasons, resulting in a new recommendation being applied. See [the original AEP](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler/enhancements/4831-control-eviction-behavior) for more context and usage information.
 
+### Custom safety margin per VPA
+
+By default, the VPA recommender adds a safety margin of 15% to its CPU and Memory recommendation which can be adjusted by passing the `recommendation-margin-fraction` flag to the invocation command. However,
+this parameter is unique and applies to all VPAs under the recommender. Some application would benefit from a different safety margin. Moreover, one may want to pass the recommendation through a custom function
+(e.g.: affine, log). To activate this feature, pass the flag `--safety-margin-modifier-post-processor-enabled` when you start the recommender. The post-processor only acts on containers having a specific configuration.
+This configuration consists in an annotation on your VPA object for each impacted container. The annotation format is the following:
+
+```
+vpa-post-processor.kubernetes.io/{containerName}_safetyMarginModifier={"cpu": {"function": "Linear", parameters: [1.10]}, "memory": {"function": "Linear", parameters: [1.30]}}
+```
+
+You can also specify a wildcard modifier:
+
+```
+vpa-post-processor.kubernetes.io/{containerName}_safetyMarginModifier={"*": {"function": "Linear", parameters: [1.10]}}
+```
+
+Note: before applying the custom margin modifier, the post processor reverts the default safety margin applied to the recommendation.
+
+Available functions:
+
+Name | Parameters | Formula | Description
+|-|-|-|-|
+| Linear | [slope] | slope \* recommendation | Similar to the default safety margin. Multiplies the recommendation by a safety factor (e.g: 15% margin means a factor of 1.15)
+| Affine | [constant, slope] | constant + slope \* recommendation | Similar to the default safety margin but also adds a constant to the recommendation
+| Log | [factor] | recommendation \* (1 + factor \* log10(recommendation)) | Add to the recommendation a value proportional to the logarithm of the base recommendation
+| Exponential | [exponent, factor] | recommendation \* (1 + factor \* recommendation ^ exponent) | Add to the recommendation a value proportional to a power of the base recommendation (note: most of the time, you will want an exponent lower than 1)
+
+Note: as some modifiers' output depend on the scale of the resoure Quantity, here are the units used by the modifiers:
+
+Resource Name | Unit
+|-|-|
+| CPU | millicores
+| Memory | Bytes
+
 # Known limitations
 
 * Whenever VPA updates the pod resources, the pod is recreated, which causes all
