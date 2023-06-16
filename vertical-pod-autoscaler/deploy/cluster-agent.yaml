@@ -21,7 +21,7 @@ spec:
         fsGroup: 65534
       containers:
       - name: datadog-cluster-agent
-        image: localhost:5001/datadog/cluster_agent:0607_1737
+        image: localhost:5001/datadog/cluster_agent:0616_1254
         imagePullPolicy: Always
         ports:
          - containerPort: 5005
@@ -30,14 +30,16 @@ spec:
            name: externalmetrics
         env:
         - name: DD_API_KEY
-          value: 33333333333333333333333333333333
+          value: "33333333333333333333333333333333"
         - name: DD_APP_KEY
-          value: 4444444444444444444444444444444444444444
+          value: "4444444444444444444444444444444444444444"
         - name: DD_EXTERNAL_METRICS_PROVIDER_ENDPOINT
-          value:  metrics-pump.monitoring.svc.cluster.local
+          value:  http://metrics-pump.monitoring.svc.cluster.local
         - name: DD_EXTERNAL_METRICS_PROVIDER_PORT
           value: "8443"
         - name: DD_EXTERNAL_METRICS_PROVIDER_ENABLED
+          value: "true"
+        - name: DD_EXTERNAL_METRICS_PROVIDER_USE_DATADOGMETRIC_CRD
           value: "true"
         - name: DD_CLUSTER_CHECKS_ENABLED
           value: "true"
@@ -153,7 +155,9 @@ spec:
                       type: boolean
                    indexKeys:
                       description: IndexKeys are keys to insert into a 'by{}' clause at the end of the query.
-                      type: string
+                      type: array
+                      items:
+                        type:  string
             type: object
           status:
             description: DatadogMetricStatus defines the observed state of DatadogMetric
@@ -290,6 +294,16 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+    - "datadoghq.com"
+    resources:
+      - datadogmetrics
+      - datadogmetrics/status
+    verbs:
+      - get
+      - list
+      - watch
+      - update
 
 ---
 # Source: metrics-server/templates/clusterrolebinding-auth-delegator.yaml
@@ -350,11 +364,14 @@ apiVersion: datadoghq.com/v1alpha1
 kind: DatadogMetric
 metadata:
   name: bulk-cpu
-  namespace: monitoring
+  namespace: kube-system
 spec:
   query: "kubernetes.cpu.usage.total{kube_cluster_name:general1}"
   bulk: 
-    indexKeys: kube_namespace,pod_name,container_name
+    indexKeys: 
+      - kube_namespace
+      - pod_name
+      - container_name
     enable: True
 
 ---
@@ -363,10 +380,13 @@ apiVersion: datadoghq.com/v1alpha1
 kind: DatadogMetric
 metadata:
   name: bulk-mem
-  namespace: monitoring
+  namespace: kube-system
 spec:
   query: "kubernetes.mem.usage{kube_cluster_name:general1}"
   bulk:
-    indexKeys: kube_namespace,pod_name,container_name
+    indexKeys:
+      - kube_namespace
+      - pod_name
+      - container_name
     enable: True
 

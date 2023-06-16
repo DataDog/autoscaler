@@ -20,7 +20,7 @@ spec:
         runAsUser: 65534 # nobody
       containers:
       - name: metrics-pump
-        image: localhost:5001/write-metrics:dev
+        image: localhost:5001/write-metrics:dev7
         imagePullPolicy: Always
         args:
         - /emit-metrics.py
@@ -53,7 +53,7 @@ spec:
   type: ClusterIP
   ports:
     - name: http
-      port: 443
+      port: 80
       protocol: TCP
       targetPort: http
   selector:

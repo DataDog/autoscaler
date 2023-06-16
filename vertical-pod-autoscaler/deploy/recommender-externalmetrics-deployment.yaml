@@ -25,8 +25,8 @@ spec:
         args:
           - /recommender-amd64
           - --use-external-metrics=true
-          - --external-metrics-cpu-metric=bulk-cpu
-          - --external-metrics-memory-metric=bulk-mem
+          - --external-metrics-cpu-metric=datadogmetric@kube-system:bulk-cpu
+          - --external-metrics-memory-metric=datadogmetric@kube-system:bulk-cpu
           - --v=4
         resources:
           limits:

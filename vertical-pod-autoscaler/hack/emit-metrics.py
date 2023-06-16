@@ -116,15 +116,15 @@ def dispatch_query():
     query = request.args['query']
     global saved_metrics
     result = {
-        'from_date': request.args['from'],
-        'group_by': ['kube_namespace', 'pod_name', 'container_name'],
-        'query': query,
-        'res_type': 'time_series',
-        'resp_version': 1,
+        #'from_date': request.args['from'],
+        #'group_by': ['kube_namespace', 'pod_name', 'container_name'],
+        #'query': query,
+        #'res_type': 'time_series',
+        #'resp_version': 1,
         'series': [],
-        'times': [],
-        'to_date': request.args['to'],
-        'values': []
+        #'times': [],
+        #'to_date': request.args['to'],
+        #'values': []
     }
 
     prefix = query[:query.index('by')]
@@ -132,36 +132,35 @@ def dispatch_query():
 
     def make_entry(filled_tags, val, unit):
         entry = {
-            'aggr': 'null',
-            'attributes': {},
+           #'aggr': 'null',
+           # 'attributes': {},
             'display_name': metric_name,
             'expression': f"{prefix}by{filled_tags}",
-            'start': request.args['from'],
-            'end': request.args['to'],
+            'start': int(request.args['from']),
+            'end': int(request.args['to']),
             'interval': 1,
             'length': 1,
             'metric': metric_name,
-            'pointlist': [request.args['from'], val],
+            'pointlist': [[int(request.args['to'])*1000, val]],
             'scope': filled_tags,
-            'tag_set': {k: v for k, v in path.items()},
-            'unit': [unit, 'null']
+           # 'tag_set': {k: v for k, v in path.items()},
+            'unit': [unit, {}]
         }
         return entry
 
     if 'kubernetes.cpu.usage' in metric_name:
-        result['status'] = 'ok'
         for path, cpu, mem in saved_metrics:
-            result['values'].append(make_entry(
-                f"{{kube_namespace:{path['namespace']},pod_name:{path['pod']},container_name:{path['name']}", cpu,
+            result['series'].append(make_entry(
+                f"kube_namespace:{path['namespace']},pod_name:{path['pod']},container_name:{path['name']}", cpu,
                 {"family": "cpu", "id": 121, "name": "nanocore", "plural": "nanocores", "scale_factor": 1e-09,
                  "short_name": "ncores"},
             ))
-    elif 'kubernetes.memory.usage' in metric_name:
-        result['status'] = 'ok'
+    elif 'kubernetes.mem.usage' in metric_name:
         for path, cpu, mem in saved_metrics:
-            result['values'].append(make_entry(
-                f"{{kube_namespace:{path['namespace']},pod_name:{path['pod']},container_name:{path['name']}", mem,
+            result['series'].append(make_entry(
+                f"kube_namespace:{path['namespace']},pod_name:{path['pod']},container_name:{path['name']}", mem,
                 {"family": "bytes", "id": 2, "name": "byte", "plural": "bytes", "scale_factor": 1, "short_name": "B"}))
+
 
     return result
 
