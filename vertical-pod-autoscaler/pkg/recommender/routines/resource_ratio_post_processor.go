@@ -34,13 +34,12 @@ const (
 )
 
 // ResourceRatioRecommendationPostProcessor ensures that defined ratio constraints between resources is applied.
-// The definition is done via annotation on the VPA object with format: vpa-post-processor.kubernetes.io/{containerName}_resourceRatios="{resourceA:resourceB}"
-// The value of the annotation is map of resource to resource. If the value is {"cpu":"memory"} that means that the CPU recommendation is used and the memory recommendation is computed to match the initial ratio CPU/Memory that is defined in the podTemplateSpec.
+// The definition is done via annotation on the VPA object with format: vpa-post-processor.kubernetes.io/{containerName}_resourceRatios={"A":{"resource":"B","ratio":"1.8"}}
+// The value of the annotation is map of resource to {resource,ratio}. If the value is {"cpu":{"resource":"memory"}} that means that the CPU recommendation is used and the memory recommendation is computed to match the initial ratio CPU/Memory that is defined in the podTemplateSpec.
+// If instead of the ratio defined in the podTemplate, you want to use a specific value, just pass it {"cpu":{"resource":"memory","ratio":15000000000}} , this is 15G of Mem per Core.
 type ResourceRatioRecommendationPostProcessor struct {
 	ControllerFetcher controllerfetcher.ControllerFetcher
 }
-
-type resourceRatioList [][2]apiv1.ResourceName
 
 // Process applies the Resource Ratio post-processing to the recommendation.
 func (r *ResourceRatioRecommendationPostProcessor) Process(vpa *model.Vpa, recommendation *vpa_types.RecommendedPodResources, _ *vpa_types.PodResourcePolicy) *vpa_types.RecommendedPodResources {
@@ -48,7 +47,7 @@ func (r *ResourceRatioRecommendationPostProcessor) Process(vpa *model.Vpa, recom
 	if len(ratios) == 0 || recommendation == nil {
 		return recommendation
 	}
-
+	klog.Infof("Using ratio post-processor vpa=%", vpa.ID.VpaName)
 	podTemplate, err := r.ControllerFetcher.GetPodTemplateFromTopMostWellKnown(&controllerfetcher.ControllerKeyWithAPIVersion{
 		ControllerKey: controllerfetcher.ControllerKey{
 			Namespace: vpa.ID.Namespace,
@@ -71,6 +70,19 @@ func (r *ResourceRatioRecommendationPostProcessor) Process(vpa *model.Vpa, recom
 	return updatedRecommendation
 }
 
+type RatioDefinition struct {
+	Resource string   `json:"resource"`
+	Ratio    *float64 `json:"ratio"`
+}
+
+type resourceRatio struct {
+	original apiv1.ResourceName
+	target   apiv1.ResourceName
+	ratio    *float64
+}
+
+type resourceRatioList []resourceRatio
+
 func readResourceRatioFromVPAAnnotations(vpa *model.Vpa) map[string]resourceRatioList {
 	ratios := map[string]resourceRatioList{}
 	for key, value := range vpa.Annotations {
@@ -79,15 +91,22 @@ func readResourceRatioFromVPAAnnotations(vpa *model.Vpa) map[string]resourceRati
 			continue
 		}
 
-		annotationMap := map[string]string{}
+		ratioDef := map[string]RatioDefinition{} // the key is the primary resource on whic h the ratio is applied
 
-		if err := json.Unmarshal([]byte(value), &annotationMap); err != nil {
+		if err := json.Unmarshal([]byte(value), &ratioDef); err != nil {
 			klog.Errorf("Skipping ratio definition '%s' for container '%s' in vpa %s/%s due to bad format, error:%#v", value, containerName, vpa.ID.Namespace, vpa.ID.VpaName, err)
+			continue
 		}
 
-		for r1, r2 := range annotationMap {
-			ratios[containerName] = append(ratios[containerName], [2]apiv1.ResourceName{apiv1.ResourceName(r1), apiv1.ResourceName(r2)})
+		var asList resourceRatioList
+		for k, v := range ratioDef {
+			asList = append(asList, resourceRatio{
+				original: apiv1.ResourceName(k),
+				target:   apiv1.ResourceName(v.Resource),
+				ratio:    v.Ratio,
+			})
 		}
+		ratios[containerName] = asList
 	}
 	return ratios
 }
@@ -113,8 +132,9 @@ func (r *ResourceRatioRecommendationPostProcessor) apply(
 			klog.V(2).Infof("no matching Container found for recommendation %s", containerRecommendation.ContainerName)
 			continue
 		}
-
-		updatedContainerResources, err := getRecommendationForContainerWithRatioApplied(*container, &containerRecommendation, ratios)
+		ratiosDef := ratios[container.Name]
+		klog.Infof("Using ratio post-processor on container=%s ratio=%v", container.Name, ratiosDef)
+		updatedContainerResources, err := getRecommendationForContainerWithRatioApplied(*container, &containerRecommendation, ratiosDef)
 		if err != nil {
 			return nil, fmt.Errorf("cannot update recommendation for container name %v", container.Name)
 		}
@@ -149,10 +169,7 @@ func getContainer(containerName string, pod *apiv1.Pod) *apiv1.Container {
 func getRecommendationForContainerWithRatioApplied(
 	container apiv1.Container,
 	containerRecommendation *vpa_types.RecommendedContainerResources,
-	ratios map[string]resourceRatioList) (*vpa_types.RecommendedContainerResources, error) {
-
-	// containerPolicy can be nil (user does not have to configure it).
-	containerPolicy := ratios[container.Name]
+	containerPolicy resourceRatioList) (*vpa_types.RecommendedContainerResources, error) {
 
 	amendedRecommendations := containerRecommendation.DeepCopy()
 
@@ -169,7 +186,7 @@ func getRecommendationForContainerWithRatioApplied(
 
 // applyMaintainRatioVPAPolicy uses the maintainRatio constraints and the defined ratios in the Pod
 // and amend the recommendation to respect the original ratios
-func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, ratiosPolicies [][2]apiv1.ResourceName, containerOriginalResources apiv1.ResourceList) {
+func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, ratiosPolicies resourceRatioList, containerOriginalResources apiv1.ResourceList) {
 	if ratiosPolicies == nil {
 		return
 	}
@@ -181,17 +198,24 @@ func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, ratiosPolici
 	}
 
 	for _, ratioConstraint := range maintainedRatiosCalculationOrdered {
-		qA := containerOriginalResources.Name(ratioConstraint[0], resource.DecimalSI)
-		qB := containerOriginalResources.Name(ratioConstraint[1], resource.DecimalSI)
+		var ratio float64
+		// if the ration is define explicitely, use the defined value, else use the original ratio of the podSpec
+		if ratioConstraint.ratio != nil {
+			ratio = *ratioConstraint.ratio
+		} else {
+			qA := containerOriginalResources.Name(ratioConstraint.original, resource.DecimalSI)
+			qB := containerOriginalResources.Name(ratioConstraint.target, resource.DecimalSI)
 
-		if qA.MilliValue() == 0 {
-			continue
+			if qA.MilliValue() == 0 {
+				continue
+			}
+			ratio = float64(qB.MilliValue()) / float64(qA.MilliValue())
 		}
-
-		rA := recommendation.Name(ratioConstraint[0], resource.DecimalSI)
-		rB := recommendation.Name(ratioConstraint[1], resource.DecimalSI)
-		rB.SetMilli(rA.MilliValue() * qB.MilliValue() / qA.MilliValue())
-		recommendation[ratioConstraint[1]] = *rB
+		klog.Infof("%s=>%s using %v", ratioConstraint.original, ratioConstraint.target, ratio)
+		rA := recommendation.Name(ratioConstraint.original, resource.DecimalSI)
+		rB := recommendation.Name(ratioConstraint.target, resource.DecimalSI)
+		rB.SetMilli(int64(float64(rA.MilliValue()) * ratio))
+		recommendation[ratioConstraint.target] = *rB
 	}
 	return
 }
@@ -199,14 +223,14 @@ func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, ratiosPolici
 // getMaintainedRatiosCalculationOrder validates (no cycle) and sort the constraints
 // in an order that should be used to compute resource values
 // for example if the user gives:
-// {"B","C"},{"A","B"} , we must first compute B using value of A, and then only compute C using value of B
+// {"B":"C"},{"A":"B"} , we must first compute B using value of A, and then only compute C using value of B
 // this function will return:
-// {"A","B"},{"B","C"}
+// {"A":"B"},{"B":"C"}
 // The function will return an error if the graph defined contains cycle.
-// The function support multiple graphs like: {"A","B"},{"C","D"} ... but in that case the ordered output is undetermined
-// it could be {"A","B"},{"C","D"} or {"C","D"},{"A","B"}
-func getMaintainedRatiosCalculationOrder(m [][2]apiv1.ResourceName) ([][2]apiv1.ResourceName, error) {
-	ordered, predecessorsMap, ok := getSortedResourceAndPredecessors(m)
+// The function support multiple graphs like: {"A":"B"},{"C":"D"} ... but in that case the ordered output is undetermined
+// it could be {"A":"B"},{"C":"D"} or {"C":"D"},{"A":"B"}
+func getMaintainedRatiosCalculationOrder(ratios resourceRatioList) (resourceRatioList, error) {
+	ordered, predecessorsMap, ok := getSortedResourceAndPredecessors(ratios)
 	if !ok {
 		klog.V(1).Infof("Error the graph is not acyclic")
 		return nil, fmt.Errorf("Error the graph is not acyclic")
@@ -219,8 +243,12 @@ func getMaintainedRatiosCalculationOrder(m [][2]apiv1.ResourceName) ([][2]apiv1.
 			return nil, fmt.Errorf("Resource '%s' has more than one predecessor in maintainedRatios", k)
 		}
 	}
+	indexedRatio := map[apiv1.ResourceName]resourceRatio{}
+	for _, rr := range ratios {
+		indexedRatio[rr.original+"-"+rr.target] = rr
+	}
 
-	orderedResult := [][2]apiv1.ResourceName{}
+	orderedResult := resourceRatioList{}
 
 	// build the ordered list of relation
 	// this list will tell us in which order we should compute resources
@@ -233,17 +261,17 @@ func getMaintainedRatiosCalculationOrder(m [][2]apiv1.ResourceName) ([][2]apiv1.
 		for k := range m { // we are sure that there is only one element here
 			predecessor = k
 		}
-		orderedResult = append(orderedResult, [2]apiv1.ResourceName{predecessor, resource})
+		orderedResult = append(orderedResult, indexedRatio[predecessor+"-"+resource])
 	}
 	return orderedResult, nil
 
 }
 
 // getSortedResourceAndPredecessors returns an ordered list of nodes (from root to leaves) and also checks that the defined graph is acyclic
-func getSortedResourceAndPredecessors(edges [][2]apiv1.ResourceName) ([]apiv1.ResourceName, map[apiv1.ResourceName]map[apiv1.ResourceName]struct{}, bool) {
+func getSortedResourceAndPredecessors(edges resourceRatioList) ([]apiv1.ResourceName, map[apiv1.ResourceName]map[apiv1.ResourceName]struct{}, bool) {
 	g := resourceGraph{nodes: map[apiv1.ResourceName]*resourceNode{}}
 	for _, edge := range edges {
-		g.addEdge(edge[0], edge[1])
+		g.addEdge(edge.original, edge.target)
 	}
 	return g.getOrderedListAndPredecessors()
 }
