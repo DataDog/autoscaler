@@ -31,8 +31,8 @@ func Test_getMaintainedRatiosCalculationOrder(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		input     [][2]apiv1.ResourceName
-		wantOneOf [][][2]apiv1.ResourceName // in some configuration some items can be swapped and that is fine
+		input     resourceRatioList
+		wantOneOf []resourceRatioList // in some configuration some items can be swapped and that is fine
 		wantErr   bool
 	}{
 		{
@@ -43,53 +43,53 @@ func Test_getMaintainedRatiosCalculationOrder(t *testing.T) {
 		},
 		{
 			name:      "simple",
-			input:     [][2]apiv1.ResourceName{{"cpu", "memory"}},
-			wantOneOf: [][][2]apiv1.ResourceName{{{"cpu", "memory"}}},
+			input:     resourceRatioList{{original: "cpu", target: "memory"}},
+			wantOneOf: []resourceRatioList{{{original: "cpu", target: "memory"}}},
 			wantErr:   false,
 		},
 		{
 			name:  "simple",
-			input: [][2]apiv1.ResourceName{{"cpu", "memory"}, {"cpu", "storage"}},
-			wantOneOf: [][][2]apiv1.ResourceName{
-				{{"cpu", "memory"}, {"cpu", "storage"}},
-				{{"cpu", "storage"}, {"cpu", "memory"}},
+			input: resourceRatioList{{original: "cpu", target: "memory"}, {original: "cpu", target: "storage"}},
+			wantOneOf: []resourceRatioList{
+				{{original: "cpu", target: "memory"}, {original: "cpu", target: "storage"}},
+				{{original: "cpu", target: "storage"}, {original: "cpu", target: "memory"}},
 			},
 			wantErr: false,
 		},
 		{
 			name:      "cycle 1",
-			input:     [][2]apiv1.ResourceName{{"cpu", "cpu"}},
+			input:     resourceRatioList{{original: "cpu", target: "cpu"}},
 			wantOneOf: nil,
 			wantErr:   true,
 		},
 		{
 			name:      "cycle 3",
-			input:     [][2]apiv1.ResourceName{{"cpu", "memory"}, {"memory", "storage"}, {"storage", "cpu"}},
+			input:     resourceRatioList{{original: "cpu", target: "memory"}, {original: "memory", target: "storage"}, {original: "storage", target: "cpu"}},
 			wantOneOf: nil,
 			wantErr:   true,
 		},
 		{
 			name:  "2 graphs",
-			input: [][2]apiv1.ResourceName{{"cpu", "memory"}, {"storage", "net"}},
-			wantOneOf: [][][2]apiv1.ResourceName{
-				{{"cpu", "memory"}, {"storage", "net"}},
-				{{"storage", "net"}, {"cpu", "memory"}},
+			input: resourceRatioList{{original: "cpu", target: "memory"}, {original: "storage", target: "net"}},
+			wantOneOf: []resourceRatioList{
+				{{original: "cpu", target: "memory"}, {original: "storage", target: "net"}},
+				{{original: "storage", target: "net"}, {original: "cpu", target: "memory"}},
 			},
 			wantErr: false,
 		},
 		{
 			name:  "Same ancestor",
-			input: [][2]apiv1.ResourceName{{"cpu", "memory"}, {"cpu", "net"}},
-			wantOneOf: [][][2]apiv1.ResourceName{
-				{{"cpu", "memory"}, {"cpu", "net"}},
-				{{"cpu", "net"}, {"cpu", "memory"}},
+			input: resourceRatioList{{original: "cpu", target: "memory"}, {original: "cpu", target: "net"}},
+			wantOneOf: []resourceRatioList{
+				{{original: "cpu", target: "memory"}, {original: "cpu", target: "net"}},
+				{{original: "cpu", target: "net"}, {original: "cpu", target: "memory"}},
 			},
 			wantErr: false,
 		},
 		{
 			name:      "reorder 3",
-			input:     [][2]apiv1.ResourceName{{"cpu", "memory"}, {"memory", "net"}, {"storage", "cpu"}},
-			wantOneOf: [][][2]apiv1.ResourceName{{{"storage", "cpu"}, {"cpu", "memory"}, {"memory", "net"}}},
+			input:     resourceRatioList{{original: "cpu", target: "memory"}, {original: "memory", target: "net"}, {original: "storage", target: "cpu"}},
+			wantOneOf: []resourceRatioList{{{original: "storage", target: "cpu"}, {original: "cpu", target: "memory"}, {original: "memory", target: "net"}}},
 			wantErr:   false,
 		},
 	}
@@ -118,7 +118,7 @@ func Test_applyMaintainRatioVPAPolicy(t *testing.T) {
 	tests := []struct {
 		name                       string
 		recommendation             apiv1.ResourceList
-		policyRatios               [][2]apiv1.ResourceName
+		policyRatios               resourceRatioList
 		containerOriginalResources apiv1.ResourceList
 		expectedAnnotations        []string
 		expectedRecommendation     apiv1.ResourceList
@@ -145,7 +145,7 @@ func Test_applyMaintainRatioVPAPolicy(t *testing.T) {
 				"cpu":    *resource.NewQuantity(1, resource.DecimalSI),
 				"memory": *resource.NewQuantity(1, resource.DecimalSI),
 			},
-			policyRatios: [][2]apiv1.ResourceName{{"cpu", "memory"}},
+			policyRatios: resourceRatioList{{original: "cpu", target: "memory"}},
 			containerOriginalResources: apiv1.ResourceList{
 				"cpu":    *resource.NewQuantity(1, resource.DecimalSI),
 				"memory": *resource.NewQuantity(3000, resource.DecimalSI),
@@ -238,7 +238,7 @@ func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
 			name: "cpu to mem",
 			args: args{
 				podRecommendation: podRecommendation,
-				ratioPolicies:     map[string]resourceRatioList{"ctr-name": [][2]apiv1.ResourceName{{"cpu", "memory"}}},
+				ratioPolicies:     map[string]resourceRatioList{"ctr-name": resourceRatioList{{original: "cpu", target: "memory"}}},
 				pod:               pod13,
 			},
 			wantReco: podRecommendationExpected13,
