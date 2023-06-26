@@ -70,6 +70,7 @@ func (r *ResourceRatioRecommendationPostProcessor) Process(vpa *model.Vpa, recom
 	return updatedRecommendation
 }
 
+// RatioDefinition is the system used in the annotation map[string]RatioDefinition{} to configure the post-processor
 type RatioDefinition struct {
 	Resource string   `json:"resource"`
 	Ratio    *float64 `json:"ratio"`
@@ -199,7 +200,7 @@ func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, ratiosPolici
 
 	for _, ratioConstraint := range maintainedRatiosCalculationOrdered {
 		var ratio float64
-		// if the ration is defined explicitly, use the defined value, else use the original ratio of the podSpec
+		// if the ratio is defined explicitly, use the defined value, else use the original ratio of the podSpec
 		if ratioConstraint.ratio != nil {
 			ratio = *ratioConstraint.ratio
 		} else {
