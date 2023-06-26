@@ -91,7 +91,7 @@ func readResourceRatioFromVPAAnnotations(vpa *model.Vpa) map[string]resourceRati
 			continue
 		}
 
-		ratioDef := map[string]RatioDefinition{} // the key is the primary resource on whic h the ratio is applied
+		ratioDef := map[string]RatioDefinition{} // the key is the primary resource on which the ratio is applied
 
 		if err := json.Unmarshal([]byte(value), &ratioDef); err != nil {
 			klog.Errorf("Skipping ratio definition '%s' for container '%s' in vpa %s/%s due to bad format, error:%#v", value, containerName, vpa.ID.Namespace, vpa.ID.VpaName, err)
@@ -199,7 +199,7 @@ func applyMaintainRatioVPAPolicy(recommendation apiv1.ResourceList, ratiosPolici
 
 	for _, ratioConstraint := range maintainedRatiosCalculationOrdered {
 		var ratio float64
-		// if the ration is define explicitely, use the defined value, else use the original ratio of the podSpec
+		// if the ration is defined explicitly, use the defined value, else use the original ratio of the podSpec
 		if ratioConstraint.ratio != nil {
 			ratio = *ratioConstraint.ratio
 		} else {
