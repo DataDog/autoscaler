@@ -133,7 +133,7 @@ func main() {
 		postProcessors = append(postProcessors, &routines.IntegerCPUPostProcessor{})
 	}
 	if *postProcessorMaintainResourceRatio {
-		postProcessors = append(postProcessors, &routines.ReplicaRestrictionsPostProcessor{ControllerFetcher: controllerFetcher})
+		postProcessors = append(postProcessors, &routines.ResourceRatioRecommendationPostProcessor{ControllerFetcher: controllerFetcher})
 	}
 	if *postProcessorReplicaRestrictions {
 		postProcessors = append(postProcessors, &routines.ReplicaRestrictionsPostProcessor{ControllerFetcher: controllerFetcher})
