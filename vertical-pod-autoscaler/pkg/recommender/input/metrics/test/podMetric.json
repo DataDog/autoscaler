@@ -1,0 +1,31 @@
+{
+  "metadata": {
+   "name": "disruption-budget-manager-6d758d9d58-6pbpd",
+   "namespace": "cluster-controllers",
+   "uid": "cluster-controllers.disruption-budget-manager-6d758d9d58-6pbpd",
+   "creationTimestamp": null
+  },
+  "timestamp": null,
+  "window": "0s",
+  "containers": [
+   {
+    "name": "disruption-budget-manager",
+    "usage": {
+     "cpu": "1m",
+     "memory": "79882922"
+    }
+   },
+   {
+    "name": "vaultd-sidecar",
+    "usage": {
+     "cpu": "1m"
+    }
+   },
+   {
+    "name": "sidecar-profiler",
+    "usage": {
+     "memory": "8019968"
+    }
+   }
+  ]
+ }
