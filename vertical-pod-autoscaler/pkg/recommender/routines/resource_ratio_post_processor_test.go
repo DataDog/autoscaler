@@ -238,7 +238,7 @@ func Test_resourceRatioRecommendationProcessor_Apply(t *testing.T) {
 			name: "cpu to mem",
 			args: args{
 				podRecommendation: podRecommendation,
-				ratioPolicies:     map[string]resourceRatioList{"ctr-name": resourceRatioList{{original: "cpu", target: "memory"}}},
+				ratioPolicies:     map[string]resourceRatioList{"ctr-name": {{original: "cpu", target: "memory"}}},
 				pod:               pod13,
 			},
 			wantReco: podRecommendationExpected13,
