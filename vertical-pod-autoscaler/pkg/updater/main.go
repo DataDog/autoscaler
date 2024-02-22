@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -70,6 +71,7 @@ var (
 	vpaObjectNamespace = flag.String("vpa-object-namespace", apiv1.NamespaceAll, "Namespace to search for VPA objects. Empty means all namespaces will be used.")
 
 	podLabelSelector = flag.String("pod-label-selector", "", "Label selector for pods that are eligible for the Updater")
+	allowedResources = flag.String("allowed-resources", strings.Join([]string{string(apiv1.ResourceCPU), string(apiv1.ResourceMemory)}, ","), "Comma-separated list of resources that can be applied from a VPA.")
 )
 
 const (
@@ -105,6 +107,14 @@ func main() {
 	if namespace != "" {
 		admissionControllerStatusNamespace = namespace
 	}
+
+	var allowedResourcesNames []apiv1.ResourceName
+	for _, resourceName := range strings.Split(*allowedResources, ",") {
+		if resourceName != "" {
+			allowedResourcesNames = append(allowedResourcesNames, apiv1.ResourceName(resourceName))
+		}
+	}
+
 	// TODO: use SharedInformerFactory in updater
 	updater, err := updater.NewUpdater(
 		kubeClient,
@@ -115,7 +125,7 @@ func main() {
 		*evictionToleranceFraction,
 		*useAdmissionControllerStatus,
 		admissionControllerStatusNamespace,
-		vpa_api_util.NewCappingRecommendationProcessor(limitRangeCalculator),
+		vpa_api_util.NewDefaultRecommendationProcessor(limitRangeCalculator, allowedResourcesNames),
 		priority.NewScalingDirectionPodEvictionAdmission(),
 		targetSelectorFetcher,
 		controllerFetcher,
