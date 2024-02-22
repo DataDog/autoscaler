@@ -116,6 +116,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 		name              string
 		pod               *apiv1.Pod
 		vpa               *vpa_types.VerticalPodAutoscaler
+		allowedResources  []apiv1.ResourceName
 		expectedAction    bool
 		expectedError     error
 		expectedMem       resource.Quantity
@@ -127,71 +128,79 @@ func TestUpdateResourceRequests(t *testing.T) {
 		annotations       vpa_api_util.ContainerToAnnotationsMap
 	}{
 		{
-			name:           "uninitialized pod",
-			pod:            uninitialized,
-			vpa:            vpa,
-			expectedAction: true,
-			expectedMem:    resource.MustParse("200Mi"),
-			expectedCPU:    resource.MustParse("2"),
+			name:             "uninitialized pod",
+			pod:              uninitialized,
+			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("200Mi"),
+			expectedCPU:      resource.MustParse("2"),
 		},
 		{
-			name:           "target below min",
-			pod:            uninitialized,
-			vpa:            targetBelowMinVPA,
-			expectedAction: true,
-			expectedMem:    resource.MustParse("300Mi"), // MinMemory is expected to be used
-			expectedCPU:    resource.MustParse("4"),     // MinCpu is expected to be used
+			name:             "target below min",
+			pod:              uninitialized,
+			vpa:              targetBelowMinVPA,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("300Mi"), // MinMemory is expected to be used
+			expectedCPU:      resource.MustParse("4"),     // MinCpu is expected to be used
 			annotations: vpa_api_util.ContainerToAnnotationsMap{
 				containerName: []string{"cpu capped to minAllowed", "memory capped to minAllowed"},
 			},
 		},
 		{
-			name:           "target above max",
-			pod:            uninitialized,
-			vpa:            targetAboveMaxVPA,
-			expectedAction: true,
-			expectedMem:    resource.MustParse("1Gi"), // MaxMemory is expected to be used
-			expectedCPU:    resource.MustParse("5"),   // MaxCpu is expected to be used
+			name:             "target above max",
+			pod:              uninitialized,
+			vpa:              targetAboveMaxVPA,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("1Gi"), // MaxMemory is expected to be used
+			expectedCPU:      resource.MustParse("5"),   // MaxCpu is expected to be used
 			annotations: vpa_api_util.ContainerToAnnotationsMap{
 				containerName: []string{"cpu capped to maxAllowed", "memory capped to maxAllowed"},
 			},
 		},
 		{
-			name:           "initialized pod",
-			pod:            initialized,
-			vpa:            vpa,
-			expectedAction: true,
-			expectedMem:    resource.MustParse("200Mi"),
-			expectedCPU:    resource.MustParse("2"),
+			name:             "initialized pod",
+			pod:              initialized,
+			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("200Mi"),
+			expectedCPU:      resource.MustParse("2"),
 		},
 		{
-			name:           "high memory",
-			pod:            initialized,
-			vpa:            vpaWithHighMemory,
-			expectedAction: true,
-			expectedMem:    resource.MustParse("1000Mi"),
-			expectedCPU:    resource.MustParse("2"),
+			name:             "high memory",
+			pod:              initialized,
+			vpa:              vpaWithHighMemory,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("1000Mi"),
+			expectedCPU:      resource.MustParse("2"),
 		},
 		{
-			name:           "empty recommendation",
-			pod:            initialized,
-			vpa:            vpaWithEmptyRecommendation,
-			expectedAction: true,
-			expectedMem:    resource.MustParse("0"),
-			expectedCPU:    resource.MustParse("0"),
+			name:             "empty recommendation",
+			pod:              initialized,
+			vpa:              vpaWithEmptyRecommendation,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("0"),
+			expectedCPU:      resource.MustParse("0"),
 		},
 		{
-			name:           "nil recommendation",
-			pod:            initialized,
-			vpa:            vpaWithNilRecommendation,
-			expectedAction: true,
-			expectedMem:    resource.MustParse("0"),
-			expectedCPU:    resource.MustParse("0"),
+			name:             "nil recommendation",
+			pod:              initialized,
+			vpa:              vpaWithNilRecommendation,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("0"),
+			expectedCPU:      resource.MustParse("0"),
 		},
 		{
 			name:             "guaranteed resources",
 			pod:              limitsMatchRequestsPod,
 			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
 			expectedAction:   true,
 			expectedMem:      resource.MustParse("200Mi"),
 			expectedCPU:      resource.MustParse("2"),
@@ -202,6 +211,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 			name:             "guaranteed resources - no request",
 			pod:              limitsNoRequestsPod,
 			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
 			expectedAction:   true,
 			expectedMem:      resource.MustParse("200Mi"),
 			expectedCPU:      resource.MustParse("2"),
@@ -212,6 +222,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 			name:             "proportional limit - as default",
 			pod:              podWithDoubleLimit,
 			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
 			expectedAction:   true,
 			expectedCPU:      resource.MustParse("2"),
 			expectedMem:      resource.MustParse("200Mi"),
@@ -222,6 +233,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 			name:             "proportional limit - set explicit",
 			pod:              podWithDoubleLimit,
 			vpa:              resourceRequestsAndLimitsVPA,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
 			expectedAction:   true,
 			expectedCPU:      resource.MustParse("2"),
 			expectedMem:      resource.MustParse("200Mi"),
@@ -229,20 +241,22 @@ func TestUpdateResourceRequests(t *testing.T) {
 			expectedMemLimit: mustParseResourcePointer("400Mi"),
 		},
 		{
-			name:           "disabled limit scaling",
-			pod:            podWithDoubleLimit,
-			vpa:            resourceRequestsOnlyVPA,
-			expectedAction: true,
-			expectedCPU:    resource.MustParse("2"),
-			expectedMem:    resource.MustParse("200Mi"),
+			name:             "disabled limit scaling",
+			pod:              podWithDoubleLimit,
+			vpa:              resourceRequestsOnlyVPA,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedCPU:      resource.MustParse("2"),
+			expectedMem:      resource.MustParse("200Mi"),
 		},
 		{
-			name:           "disabled limit scaling - requests capped at limit",
-			pod:            podWithDoubleLimit,
-			vpa:            resourceRequestsOnlyVPAHighTarget,
-			expectedAction: true,
-			expectedCPU:    resource.MustParse("2"),
-			expectedMem:    resource.MustParse("200Mi"),
+			name:             "disabled limit scaling - requests capped at limit",
+			pod:              podWithDoubleLimit,
+			vpa:              resourceRequestsOnlyVPAHighTarget,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedCPU:      resource.MustParse("2"),
+			expectedMem:      resource.MustParse("200Mi"),
 			annotations: vpa_api_util.ContainerToAnnotationsMap{
 				containerName: []string{
 					"cpu capped to container limit",
@@ -254,6 +268,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 			name:             "limit over int64",
 			pod:              podWithTenfoldLimit,
 			vpa:              vpaWithExabyteRecommendation,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
 			expectedAction:   true,
 			expectedCPU:      resource.MustParse("1Ei"),
 			expectedMem:      resource.MustParse("1Ei"),
@@ -270,6 +285,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 			name:              "limit range calculation error",
 			pod:               initialized,
 			vpa:               vpa,
+			allowedResources:  []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
 			limitRangeCalcErr: fmt.Errorf("oh no"),
 			expectedAction:    false,
 			expectedError:     fmt.Errorf("error getting containerLimitRange: oh no"),
@@ -278,6 +294,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 			name:             "proportional limit from default",
 			pod:              initialized,
 			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU, apiv1.ResourceMemory},
 			expectedAction:   true,
 			expectedCPU:      resource.MustParse("2"),
 			expectedMem:      resource.MustParse("200Mi"),
@@ -291,6 +308,22 @@ func TestUpdateResourceRequests(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:             "memory recommendation filtered out",
+			pod:              initialized,
+			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceCPU},
+			expectedAction:   true,
+			expectedCPU:      resource.MustParse("2"),
+		},
+		{
+			name:             "cpu recommendation filtered out",
+			pod:              initialized,
+			vpa:              vpa,
+			allowedResources: []apiv1.ResourceName{apiv1.ResourceMemory},
+			expectedAction:   true,
+			expectedMem:      resource.MustParse("200Mi"),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -301,6 +334,7 @@ func TestUpdateResourceRequests(t *testing.T) {
 					containerLimitRange: tc.limitRange,
 					containerErr:        tc.limitRangeCalcErr,
 				},
+				allowedResources: tc.allowedResources,
 			}
 
 			resources, annotations, err := recommendationProvider.GetContainersResourcesForPod(tc.pod, tc.vpa)
@@ -314,11 +348,21 @@ func TestUpdateResourceRequests(t *testing.T) {
 				_, foundEmpty := resources[0].Requests[""]
 				assert.Equal(t, foundEmpty, false, "empty resourceKey have not been purged")
 
-				cpuRequest := resources[0].Requests[apiv1.ResourceCPU]
-				assert.Equal(t, tc.expectedCPU.Value(), cpuRequest.Value(), "cpu request doesn't match")
+				if containsResource(tc.allowedResources, apiv1.ResourceCPU) {
+					cpuRequest := resources[0].Requests[apiv1.ResourceCPU]
+					assert.Equal(t, tc.expectedCPU.Value(), cpuRequest.Value(), "cpu request doesn't match")
+				} else {
+					_, ok := resources[0].Requests[apiv1.ResourceCPU]
+					assert.False(t, ok)
+				}
 
-				memoryRequest := resources[0].Requests[apiv1.ResourceMemory]
-				assert.Equal(t, tc.expectedMem.Value(), memoryRequest.Value(), "memory request doesn't match")
+				if containsResource(tc.allowedResources, apiv1.ResourceMemory) {
+					memoryRequest := resources[0].Requests[apiv1.ResourceMemory]
+					assert.Equal(t, tc.expectedMem.Value(), memoryRequest.Value(), "memory request doesn't match")
+				} else {
+					_, ok := resources[0].Requests[apiv1.ResourceMemory]
+					assert.False(t, ok)
+				}
 
 				cpuLimit, cpuLimitPresent := resources[0].Limits[apiv1.ResourceCPU]
 				if tc.expectedCPULimit == nil {

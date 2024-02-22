@@ -18,7 +18,6 @@ package recommendation
 
 import (
 	"fmt"
-
 	core "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
@@ -35,24 +34,27 @@ type Provider interface {
 type recommendationProvider struct {
 	limitsRangeCalculator   limitrange.LimitRangeCalculator
 	recommendationProcessor vpa_api_util.RecommendationProcessor
+	allowedResources        []core.ResourceName
 }
 
 // NewProvider constructs the recommendation provider that can be used to determine recommendations for pods.
 func NewProvider(calculator limitrange.LimitRangeCalculator,
-	recommendationProcessor vpa_api_util.RecommendationProcessor) Provider {
+	recommendationProcessor vpa_api_util.RecommendationProcessor,
+	allowedResources []core.ResourceName) Provider {
 	return &recommendationProvider{
 		limitsRangeCalculator:   calculator,
 		recommendationProcessor: recommendationProcessor,
+		allowedResources:        allowedResources,
 	}
 }
 
 // GetContainersResources returns the recommended resources for each container in the given pod in the same order they are specified in the pod.Spec.
 // If addAll is set to true, containers w/o a recommendation are also added to the list, otherwise they're skipped (default behaviour).
 func GetContainersResources(pod *core.Pod, vpaResourcePolicy *vpa_types.PodResourcePolicy, podRecommendation vpa_types.RecommendedPodResources, limitRange *core.LimitRangeItem,
-	addAll bool, annotations vpa_api_util.ContainerToAnnotationsMap) []vpa_api_util.ContainerResources {
+	addAll bool, annotations vpa_api_util.ContainerToAnnotationsMap, allowedResources []core.ResourceName) []vpa_api_util.ContainerResources {
 	resources := make([]vpa_api_util.ContainerResources, len(pod.Spec.Containers))
 	for i, container := range pod.Spec.Containers {
-		recommendation := vpa_api_util.GetRecommendationForContainer(container.Name, &podRecommendation)
+		recommendation := filterAllowedContainerResources(vpa_api_util.GetRecommendationForContainer(container.Name, &podRecommendation), allowedResources)
 		if recommendation == nil {
 			if !addAll {
 				klog.V(2).Infof("no matching recommendation found for container %s, skipping", container.Name)
@@ -109,7 +111,7 @@ func (p *recommendationProvider) GetContainersResourcesForPod(pod *core.Pod, vpa
 	if vpa.Spec.UpdatePolicy == nil || vpa.Spec.UpdatePolicy.UpdateMode == nil || *vpa.Spec.UpdatePolicy.UpdateMode != vpa_types.UpdateModeOff {
 		resourcePolicy = vpa.Spec.ResourcePolicy
 	}
-	containerResources := GetContainersResources(pod, resourcePolicy, *recommendedPodResources, containerLimitRange, false, annotations)
+	containerResources := GetContainersResources(pod, resourcePolicy, *recommendedPodResources, containerLimitRange, false, annotations, p.allowedResources)
 
 	// Ensure that we are not propagating empty resource key if any.
 	for _, resource := range containerResources {
@@ -119,4 +121,33 @@ func (p *recommendationProvider) GetContainersResourcesForPod(pod *core.Pod, vpa
 	}
 
 	return containerResources, annotations, nil
+}
+
+func filterAllowedContainerResources(recommendation *vpa_types.RecommendedContainerResources, allowedResources []core.ResourceName) *vpa_types.RecommendedContainerResources {
+	if recommendation != nil {
+		recommendation.Target = filterResourceList(recommendation.Target, allowedResources)
+		recommendation.LowerBound = filterResourceList(recommendation.LowerBound, allowedResources)
+		recommendation.UpperBound = filterResourceList(recommendation.UpperBound, allowedResources)
+		recommendation.UncappedTarget = filterResourceList(recommendation.UncappedTarget, allowedResources)
+	}
+	return recommendation
+}
+
+func filterResourceList(resourceList core.ResourceList, allowedResources []core.ResourceName) core.ResourceList {
+	filteredResourceList := core.ResourceList{}
+	for resourceName, resourceValue := range resourceList {
+		if containsResource(allowedResources, resourceName) {
+			filteredResourceList[resourceName] = resourceValue
+		}
+	}
+	return filteredResourceList
+}
+
+func containsResource(resourceNames []core.ResourceName, target core.ResourceName) bool {
+	for _, resourceName := range resourceNames {
+		if target == resourceName {
+			return true
+		}
+	}
+	return false
 }
