@@ -354,7 +354,7 @@ func (ng *AwsNodeGroup) Nodes() ([]cloudprovider.Instance, error) {
 	instances := make([]cloudprovider.Instance, len(asgNodes))
 
 	for i, asgNode := range asgNodes {
-		var status *cloudprovider.InstanceStatus
+		status := &cloudprovider.InstanceStatus{}
 		instanceStatusString, err := ng.awsManager.GetInstanceStatus(asgNode)
 		if err != nil {
 			klog.V(4).Infof("Could not get instance status, continuing anyways: %v", err)
