@@ -28,6 +28,7 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/test"
 	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
 
+	"github.com/go-openapi/jsonpointer"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -246,6 +247,33 @@ func TestClalculatePatches_ResourceUpdates(t *testing.T) {
 			expectPatches: []resource_admission.PatchRecord{
 				addResourceLimitPatch(0, cpu, "1"),
 				addAnnotationRequest([][]string{{cpu}}, limit),
+			},
+		},
+		{
+			name: "patch for extended resource properly escaped",
+			pod: &core.Pod{
+				Spec: core.PodSpec{
+					Containers: []core.Container{{
+						Resources: core.ResourceRequirements{
+							Requests: core.ResourceList{
+								"example.com/dongle": resource.MustParse("0"),
+							},
+						},
+					}},
+				},
+			},
+			namespace: "default",
+			recommendResources: []vpa_api_util.ContainerResources{
+				{
+					Requests: core.ResourceList{
+						"example.com/dongle": resource.MustParse("1"),
+					},
+				},
+			},
+			recommendAnnotations: vpa_api_util.ContainerToAnnotationsMap{},
+			expectPatches: []resource_admission.PatchRecord{
+				addResourceRequestPatch(0, jsonpointer.Escape("example.com/dongle"), "1"),
+				addAnnotationRequest([][]string{{"example.com/dongle"}}, request),
 			},
 		},
 	}
