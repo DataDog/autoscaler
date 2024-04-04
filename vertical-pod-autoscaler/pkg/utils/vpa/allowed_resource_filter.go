@@ -38,14 +38,19 @@ func (p *allowedResourceFilter) Apply(podRecommendation *vpa_types.RecommendedPo
 	policy *vpa_types.PodResourcePolicy,
 	conditions []vpa_types.VerticalPodAutoscalerCondition,
 	pod *corev1.Pod) (*vpa_types.RecommendedPodResources, ContainerToAnnotationsMap, error) {
-	recommendation := podRecommendation
-	accumulatedContainerToAnnotationsMap := ContainerToAnnotationsMap{}
 
-	for i, containerRecommendation := range recommendation.ContainerRecommendations {
-		recommendation.ContainerRecommendations[i] = filterAllowedContainerResources(containerRecommendation, p.allowedResources)
+	if podRecommendation == nil || policy == nil {
+		// If there is no recommendation or no policies have been defined then no recommendation can be computed.
+		return podRecommendation, nil, nil
 	}
 
-	return recommendation, accumulatedContainerToAnnotationsMap, nil
+	accumulatedContainerToAnnotationsMap := ContainerToAnnotationsMap{}
+
+	for i, containerRecommendation := range podRecommendation.ContainerRecommendations {
+		podRecommendation.ContainerRecommendations[i] = filterAllowedContainerResources(containerRecommendation, p.allowedResources)
+	}
+
+	return podRecommendation, accumulatedContainerToAnnotationsMap, nil
 }
 
 func filterAllowedContainerResources(recommendation vpa_types.RecommendedContainerResources, allowedResources []corev1.ResourceName) vpa_types.RecommendedContainerResources {

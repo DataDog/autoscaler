@@ -157,7 +157,7 @@ func TestAllowedResourceFilter(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			processor := NewAllowedResourceFilter(tc.allowedResources)
-			processedRecommendation, _, err := processor.Apply(&tc.recommendation, nil, nil, nil)
+			processedRecommendation, _, err := processor.Apply(&tc.recommendation, &vpa_types.PodResourcePolicy{}, nil, nil)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedRecommendation, *processedRecommendation)
 		})
