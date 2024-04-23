@@ -39,9 +39,9 @@ func (p *allowedResourceFilter) Apply(podRecommendation *vpa_types.RecommendedPo
 	conditions []vpa_types.VerticalPodAutoscalerCondition,
 	pod *corev1.Pod) (*vpa_types.RecommendedPodResources, ContainerToAnnotationsMap, error) {
 
-	if podRecommendation == nil || policy == nil {
-		// If there is no recommendation or no policies have been defined then no recommendation can be computed.
-		return podRecommendation, nil, nil
+	if podRecommendation == nil {
+		// If there is no recommendation then no filtered recommendation can be computed.
+		return nil, nil, nil
 	}
 
 	accumulatedContainerToAnnotationsMap := ContainerToAnnotationsMap{}
