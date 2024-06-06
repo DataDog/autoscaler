@@ -66,7 +66,7 @@ import (
 
 const (
 	storageClassNameLocal   = "local-data"
-	storageClassNameTopolvm = "topolvm-provisioner"
+	storageClassNameTopolvm = "dynamic-local-data"
 	storageClassNameOpenEBS = "openebs-lvmpv"
 )
 
