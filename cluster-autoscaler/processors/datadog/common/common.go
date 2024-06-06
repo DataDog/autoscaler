@@ -41,8 +41,6 @@ const (
 
 	// DatadogStorageProvisionerTopoLVM is the storage provisioner label value to use for topolvm implementation
 	DatadogStorageProvisionerTopoLVM = "topolvm"
-	// DatadogStorageProvisionerOpenEBS is the storage provisioner label value to use for openebs implementation
-	DatadogStorageProvisionerOpenEBS = "openebs-lvm"
 )
 
 var (
@@ -80,10 +78,10 @@ func SetNodeLocalDataResource(nodeInfo *schedulerframework.NodeInfo) {
 		node.Status.Capacity = apiv1.ResourceList{}
 	}
 
-	provisioner, _ := node.Labels[DatadogLocalStorageProvisionerLabel]
+	provisioner := node.Labels[DatadogLocalStorageProvisionerLabel]
 	switch provisioner {
-	case DatadogStorageProvisionerTopoLVM, DatadogStorageProvisionerOpenEBS:
-		capacity, _ := node.Labels[DatadogInitialStorageCapacityLabel]
+	case DatadogStorageProvisionerTopoLVM:
+		capacity := node.Labels[DatadogInitialStorageCapacityLabel]
 		capacityResource, err := resource.ParseQuantity(capacity)
 		if err == nil {
 			node.Status.Capacity[DatadogLocalDataResource] = capacityResource.DeepCopy()

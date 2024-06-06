@@ -67,7 +67,6 @@ import (
 const (
 	storageClassNameLocal   = "local-data"
 	storageClassNameTopolvm = "dynamic-local-data"
-	storageClassNameOpenEBS = "openebs-lvmpv"
 )
 
 type transformLocalData struct {
@@ -124,7 +123,7 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 			}
 
 			switch *pvc.Spec.StorageClassName {
-			case storageClassNameTopolvm, storageClassNameOpenEBS:
+			case storageClassNameTopolvm:
 				if storage, ok := pvc.Spec.Resources.Requests["storage"]; ok {
 					po.Spec.Containers[0].Resources.Requests[common.DatadogLocalDataResource] = storage.DeepCopy()
 					po.Spec.Containers[0].Resources.Limits[common.DatadogLocalDataResource] = storage.DeepCopy()
@@ -148,8 +147,6 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 
 func isSpecialPVCStorageClass(className string) bool {
 	switch className {
-	case storageClassNameOpenEBS:
-		return true
 	case storageClassNameTopolvm:
 		return true
 	case storageClassNameLocal:

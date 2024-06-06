@@ -118,16 +118,6 @@ func TestTransformLocalDataProcess(t *testing.T) {
 			},
 			[]*corev1.Pod{buildPod("pod1", testLdResources, testLdResources)},
 		},
-
-		{
-			"openebs provisioner is using proper storage capacity value",
-			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1", "pvc-2")},
-			[]*corev1.PersistentVolumeClaim{
-				buildPVC("pvc-1", testRemoteClass),
-				buildPVCWithStorage("pvc-2", storageClassNameOpenEBS, "100Gi"),
-			},
-			[]*corev1.Pod{buildPod("pod1", testTopolvmResources, testTopolvmResources, "pvc-1")},
-		},
 	}
 
 	for _, tt := range tests {

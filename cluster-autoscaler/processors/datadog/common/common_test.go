@@ -158,26 +158,3 @@ func TestShouldNotSetResourcesWithMissingLabel(t *testing.T) {
 	_, ok = ni.Allocatable.ScalarResources[DatadogLocalDataResource]
 	assert.False(t, ok)
 }
-
-func TestSetNodeResourceFromOpenEBS(t *testing.T) {
-	var hundredGB int64 = 100 * 1024 * 1024 * 1024
-	ni := schedulerframework.NewNodeInfo()
-	ni.SetNode(&corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				DatadogLocalStorageProvisionerLabel: "openebs-lvm",
-				DatadogInitialStorageCapacityLabel:  "100Gi",
-			},
-		},
-	})
-
-	SetNodeLocalDataResource(ni)
-
-	nodeValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataResource]
-	assert.True(t, ok)
-	assert.Equal(t, nodeValue.String(), resource.NewQuantity(hundredGB, resource.BinarySI).String())
-
-	niValue, ok := ni.Allocatable.ScalarResources[DatadogLocalDataResource]
-	assert.True(t, ok)
-	assert.Equal(t, niValue, hundredGB)
-}
