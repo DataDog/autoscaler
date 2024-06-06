@@ -325,7 +325,7 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 		GpuTotal:                         parsedGpuTotal,
 		NodeGroups:                       *nodeGroupsFlag,
 		EnforceNodeGroupMinSize:          *enforceNodeGroupMinSize,
-		NodeInfosProcessorPodTemplates:     *podTemplatesProcessor,
+		NodeInfosProcessorPodTemplates:   *podTemplatesProcessor,
 		ScaleDownDelayAfterAdd:           *scaleDownDelayAfterAdd,
 		ScaleDownDelayAfterDelete:        *scaleDownDelayAfterDelete,
 		ScaleDownDelayAfterFailure:       *scaleDownDelayAfterFailure,
