@@ -91,6 +91,7 @@ func (o *ScaleUpOrchestrator) ScaleUp(
 		return scaleUpError(&status.ScaleUpStatus{}, errors.NewAutoscalerError(errors.InternalError, "ScaleUpOrchestrator is not initialized"))
 	}
 
+	klog.V(1).Info("hello from ben's autoscaling branch")
 	// From now on we only care about unschedulable pods that were marked after the newest
 	// node became available for the scheduler.
 	if len(unschedulablePods) == 0 {
