@@ -40,6 +40,11 @@ type labelAutoDiscoveryConfig struct {
 	MaxSize *int
 }
 
+type autoDiscoveryConfigSizes struct {
+	Min int
+	Max int
+}
+
 // ParseLabelAutoDiscoverySpecs returns any provided NodeGroupAutoDiscoverySpecs
 // parsed into configuration appropriate for node group autodiscovery.
 func ParseLabelAutoDiscoverySpecs(o cloudprovider.NodeGroupDiscoveryOptions) ([]labelAutoDiscoveryConfig, error) {
@@ -102,29 +107,30 @@ func parseLabelAutoDiscoverySpec(spec string) (labelAutoDiscoveryConfig, error) 
 	return cfg, nil
 }
 
-// returns true if the VMSS's tags match the autodiscovery configs
+// returns an autoDiscoveryConfigSizes struct if the VMSS's tags match the autodiscovery configs
+// if the VMSS's tags do not match then return nil
 // if there are multiple min/max sizes defined, return the highest min value and the lowest max value
-func matchDiscoveryConfig(labels map[string]*string, configs []labelAutoDiscoveryConfig) (bool, int, int) {
+func matchDiscoveryConfig(labels map[string]*string, configs []labelAutoDiscoveryConfig) *autoDiscoveryConfigSizes {
 	if len(configs) == 0 {
-		return false, 0, 0
+		return nil
 	}
 	minSize := -1
 	maxSize := -1
 
 	for _, c := range configs {
 		if len(c.Selector) == 0 {
-			return false, 0, 0
+			return nil
 		}
 
 		for k, v := range c.Selector {
 			value, ok := labels[k]
 			if !ok {
-				return false, 0, 0
+				return nil
 			}
 
 			if len(v) > 0 {
 				if value == nil || *value != v {
-					return false, 0, 0
+					return nil
 				}
 			}
 		}
@@ -136,5 +142,8 @@ func matchDiscoveryConfig(labels map[string]*string, configs []labelAutoDiscover
 		}
 	}
 
-	return true, minSize, maxSize
+	return &autoDiscoveryConfigSizes{
+		Min: minSize,
+		Max: maxSize,
+	}
 }
