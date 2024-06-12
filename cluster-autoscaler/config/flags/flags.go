@@ -138,7 +138,8 @@ var (
 			"Azure matches by VMSS tags, similar to AWS. And you can optionally specify a default min and max size, e.g. `label:tag=tagKey,anotherTagKey=bar,min=0,max=600`. "+
 			"Can be used multiple times.")
 
-	estimatorFlag = flag.String("estimator", estimator.BinpackingEstimatorName,
+	skipSimilarNodeGroupRecomputation = flag.Bool("skip-similar-node-group-recomputation", false, "if true, skips similar NodeGroup recomputation for the best option returned by the expander during scaleups. You must enable `balance-similar-node-groups` for this to work.")
+	estimatorFlag                     = flag.String("estimator", estimator.BinpackingEstimatorName,
 		"Type of resource estimator to be used in scale up. Available values: ["+strings.Join(estimator.AvailableEstimators, ",")+"]")
 
 	expanderFlag = flag.String("expander", expander.LeastWasteExpanderName, "Type of node group expander to be used in scale up. Available values: ["+strings.Join(expander.AvailableExpanders, ",")+"]. Specifying multiple values separated by commas will call the expanders in succession until there is only one option remaining. Ties still existing after this process are broken randomly.")
@@ -386,6 +387,7 @@ func createAutoscalingOptions() config.AutoscalingOptions {
 			MaxAllocatableDifferenceRatio:    *maxAllocatableDifferenceRatio,
 			MaxFreeDifferenceRatio:           *maxFreeDifferenceRatio,
 		},
+		SkipSimilarNodeGroupRecomputation:            *skipSimilarNodeGroupRecomputation,
 		DynamicNodeDeleteDelayAfterTaintEnabled:      *dynamicNodeDeleteDelayAfterTaintEnabled,
 		BypassedSchedulers:                           scheduler_util.GetBypassedSchedulersMap(*bypassedSchedulers),
 		ProvisioningRequestEnabled:                   *provisioningRequestsEnabled,
