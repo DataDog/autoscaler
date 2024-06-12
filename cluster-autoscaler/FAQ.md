@@ -882,6 +882,7 @@ The following startup parameters are supported for cluster autoscaler:
 | `balance-similar-node-groups` | Detect similar node groups and balance the number of nodes between them | false
 | `balancing-ignore-label` | Define a node label that should be ignored when considering node group similarity. One label per flag occurrence. | ""
 | `balancing-label` | Define a node label to use when comparing node group similarity. If set, all other comparison logic is disabled, and only labels are considered when comparing groups. One label per flag occurrence. | ""
+| `skip-similar-node-group-recomputation` | Should CA skip similar NodeGroup recomputation for the best option returned by the expander during scaleups. You must enable `balance-similar-node-groups` for this to work. | false
 | `node-autoprovisioning-enabled` | Should CA autoprovision node groups when needed | false
 | `max-autoprovisioned-node-group-count` | The maximum number of autoprovisioned groups in the cluster | 15
 | `unremovable-node-recheck-timeout` | The timeout before we check again a node that couldn't be removed before | 5 minutes
