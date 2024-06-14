@@ -63,6 +63,8 @@ type ScaleSet struct {
 	instanceMutex       sync.Mutex
 	instanceCache       []cloudprovider.Instance
 	lastInstanceRefresh time.Time
+
+	vmDeletionsInProgress sync.Map
 }
 
 // NewScaleSet creates a new NewScaleSet.
@@ -177,18 +179,22 @@ func (scaleSet *ScaleSet) GetScaleSetSize() (int64, error) {
 	return scaleSet.getCurSize()
 }
 
-func (scaleSet *ScaleSet) waitForDeleteInstances(future *azure.Future, requiredIds *compute.VirtualMachineScaleSetVMInstanceRequiredIDs) {
+func (scaleSet *ScaleSet) waitForDeleteInstances(future *azure.Future, instanceNames []string) {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
-	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s", requiredIds.InstanceIds, scaleSet.Name)
+	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s", instanceNames, scaleSet.Name)
 	httpResponse, err := scaleSet.manager.azClient.virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(ctx, future, scaleSet.manager.config.ResourceGroup)
+	for _, instanceName := range instanceNames {
+		scaleSet.trackDeletionEnd(instanceName)
+		klog.V(5).Infof("tracking end of deletion of VM %s", instanceName)
+	}
 	isSuccess, err := isSuccessHTTPResponse(httpResponse, err)
 	if isSuccess {
-		klog.V(3).Infof("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s success", requiredIds.InstanceIds, scaleSet.Name)
+		klog.V(3).Infof("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult(%v) for %s success", instanceNames, scaleSet.Name)
 		return
 	}
-	klog.Errorf("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult - DeleteInstances for instances %v for %s failed with error: %v", requiredIds.InstanceIds, scaleSet.Name, err)
+	klog.Errorf("virtualMachineScaleSetsClient.WaitForDeleteInstancesResult - DeleteInstances for instances %v for %s failed with error: %v", instanceNames, scaleSet.Name, err)
 }
 
 // updateVMSSCapacity invokes virtualMachineScaleSetsClient to update the capacity for VMSS.
@@ -380,7 +386,7 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 		return err
 	}
 
-	instancesToDelete := []*azureRef{}
+	var instancesToDelete []string
 	for _, instance := range instances {
 		asg, err := scaleSet.manager.GetNodeGroupForInstance(instance)
 		if err != nil {
@@ -395,7 +401,13 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 			klog.V(3).Infof("Skipping deleting instance %s as its current state is deleting", instance.Name)
 			continue
 		}
-		instancesToDelete = append(instancesToDelete, instance)
+
+		if scaleSet.isBeingDeleted(instance.Name) {
+			klog.V(5).Infof("VM %s is already being deleted", scaleSet.Name)
+			continue
+		}
+
+		instancesToDelete = append(instancesToDelete, instance.Name)
 	}
 
 	// nothing to delete
@@ -405,8 +417,8 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 	}
 
 	instanceIDs := []string{}
-	for _, instance := range instancesToDelete {
-		instanceID, err := getLastSegment(instance.Name)
+	for _, instanceName := range instancesToDelete {
+		instanceID, err := getLastSegment(instanceName)
 		if err != nil {
 			klog.Errorf("getLastSegment failed with error: %v", err)
 			return err
@@ -422,10 +434,8 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 	defer cancel()
 	resourceGroup := scaleSet.manager.config.ResourceGroup
 
-	scaleSet.instanceMutex.Lock()
 	klog.V(3).Infof("Calling virtualMachineScaleSetsClient.DeleteInstancesAsync(%v)", requiredIds.InstanceIds)
 	future, rerr := scaleSet.manager.azClient.virtualMachineScaleSetsClient.DeleteInstancesAsync(ctx, resourceGroup, commonAsg.Id(), *requiredIds, false)
-	scaleSet.instanceMutex.Unlock()
 	if rerr != nil {
 		klog.Errorf("virtualMachineScaleSetsClient.DeleteInstancesAsync for instances %v failed: %v", requiredIds.InstanceIds, rerr)
 		return rerr.Error()
@@ -442,12 +452,13 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 	}
 
 	// Proactively set the status of the instances to be deleted in cache
-	for _, instance := range instancesToDelete {
-		scaleSet.setInstanceStatusByProviderID(instance.Name, cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeleting})
+	for _, instanceName := range instancesToDelete {
+		scaleSet.setInstanceStatusByProviderID(instanceName, cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeleting})
+		scaleSet.trackDeletionStart(instanceName)
+		klog.V(5).Infof("tracking start of deletion of VM %s", instanceName)
 	}
 
-	go scaleSet.waitForDeleteInstances(future, requiredIds)
-
+	go scaleSet.waitForDeleteInstances(future, instancesToDelete)
 	return nil
 }
 
@@ -580,7 +591,7 @@ func (scaleSet *ScaleSet) buildScaleSetCache(lastRefresh time.Time) error {
 		return rerr.Error()
 	}
 
-	scaleSet.instanceCache = buildInstanceCache(vms)
+	scaleSet.instanceCache = scaleSet.buildInstanceCache(vms)
 	scaleSet.lastInstanceRefresh = lastRefresh
 
 	return nil
@@ -598,7 +609,7 @@ func (scaleSet *ScaleSet) buildScaleSetCacheForFlex(lastRefresh time.Time) error
 		return rerr.Error()
 	}
 
-	scaleSet.instanceCache = buildInstanceCache(vms)
+	scaleSet.instanceCache = scaleSet.buildInstanceCache(vms)
 	scaleSet.lastInstanceRefresh = lastRefresh
 
 	return nil
@@ -606,7 +617,7 @@ func (scaleSet *ScaleSet) buildScaleSetCacheForFlex(lastRefresh time.Time) error
 
 // Note that the GetScaleSetVms() results is not used directly because for the List endpoint,
 // their resource ID format is not consistent with Get endpoint
-func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
+func (scaleSet *ScaleSet) buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
 	instances := []cloudprovider.Instance{}
 
 	switch vms := vmList.(type) {
@@ -616,7 +627,7 @@ func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
 			if vm.InstanceView != nil && vm.InstanceView.Statuses != nil {
 				powerState = vmPowerStateFromStatuses(*vm.InstanceView.Statuses)
 			}
-			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
+			scaleSet.addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
 		}
 	case []compute.VirtualMachine:
 		for _, vm := range vms {
@@ -624,14 +635,14 @@ func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
 			if vm.InstanceView != nil && vm.InstanceView.Statuses != nil {
 				powerState = vmPowerStateFromStatuses(*vm.InstanceView.Statuses)
 			}
-			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
+			scaleSet.addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
 		}
 	}
 
 	return instances
 }
 
-func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisioningState *string, powerState string) {
+func (scaleSet *ScaleSet) addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisioningState *string, powerState string) {
 	// The resource ID is empty string, which indicates the instance may be in deleting state.
 	if len(*id) == 0 {
 		return
@@ -644,10 +655,17 @@ func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisi
 		return
 	}
 
-	*instances = append(*instances, cloudprovider.Instance{
+	instance := cloudprovider.Instance{
 		Id:     "azure://" + resourceID,
 		Status: instanceStatusFromProvisioningStateAndPowerState(resourceID, provisioningState, powerState),
-	})
+	}
+
+	// If the cache gets rebuilt while an instance is being deleted, override that instance's status
+	if scaleSet.isBeingDeleted("TODO FIND INSTANCE ID") {
+		instance.Status.State = cloudprovider.InstanceDeleting
+	}
+
+	*instances = append(*instances, instance)
 }
 
 func (scaleSet *ScaleSet) getInstanceByProviderID(providerID string) (cloudprovider.Instance, bool) {
@@ -731,4 +749,17 @@ func (scaleSet *ScaleSet) getOrchestrationMode() (compute.OrchestrationMode, err
 		return "", err
 	}
 	return vmss.OrchestrationMode, nil
+}
+
+func (scaleSet *ScaleSet) trackDeletionStart(instanceID string) {
+	scaleSet.vmDeletionsInProgress.Store(instanceID, struct{}{})
+}
+
+func (scaleSet *ScaleSet) trackDeletionEnd(instanceID string) {
+	scaleSet.vmDeletionsInProgress.Delete(instanceID)
+}
+
+func (scaleSet *ScaleSet) isBeingDeleted(instanceID string) bool {
+	_, ok := scaleSet.vmDeletionsInProgress.Load(instanceID)
+	return ok
 }

@@ -17,19 +17,22 @@ limitations under the License.
 package azure
 
 import (
+	"context"
 	"fmt"
-	"net/http"
-	"testing"
-
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2022-03-01/compute"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"net/http"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmclient/mockvmclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssclient/mockvmssclient"
 	"sigs.k8s.io/cloud-provider-azure/pkg/azureclients/vmssvmclient/mockvmssvmclient"
+	"sync/atomic"
+	"testing"
+	"time"
 )
 
 func newTestScaleSet(manager *AzureManager, name string) *ScaleSet {
@@ -498,6 +501,105 @@ func TestDeleteNodes(t *testing.T) {
 		assert.True(t, found, true)
 		assert.Equal(t, instance2.Status.State, cloudprovider.InstanceDeleting)
 
+	}
+}
+
+func TestDeleteNodesPreventsConcurrentDeletes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	vmssName := "test-asg"
+	var vmssCapacity int64 = 3
+	orchestrationModes := [2]compute.OrchestrationMode{compute.Uniform, compute.Flexible}
+	expectedVMSSVMs := newTestVMSSVMList(3)
+	expectedVMs := newTestVMList(3)
+
+	for _, orchMode := range orchestrationModes {
+
+		manager := newTestAzureManager(t)
+		expectedScaleSets := newTestVMSSList(vmssCapacity, vmssName, "eastus", orchMode)
+
+		var returnAsyncCall atomic.Bool
+		mockVMSSClient := mockvmssclient.NewMockInterface(ctrl)
+		mockVMSSClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup).Return(expectedScaleSets, nil).Times(2)
+		mockVMSSClient.EXPECT().DeleteInstancesAsync(gomock.Any(), manager.config.ResourceGroup, gomock.Any(), gomock.Any(), false).Times(1).Return(nil, nil)
+		mockVMSSClient.EXPECT().WaitForDeleteInstancesResult(gomock.Any(), gomock.Any(), manager.config.ResourceGroup).Times(1).DoAndReturn(func(context.Context, *azure.Future, string) (*http.Response, error) {
+			// Simulate latency in a return to delete instances
+			for {
+				if returnAsyncCall.Load() {
+					break
+				}
+				time.Sleep(time.Millisecond * 50)
+			}
+			return &http.Response{StatusCode: http.StatusOK}, nil
+		})
+		manager.azClient.virtualMachineScaleSetsClient = mockVMSSClient
+
+		mockVMSSVMClient := mockvmssvmclient.NewMockInterface(ctrl)
+		mockVMClient := mockvmclient.NewMockInterface(ctrl)
+
+		if orchMode == compute.Uniform {
+			mockVMSSVMClient.EXPECT().List(gomock.Any(), manager.config.ResourceGroup, "test-asg", gomock.Any()).Return(expectedVMSSVMs, nil).AnyTimes()
+			manager.azClient.virtualMachineScaleSetVMsClient = mockVMSSVMClient
+		} else {
+			manager.config.EnableVmssFlex = true
+			mockVMClient.EXPECT().ListVmssFlexVMsWithoutInstanceView(gomock.Any(), "test-asg").Return(expectedVMs, nil).AnyTimes()
+			manager.azClient.virtualMachinesClient = mockVMClient
+		}
+
+		err := manager.forceRefresh()
+		assert.NoError(t, err)
+
+		resourceLimiter := cloudprovider.NewResourceLimiter(
+			map[string]int64{cloudprovider.ResourceNameCores: 1, cloudprovider.ResourceNameMemory: 10000000},
+			map[string]int64{cloudprovider.ResourceNameCores: 10, cloudprovider.ResourceNameMemory: 100000000})
+		provider, err := BuildAzureCloudProvider(manager, resourceLimiter)
+
+		assert.NoError(t, err)
+
+		// Explicitly configure the scale set with a long refresh time to validate
+		// the cached value is not decremented more than once
+		testScaleSet := newTestScaleSet(manager, "test-asg")
+		testScaleSet.sizeRefreshPeriod = time.Hour
+		registered := manager.RegisterNodeGroup(testScaleSet)
+		manager.explicitlyConfigured["test-asg"] = true
+
+		assert.True(t, registered)
+		err = manager.forceRefresh()
+		assert.NoError(t, err)
+
+		scaleSet, ok := provider.NodeGroups()[0].(*ScaleSet)
+		assert.True(t, ok)
+
+		targetSize, err := scaleSet.TargetSize()
+		assert.NoError(t, err)
+		assert.Equal(t, 3, targetSize)
+
+		// Perform the delete operation
+		nodesToDelete := []*apiv1.Node{
+			newApiNode(orchMode, 0),
+		}
+		err = scaleSet.DeleteNodes(nodesToDelete)
+		assert.NoError(t, err)
+
+		// Ensure the cached size has been proactively decremented
+		targetSize, err = scaleSet.TargetSize()
+		assert.NoError(t, err)
+		assert.Equal(t, 2, targetSize)
+
+		// Delete again should not retrigger API calls
+		err = scaleSet.DeleteNodes(nodesToDelete)
+		assert.NoError(t, err)
+
+		// This time the cache size should not change
+		targetSize, err = scaleSet.TargetSize()
+		assert.NoError(t, err)
+		assert.Equal(t, 2, targetSize)
+
+		// Give the goroutine time to start, then allow the call to finish gracefully
+		// to fulfill mocked expectations
+		time.Sleep(time.Millisecond * 250)
+		returnAsyncCall.Store(true)
 	}
 }
 
