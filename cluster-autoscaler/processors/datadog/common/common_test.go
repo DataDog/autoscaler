@@ -112,6 +112,13 @@ func TestSetNodeLocalDataResource(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, niValue, int64(1))
 
+	// Only DatadogLocalDataResource should be set
+	_, ok = ni.Node().Status.Allocatable[DatadogEphemeralLocalDataResource]
+	assert.False(t, ok)
+
+	_, ok = ni.Allocatable.ScalarResources[DatadogEphemeralLocalDataResource]
+	assert.False(t, ok)
+
 	assert.Equal(t, len(ni.Pods), 2)
 }
 
@@ -129,13 +136,20 @@ func TestSetNodeResourceFromTopolvm(t *testing.T) {
 
 	SetNodeLocalDataResource(ni)
 
-	nodeValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataResource]
+	nodeValue, ok := ni.Node().Status.Allocatable[DatadogEphemeralLocalDataResource]
 	assert.True(t, ok)
 	assert.Equal(t, nodeValue.String(), resource.NewQuantity(hundredGB, resource.BinarySI).String())
 
-	niValue, ok := ni.Allocatable.ScalarResources[DatadogLocalDataResource]
+	niValue, ok := ni.Allocatable.ScalarResources[DatadogEphemeralLocalDataResource]
 	assert.True(t, ok)
 	assert.Equal(t, niValue, hundredGB)
+
+	// Only DatadogEphemeralLocalDataResource should be set
+	_, ok = ni.Node().Status.Allocatable[DatadogLocalDataResource]
+	assert.False(t, ok)
+
+	_, ok = ni.Allocatable.ScalarResources[DatadogLocalDataResource]
+	assert.False(t, ok)
 }
 
 func TestShouldNotSetResourcesWithMissingLabel(t *testing.T) {
@@ -156,5 +170,13 @@ func TestShouldNotSetResourcesWithMissingLabel(t *testing.T) {
 	assert.False(t, ok)
 
 	_, ok = ni.Allocatable.ScalarResources[DatadogLocalDataResource]
+	assert.False(t, ok)
+
+	_, ok = ni.Node().Status.Allocatable[DatadogEphemeralLocalDataResource]
+	assert.False(t, ok)
+	_, ok = ni.Node().Status.Capacity[DatadogEphemeralLocalDataResource]
+	assert.False(t, ok)
+
+	_, ok = ni.Allocatable.ScalarResources[DatadogEphemeralLocalDataResource]
 	assert.False(t, ok)
 }

@@ -18,6 +18,7 @@ package pods
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
 	v1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/pointer"
 )
 
 var (
@@ -39,14 +41,17 @@ var (
 	testLdResources    = corev1.ResourceList{
 		common.DatadogLocalDataResource: common.DatadogLocalDataQuantity.DeepCopy(),
 	}
+	test100GResource     = resource.MustParse("100Gi")
+	testTopolvmResources = corev1.ResourceList{
+		common.DatadogEphemeralLocalDataResource: test100GResource,
+	}
+	testMixedResources = corev1.ResourceList{
+		common.DatadogLocalDataResource:          common.DatadogLocalDataQuantity.DeepCopy(),
+		common.DatadogEphemeralLocalDataResource: test100GResource,
+	}
 )
 
 func TestTransformLocalDataProcess(t *testing.T) {
-	test100GResource, _ := resource.ParseQuantity("100Gi")
-	testTopolvmResources := corev1.ResourceList{
-		common.DatadogLocalDataResource: test100GResource,
-	}
-
 	tests := []struct {
 		name     string
 		pods     []*corev1.Pod
@@ -100,23 +105,21 @@ func TestTransformLocalDataProcess(t *testing.T) {
 		},
 
 		{
-			"topolvm provisioner is using proper storage capacity value",
-			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1", "pvc-2")},
+			"topolvm handles ephemeral volumes",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1", "ephemeral-pvc-2")},
 			[]*corev1.PersistentVolumeClaim{
 				buildPVC("pvc-1", testRemoteClass),
-				buildPVCWithStorage("pvc-2", storageClassNameTopolvm, "100Gi"),
 			},
 			[]*corev1.Pod{buildPod("pod1", testTopolvmResources, testTopolvmResources, "pvc-1")},
 		},
 
 		{
-			"one pvc will override the other",
-			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1", "pvc-2")},
+			"ephemeral and persistent volumes are handled separately",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "ephemeral-pvc-1", "pvc-2")},
 			[]*corev1.PersistentVolumeClaim{
-				buildPVCWithStorage("pvc-1", storageClassNameTopolvm, "100Gi"),
 				buildPVC("pvc-2", storageClassNameLocal),
 			},
-			[]*corev1.Pod{buildPod("pod1", testLdResources, testLdResources)},
+			[]*corev1.Pod{buildPod("pod1", testMixedResources, testMixedResources)},
 		},
 	}
 
@@ -167,15 +170,36 @@ func buildPod(name string, requests, limits corev1.ResourceList, claimNames ...s
 	}
 
 	for _, name := range claimNames {
-		pod.Spec.Volumes = append(pod.Spec.Volumes,
-			corev1.Volume{
-				Name: name,
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: name,
+		if strings.Contains(name, "ephemeral") {
+			pod.Spec.Volumes = append(pod.Spec.Volumes,
+				corev1.Volume{
+					Name: name,
+					VolumeSource: corev1.VolumeSource{
+						Ephemeral: &corev1.EphemeralVolumeSource{
+							VolumeClaimTemplate: &corev1.PersistentVolumeClaimTemplate{
+								Spec: corev1.PersistentVolumeClaimSpec{
+									StorageClassName: pointer.String(storageClassNameTopolvm),
+									Resources: corev1.ResourceRequirements{
+										Requests: corev1.ResourceList{
+											corev1.ResourceStorage: resource.MustParse("100Gi"),
+										},
+									},
+								},
+							},
+						},
 					},
-				},
-			})
+				})
+		} else {
+			pod.Spec.Volumes = append(pod.Spec.Volumes,
+				corev1.Volume{
+					Name: name,
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: name,
+						},
+					},
+				})
+		}
 	}
 
 	return pod

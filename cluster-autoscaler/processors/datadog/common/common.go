@@ -32,6 +32,10 @@ const (
 	// nodes offering local storage, and currently injected as requests on
 	// Pending pods having a PVC for local-data volumes.
 	DatadogLocalDataResource apiv1.ResourceName = "storageclass/local-data"
+	// DatadogEphemeralLocalDataResource is a virtual resource placed on new or future
+	// nodes offering ephemeral local storage, and currently injected as requests on
+	// Pending pods having an ephemeral PVC for local-data volumes.
+	DatadogEphemeralLocalDataResource apiv1.ResourceName = "storageclass/ephemeral-local-data"
 
 	// DatadogLocalStorageProvisionerLabel is indicating which technology will be used to provide local storage
 	DatadogLocalStorageProvisionerLabel = "nodegroups.datadoghq.com/local-storage-provisioner"
@@ -84,8 +88,8 @@ func SetNodeLocalDataResource(nodeInfo *schedulerframework.NodeInfo) {
 		capacity := node.Labels[DatadogInitialStorageCapacityLabel]
 		capacityResource, err := resource.ParseQuantity(capacity)
 		if err == nil {
-			node.Status.Capacity[DatadogLocalDataResource] = capacityResource.DeepCopy()
-			node.Status.Allocatable[DatadogLocalDataResource] = capacityResource.DeepCopy()
+			node.Status.Capacity[DatadogEphemeralLocalDataResource] = capacityResource.DeepCopy()
+			node.Status.Allocatable[DatadogEphemeralLocalDataResource] = capacityResource.DeepCopy()
 		} else {
 			klog.Warningf("failed to attach capacity information (%s) to node (%s): %v", capacity, node.Name, err)
 		}
