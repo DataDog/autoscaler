@@ -53,4 +53,6 @@ message Option {
 
   // proto-serialized v1.Pod object
   repeated bytes podBytes = 5;
+
+  repeated string similarNodeGroupIds = 6;
 }
