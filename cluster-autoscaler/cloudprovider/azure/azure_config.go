@@ -119,6 +119,9 @@ type Config struct {
 	// VMSS metadata cache TTL in seconds, only applies for vmss type
 	VmssCacheTTL int64 `json:"vmssCacheTTL" yaml:"vmssCacheTTL"`
 
+	// VMSS cache option to force refresh of the vmss capacity before an upscale
+	VmssCacheForceRefresh bool `json:"vmssCacheForceRefresh" yaml:"vmssCacheForceRefresh"`
+
 	// VMSS instances cache TTL in seconds, only applies for vmss type
 	VmssVmsCacheTTL int64 `json:"vmssVmsCacheTTL" yaml:"vmssVmsCacheTTL"`
 
@@ -212,6 +215,13 @@ func BuildAzureConfig(configReader io.Reader) (*Config, error) {
 			cfg.VmssCacheTTL, err = strconv.ParseInt(vmssCacheTTL, 10, 0)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse AZURE_VMSS_CACHE_TTL %q: %v", vmssCacheTTL, err)
+			}
+		}
+
+		if vmssCacheForceRefresh := os.Getenv("AZURE_VMSS_CACHE_FORCE_REFRESH"); vmssCacheForceRefresh != "" {
+			cfg.VmssCacheForceRefresh, err = strconv.ParseBool(vmssCacheForceRefresh)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse AZURE_VMSS_CACHE_FORCE_REFRESH %q: %v", vmssCacheForceRefresh, err)
 			}
 		}
 
