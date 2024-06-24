@@ -568,14 +568,14 @@ func (scaleSet *ScaleSet) Nodes() ([]cloudprovider.Instance, error) {
 	klog.V(4).Infof("VMSS: orchestration Mode %s", orchestrationMode)
 
 	if orchestrationMode == compute.Uniform {
-		err := scaleSet.buildScaleSetCache(lastRefresh)
+		err := scaleSet.buildScaleSetCache(lastRefresh, scaleSet.instanceCache)
 		if err != nil {
 			return nil, err
 		}
 
 	} else if orchestrationMode == compute.Flexible {
 		if scaleSet.manager.config.EnableVmssFlex {
-			err := scaleSet.buildScaleSetCacheForFlex(lastRefresh)
+			err := scaleSet.buildScaleSetCacheForFlex(lastRefresh, scaleSet.instanceCache)
 			if err != nil {
 				return nil, err
 			}
@@ -591,7 +591,7 @@ func (scaleSet *ScaleSet) Nodes() ([]cloudprovider.Instance, error) {
 	return scaleSet.instanceCache, nil
 }
 
-func (scaleSet *ScaleSet) buildScaleSetCache(lastRefresh time.Time) error {
+func (scaleSet *ScaleSet) buildScaleSetCache(lastRefresh time.Time, lastInstanceCacheState []cloudprovider.Instance) error {
 	vms, rerr := scaleSet.GetScaleSetVms()
 	if rerr != nil {
 		if isAzureRequestsThrottled(rerr) {
@@ -603,13 +603,13 @@ func (scaleSet *ScaleSet) buildScaleSetCache(lastRefresh time.Time) error {
 		return rerr.Error()
 	}
 
-	scaleSet.instanceCache = buildInstanceCache(vms)
+	scaleSet.instanceCache = buildInstanceCache(vms, lastInstanceCacheState)
 	scaleSet.lastInstanceRefresh = lastRefresh
 
 	return nil
 }
 
-func (scaleSet *ScaleSet) buildScaleSetCacheForFlex(lastRefresh time.Time) error {
+func (scaleSet *ScaleSet) buildScaleSetCacheForFlex(lastRefresh time.Time, lastInstanceCacheState []cloudprovider.Instance) error {
 	vms, rerr := scaleSet.GetFlexibleScaleSetVms()
 	if rerr != nil {
 		if isAzureRequestsThrottled(rerr) {
@@ -621,7 +621,7 @@ func (scaleSet *ScaleSet) buildScaleSetCacheForFlex(lastRefresh time.Time) error
 		return rerr.Error()
 	}
 
-	scaleSet.instanceCache = buildInstanceCache(vms)
+	scaleSet.instanceCache = buildInstanceCache(vms, lastInstanceCacheState)
 	scaleSet.lastInstanceRefresh = lastRefresh
 
 	return nil
@@ -629,8 +629,17 @@ func (scaleSet *ScaleSet) buildScaleSetCacheForFlex(lastRefresh time.Time) error
 
 // Note that the GetScaleSetVms() results is not used directly because for the List endpoint,
 // their resource ID format is not consistent with Get endpoint
-func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
+func buildInstanceCache(vmList interface{}, lastInstanceCacheState []cloudprovider.Instance) []cloudprovider.Instance {
 	instances := []cloudprovider.Instance{}
+
+	// Find the instances that are already being deleted, so that status is not
+	// lost when the cache is rebuilt
+	var instancesBeingDeleted []cloudprovider.Instance
+	for _, instance := range lastInstanceCacheState {
+		if instance.Status != nil && instance.Status.State == cloudprovider.InstanceDeleting {
+			instancesBeingDeleted = append(instancesBeingDeleted, instance)
+		}
+	}
 
 	switch vms := vmList.(type) {
 	case []compute.VirtualMachineScaleSetVM:
@@ -639,7 +648,7 @@ func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
 			if vm.InstanceView != nil && vm.InstanceView.Statuses != nil {
 				powerState = vmPowerStateFromStatuses(*vm.InstanceView.Statuses)
 			}
-			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
+			addInstanceToCache(&instances, instancesBeingDeleted, vm.ID, vm.ProvisioningState, powerState)
 		}
 	case []compute.VirtualMachine:
 		for _, vm := range vms {
@@ -647,14 +656,14 @@ func buildInstanceCache(vmList interface{}) []cloudprovider.Instance {
 			if vm.InstanceView != nil && vm.InstanceView.Statuses != nil {
 				powerState = vmPowerStateFromStatuses(*vm.InstanceView.Statuses)
 			}
-			addInstanceToCache(&instances, vm.ID, vm.ProvisioningState, powerState)
+			addInstanceToCache(&instances, instancesBeingDeleted, vm.ID, vm.ProvisioningState, powerState)
 		}
 	}
 
 	return instances
 }
 
-func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisioningState *string, powerState string) {
+func addInstanceToCache(instances *[]cloudprovider.Instance, instancesBeingDeleted []cloudprovider.Instance, id *string, provisioningState *string, powerState string) {
 	// The resource ID is empty string, which indicates the instance may be in deleting state.
 	if len(*id) == 0 {
 		return
@@ -667,10 +676,18 @@ func addInstanceToCache(instances *[]cloudprovider.Instance, id *string, provisi
 		return
 	}
 
-	*instances = append(*instances, cloudprovider.Instance{
-		Id:     "azure://" + resourceID,
-		Status: instanceStatusFromProvisioningStateAndPowerState(resourceID, provisioningState, powerState),
-	})
+	// Ensure that instances that had the deleting state prior to the last cache refresh
+	// still maintain the deleting state
+	newId := "azure://" + resourceID
+	newStatus := instanceStatusFromProvisioningStateAndPowerState(resourceID, provisioningState, powerState)
+	for _, instance := range instancesBeingDeleted {
+		if newId == instance.Id {
+			newStatus = &cloudprovider.InstanceStatus{State: cloudprovider.InstanceDeleting}
+			klog.V(4).Infof("VM %s was previously identified as undergoing deletion, persisting InstanceDeleting state", resourceID)
+			break
+		}
+	}
+	*instances = append(*instances, cloudprovider.Instance{Id: newId, Status: newStatus})
 }
 
 func (scaleSet *ScaleSet) getInstanceByProviderID(providerID string) (cloudprovider.Instance, bool) {
