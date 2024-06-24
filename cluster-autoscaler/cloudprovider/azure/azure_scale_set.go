@@ -326,6 +326,15 @@ func (scaleSet *ScaleSet) canIncreaseSize(delta int) (int64, error) {
 		return -1, fmt.Errorf("size increase must be positive")
 	}
 
+	if scaleSet.manager.config.VmssCacheForceRefresh {
+		if err := scaleSet.manager.forceRefresh(); err != nil {
+			klog.Errorf("VMSS %s: force refresh of VMSSs failed: %v", scaleSet.Name, err)
+			return -1, err
+		}
+		klog.V(4).Infof("VMSS: %s, forced refreshed before checking size", scaleSet.Name)
+		scaleSet.invalidateLastSizeRefreshWithLock()
+	}
+
 	size, err := scaleSet.getScaleSetSize()
 	if err != nil {
 		return size, err
@@ -644,6 +653,11 @@ func (scaleSet *ScaleSet) createOrUpdateInstances(vmssInfo *armcompute.VirtualMa
 	// This preserves the existing behavior (before atomic scale up was added).
 	vmssSizeMutex.Lock()
 	previousSize := vmssInfo.SKU.Capacity
+	if newSize < *previousSize {
+		vmssSizeMutex.Unlock()
+		klog.Warningf("VMSS %s: rejecting size decrease from %d to %d", scaleSet.Name, *previousSize, newSize)
+		return fmt.Errorf("vmss %s: rejected size decrease from %d to %d", scaleSet.Name, *previousSize, newSize)
+	}
 	vmssInfo.SKU.Capacity = &newSize
 	vmssSizeMutex.Unlock()
 	effectiveVMSS, poller, err := scaleSet.initCreateOrUpdate(ctx, vmssInfo, newSize)
@@ -682,6 +696,7 @@ func (scaleSet *ScaleSet) createOrUpdateInstances(vmssInfo *armcompute.VirtualMa
 	scaleSet.curSize = publishedSize
 	scaleSet.lastSizeRefresh = time.Now()
 	scaleSet.sizeMutex.Unlock()
+	klog.V(3).Infof("VMSS %s: requested size increase from %d to %d", scaleSet.Name, *previousSize, newSize)
 
 	// Poll for completion asynchronously to avoid blocking the autoscaler
 	if poller != nil {
@@ -799,7 +814,6 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 		// If the cached size can't represent the delete batch,
 		// mark it stale instead of publishing a negative size.
 		// Only do it for non-unregistered nodes.
-
 		if !hasUnregisteredNodes {
 			deleteCount := int64(len(instanceIDs))
 			scaleSet.sizeMutex.Lock()
@@ -810,7 +824,9 @@ func (scaleSet *ScaleSet) DeleteInstances(instances []*azureRef, hasUnregistered
 				scaleSet.curSize -= deleteCount
 				scaleSet.lastSizeRefresh = time.Now()
 			}
+			curSize := scaleSet.curSize
 			scaleSet.sizeMutex.Unlock()
+			klog.V(3).Infof("VMSS %s: had unregistered nodes, current size decremented by %d to %d", scaleSet.Name, len(instanceIDs), curSize)
 		}
 
 		// Proactively set the status of the instances to be deleted in cache

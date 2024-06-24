@@ -172,10 +172,12 @@ When using K8s versions older than v1.18, we recommend using at least **v.1.17.5
 As for CA versions older than 1.18, we recommend using at least **v.1.17.2, v1.16.5, v1.15.6**.
 
 In addition, cluster-autoscaler exposes a `AZURE_VMSS_CACHE_TTL` environment variable which controls the rate of `GetVMScaleSet` being made. By default, this is 15 seconds but setting this to a higher value such as 60 seconds can protect against API throttling. The caches used are proactively incremented and decremented with the scale up and down operations and this higher value doesn't have any noticeable impact on performance. **Note that the value is in seconds**
+`AZURE_VMSS_CACHE_FORCE_REFRESH` can also be set to always refresh the cache before an upscale. 
 
-| Config Name | Default | Environment Variable | Cloud Config File |
-| ----------- | ------- | -------------------- | ----------------- |
-| VmssCacheTTL | 60 | AZURE_VMSS_CACHE_TTL | vmssCacheTTL |
+| Config Name           | Default | Environment Variable           | Cloud Config File     |
+|-----------------------|--------|--------------------------------|------------------------|
+| VmssCacheTTL          | 60     | AZURE_VMSS_CACHE_TTL           | vmssCacheTTL           |
+| VmssCacheForceRefresh | false  | AZURE_VMSS_CACHE_FORCE_REFRESH | vmssCacheForceRefresh  | 
 
 The `AZURE_VMSS_VMS_CACHE_TTL` environment variable affects the `GetScaleSetVms` (VMSS VM List) calls rate. The default value is 300 seconds.
 A configurable jitter (`AZURE_VMSS_VMS_CACHE_JITTER` environment variable, default 0) expresses the maximum number of second that will be subtracted from that initial VMSS cache TTL after a new VMSS is discovered by the cluster-autoscaler: this can prevent a dogpile effect on clusters having many VMSS.
