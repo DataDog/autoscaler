@@ -77,6 +77,8 @@ type Config struct {
 	Deployment           string                 `json:"deployment" yaml:"deployment"`
 	DeploymentParameters map[string]interface{} `json:"deploymentParameters" yaml:"deploymentParameters"`
 
+	// VMSS cache option to force refresh of the vmss capacity before an upscale
+	VmssCacheForceRefresh bool `json:"vmssCacheForceRefresh" yaml:"vmssCacheForceRefresh"`
 	// Jitter in seconds subtracted from the VMSS cache TTL before the first refresh
 	VmssVmsCacheJitter int `json:"vmssVmsCacheJitter" yaml:"vmssVmsCacheJitter"`
 
@@ -218,6 +220,9 @@ func BuildAzureConfig(configReader io.Reader) (*Config, error) {
 		return nil, err
 	}
 	if _, err = assignFromEnvIfExists(&cfg.UserAssignedIdentityID, "ARM_USER_ASSIGNED_IDENTITY_ID"); err != nil {
+		return nil, err
+	}
+	if _, err = assignBoolFromEnvIfExists(&cfg.VmssCacheForceRefresh, "AZURE_VMSS_CACHE_FORCE_REFRESH"); err != nil {
 		return nil, err
 	}
 	if _, err = assignIntFromEnvIfExists(&cfg.VmssCacheTTLInSeconds, "AZURE_VMSS_CACHE_TTL_IN_SECONDS"); err != nil {
