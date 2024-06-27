@@ -121,6 +121,14 @@ func TestTransformLocalDataProcess(t *testing.T) {
 			},
 			[]*corev1.Pod{buildPod("pod1", testMixedResources, testMixedResources)},
 		},
+		{
+			"no persistent volume for topolvm",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+			[]*corev1.PersistentVolumeClaim{
+				buildPVC("pvc-1", storageClassNameTopolvm),
+			},
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+		},
 	}
 
 	for _, tt := range tests {

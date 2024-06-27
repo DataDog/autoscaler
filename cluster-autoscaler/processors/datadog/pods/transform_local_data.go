@@ -131,14 +131,35 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 
 			switch *pvcSpec.StorageClassName {
 			case storageClassNameTopolvm:
+				// Only support ephemeral volumes for topolvm
+				if vol.Ephemeral == nil {
+					volumes = append(volumes, vol)
+					continue
+				}
 				if storage, ok := pvcSpec.Resources.Requests[corev1.ResourceStorage]; ok {
-					po.Spec.Containers[0].Resources.Requests[common.DatadogEphemeralLocalDataResource] = storage.DeepCopy()
-					po.Spec.Containers[0].Resources.Limits[common.DatadogEphemeralLocalDataResource] = storage.DeepCopy()
+					if request, ok := po.Spec.Containers[0].Resources.Requests[common.DatadogEphemeralLocalDataResource]; ok {
+						request.Add(storage)
+						po.Spec.Containers[0].Resources.Requests[common.DatadogEphemeralLocalDataResource] = request
+					} else {
+						po.Spec.Containers[0].Resources.Requests[common.DatadogEphemeralLocalDataResource] = storage.DeepCopy()
+					}
+
+					if limit, ok := po.Spec.Containers[0].Resources.Limits[common.DatadogEphemeralLocalDataResource]; ok {
+						limit.Add(storage)
+						po.Spec.Containers[0].Resources.Limits[common.DatadogEphemeralLocalDataResource] = limit
+					} else {
+						po.Spec.Containers[0].Resources.Limits[common.DatadogEphemeralLocalDataResource] = storage.DeepCopy()
+					}
 				} else {
 					klog.Warningf("ignoring pvc as it does not have storage request information")
 					volumes = append(volumes, vol)
 				}
 			case storageClassNameLocal:
+				// Only support persistent volumes for local storage
+				if vol.PersistentVolumeClaim == nil {
+					volumes = append(volumes, vol)
+					continue
+				}
 				po.Spec.Containers[0].Resources.Requests[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
 				po.Spec.Containers[0].Resources.Limits[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
 			default:
