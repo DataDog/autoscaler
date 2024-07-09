@@ -680,6 +680,7 @@ func TestGetFilteredAutoscalingGroupsVmss(t *testing.T) {
 		curSize:                3,
 		sizeRefreshPeriod:      manager.azureCache.refreshInterval,
 		instancesRefreshPeriod: defaultVmssInstancesRefreshPeriod,
+		vmDeletionsInProgress:  make(map[string]struct{}),
 	}}
 	assert.True(t, assert.ObjectsAreEqualValues(expectedAsgs, asgs), "expected %#v, but found: %#v", expectedAsgs, asgs)
 }
