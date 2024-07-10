@@ -293,13 +293,12 @@ func (m *AzureManager) getFilteredScaleSets(filter []labelAutoDiscoveryConfig) (
 
 	var nodeGroups []cloudprovider.NodeGroup
 	for _, scaleSet := range vmssList {
-		var cfgSizes *autoDiscoveryConfigSizes
 		if len(filter) > 0 {
 			if scaleSet.Tags == nil || len(scaleSet.Tags) == 0 {
 				continue
 			}
 
-			if cfgSizes = matchDiscoveryConfig(scaleSet.Tags, filter); cfgSizes == nil {
+			if !matchDiscoveryConfig(scaleSet.Tags, filter) {
 				continue
 			}
 		}
@@ -317,8 +316,6 @@ func (m *AzureManager) getFilteredScaleSets(filter []labelAutoDiscoveryConfig) (
 				klog.Warningf("ignoring vmss %q because of invalid minimum size specified for vmss: %s", *scaleSet.Name, err)
 				continue
 			}
-		} else if cfgSizes.Min >= 0 {
-			spec.MinSize = cfgSizes.Min
 		} else {
 			klog.Warningf("ignoring vmss %q because of no minimum size specified for vmss", *scaleSet.Name)
 			continue
@@ -334,14 +331,12 @@ func (m *AzureManager) getFilteredScaleSets(filter []labelAutoDiscoveryConfig) (
 				klog.Warningf("ignoring vmss %q because of invalid maximum size specified for vmss: %s", *scaleSet.Name, err)
 				continue
 			}
-		} else if cfgSizes.Max >= 0 {
-			spec.MaxSize = cfgSizes.Max
 		} else {
 			klog.Warningf("ignoring vmss %q because of no maximum size specified for vmss", *scaleSet.Name)
 			continue
 		}
 		if spec.MaxSize < spec.MinSize {
-			klog.Warningf("ignoring vmss %q because of maximum size must be greater than or equal to minimum size: max=%d < min=%d", *scaleSet.Name, spec.MaxSize, spec.MinSize)
+			klog.Warningf("ignoring vmss %q because of maximum size must be greater than minimum size: max=%d < min=%d", *scaleSet.Name, spec.MaxSize, spec.MinSize)
 			continue
 		}
 

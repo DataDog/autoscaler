@@ -18,31 +18,18 @@ package azure
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
-
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"strings"
 )
 
 const (
-	autoDiscovererTypeLabel       = "label"
-	vmssAutoDiscovererKeyMinNodes = "min"
-	vmssAutoDiscovererKeyMaxNodes = "max"
+	autoDiscovererTypeLabel = "label"
 )
 
 // A labelAutoDiscoveryConfig specifies how to auto-discover Azure node groups.
 type labelAutoDiscoveryConfig struct {
 	// Key-values to match on.
 	Selector map[string]string
-	// MinSize specifies the minimum size for all VMSSs that match Selector.
-	MinSize *int
-	// MazSize specifies the maximum size for all VMSSs that match Selector.
-	MaxSize *int
-}
-
-type autoDiscoveryConfigSizes struct {
-	Min int
-	Max int
 }
 
 // ParseLabelAutoDiscoverySpecs returns any provided NodeGroupAutoDiscoverySpecs
@@ -83,67 +70,34 @@ func parseLabelAutoDiscoverySpec(spec string) (labelAutoDiscoveryConfig, error) 
 		if k == "" || v == "" {
 			return cfg, fmt.Errorf("empty value not allowed in key=value tag pairs")
 		}
-
-		switch k {
-		case vmssAutoDiscovererKeyMinNodes:
-			minSize, err := strconv.Atoi(v)
-			if err != nil || minSize < 0 {
-				return cfg, fmt.Errorf("invalid minimum nodes: %s", v)
-			}
-			cfg.MinSize = &minSize
-		case vmssAutoDiscovererKeyMaxNodes:
-			maxSize, err := strconv.Atoi(v)
-			if err != nil || maxSize < 0 {
-				return cfg, fmt.Errorf("invalid maximum nodes: %s", v)
-			}
-			cfg.MaxSize = &maxSize
-		default:
-			cfg.Selector[k] = v
-		}
-	}
-	if cfg.MaxSize != nil && cfg.MinSize != nil && *cfg.MaxSize < *cfg.MinSize {
-		return cfg, fmt.Errorf("maximum size %d must be greater than or equal to minimum size %d", *cfg.MaxSize, *cfg.MinSize)
+		cfg.Selector[k] = v
 	}
 	return cfg, nil
 }
 
-// returns an autoDiscoveryConfigSizes struct if the VMSS's tags match the autodiscovery configs
-// if the VMSS's tags do not match then return nil
-// if there are multiple min/max sizes defined, return the highest min value and the lowest max value
-func matchDiscoveryConfig(labels map[string]*string, configs []labelAutoDiscoveryConfig) *autoDiscoveryConfigSizes {
+func matchDiscoveryConfig(labels map[string]*string, configs []labelAutoDiscoveryConfig) bool {
 	if len(configs) == 0 {
-		return nil
+		return false
 	}
-	minSize := -1
-	maxSize := -1
 
 	for _, c := range configs {
 		if len(c.Selector) == 0 {
-			return nil
+			return false
 		}
 
 		for k, v := range c.Selector {
 			value, ok := labels[k]
 			if !ok {
-				return nil
+				return false
 			}
 
 			if len(v) > 0 {
 				if value == nil || *value != v {
-					return nil
+					return false
 				}
 			}
 		}
-		if c.MinSize != nil && minSize < *c.MinSize {
-			minSize = *c.MinSize
-		}
-		if c.MaxSize != nil && (maxSize == -1 || maxSize > *c.MaxSize) {
-			maxSize = *c.MaxSize
-		}
 	}
 
-	return &autoDiscoveryConfigSizes{
-		Min: minSize,
-		Max: maxSize,
-	}
+	return true
 }
