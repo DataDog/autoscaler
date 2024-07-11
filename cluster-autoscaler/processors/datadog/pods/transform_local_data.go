@@ -56,12 +56,18 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
 
 	apiv1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
 	client "k8s.io/client-go/kubernetes"
 	v1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	klog "k8s.io/klog/v2"
+)
+
+const (
+	storageClassNameLocal   = "local-data"
+	storageClassNameTopolvm = "ephemeral-local-data"
 )
 
 type transformLocalData struct {
@@ -90,19 +96,25 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 	for _, po := range pods {
 		var volumes []apiv1.Volume
 		for _, vol := range po.Spec.Volumes {
-			if vol.PersistentVolumeClaim == nil {
-				volumes = append(volumes, vol)
-				continue
-			}
-			pvc, err := p.pvcLister.PersistentVolumeClaims(po.Namespace).Get(vol.PersistentVolumeClaim.ClaimName)
-			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					klog.Warningf("failed to fetch pvc for %s/%s: %v", po.GetNamespace(), po.GetName(), err)
+			var pvcSpec *apiv1.PersistentVolumeClaimSpec
+			if vol.PersistentVolumeClaim != nil {
+				pvc, err := p.pvcLister.PersistentVolumeClaims(po.Namespace).Get(vol.PersistentVolumeClaim.ClaimName)
+				if err != nil {
+					if !apierrors.IsNotFound(err) {
+						klog.Warningf("failed to fetch pvc for %s/%s: %v", po.GetNamespace(), po.GetName(), err)
+					}
+					volumes = append(volumes, vol)
+					continue
 				}
+				pvcSpec = &pvc.Spec
+			} else if vol.Ephemeral != nil {
+				pvcSpec = &vol.Ephemeral.VolumeClaimTemplate.Spec
+			} else {
 				volumes = append(volumes, vol)
 				continue
 			}
-			if *pvc.Spec.StorageClassName != "local-data" {
+
+			if !isSpecialPVCStorageClass(*pvcSpec.StorageClassName) {
 				volumes = append(volumes, vol)
 				continue
 			}
@@ -113,14 +125,63 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 			if len(po.Spec.Containers[0].Resources.Limits) == 0 {
 				po.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{}
 			}
+			if len(pvcSpec.Resources.Requests) == 0 {
+				pvcSpec.Resources.Requests = apiv1.ResourceList{}
+			}
 
-			po.Spec.Containers[0].Resources.Requests[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
-			po.Spec.Containers[0].Resources.Limits[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
+			switch *pvcSpec.StorageClassName {
+			case storageClassNameTopolvm:
+				// Only support ephemeral volumes for topolvm
+				if vol.Ephemeral == nil {
+					volumes = append(volumes, vol)
+					continue
+				}
+				if storage, ok := pvcSpec.Resources.Requests[corev1.ResourceStorage]; ok {
+					if request, ok := po.Spec.Containers[0].Resources.Requests[common.DatadogEphemeralLocalDataResource]; ok {
+						request.Add(storage)
+						po.Spec.Containers[0].Resources.Requests[common.DatadogEphemeralLocalDataResource] = request
+					} else {
+						po.Spec.Containers[0].Resources.Requests[common.DatadogEphemeralLocalDataResource] = storage.DeepCopy()
+					}
+
+					if limit, ok := po.Spec.Containers[0].Resources.Limits[common.DatadogEphemeralLocalDataResource]; ok {
+						limit.Add(storage)
+						po.Spec.Containers[0].Resources.Limits[common.DatadogEphemeralLocalDataResource] = limit
+					} else {
+						po.Spec.Containers[0].Resources.Limits[common.DatadogEphemeralLocalDataResource] = storage.DeepCopy()
+					}
+				} else {
+					klog.Warningf("ignoring pvc as it does not have storage request information")
+					volumes = append(volumes, vol)
+				}
+			case storageClassNameLocal:
+				// Only support persistent volumes for local storage
+				if vol.PersistentVolumeClaim == nil {
+					volumes = append(volumes, vol)
+					continue
+				}
+				po.Spec.Containers[0].Resources.Requests[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
+				po.Spec.Containers[0].Resources.Limits[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
+			default:
+				klog.Warningf("this should never be reached. pvc storage class (%s) cannot be used for scaling on pod: %s", *pvcSpec.StorageClassName, po.Name)
+				volumes = append(volumes, vol)
+			}
 		}
 		po.Spec.Volumes = volumes
 	}
 
 	return pods, nil
+}
+
+func isSpecialPVCStorageClass(className string) bool {
+	switch className {
+	case storageClassNameTopolvm:
+		return true
+	case storageClassNameLocal:
+		return true
+	default:
+		return false
+	}
 }
 
 // NewPersistentVolumeClaimLister builds a persistentvolumeclaim lister.
