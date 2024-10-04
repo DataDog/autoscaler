@@ -92,15 +92,11 @@ func (g *grpcclientstrategy) BestOptions(expansionOptions []expander.Option, nod
 		return expansionOptions
 	}
 
-	if bestOptionsResponse == nil || bestOptionsResponse.Options == nil {
-		klog.V(4).Info("GRPC returned nil bestOptions, no options filtered")
-		return expansionOptions
-	}
-	if len(bestOptionsResponse.Options) == 0 {
-		// best options is intentionally empty
+	if bestOptionsResponse == nil || len(bestOptionsResponse.Options) == 0 {
 		klog.V(4).Info("GRPC returned no bestOptions")
 		return nil
 	}
+
 	// Transform back options slice
 	options := transformAndSanitizeOptionsFromGRPC(bestOptionsResponse.Options, nodeGroupIDOptionMap)
 	if options == nil {
