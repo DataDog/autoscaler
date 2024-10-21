@@ -645,6 +645,11 @@ func buildAutoscaler(context ctx.Context, debuggingSnapshotter debuggingsnapshot
 	// also marks the ProvisioningRequest as accepted or failed.
 	trigger := loop.NewLoopTrigger(autoscaler, ProvisioningRequestInjector, podObserver, *scanInterval)
 
+	klog.V(1).Info("Started shared informer factory, waiting for initial cache sync")
+	informerStartTime := time.Now()
+	informerFactory.WaitForCacheSync(stop)
+	klog.V(1).Infof("Shared informer factory finished initial sync, took %v", time.Since(informerStartTime))
+
 	return autoscaler, trigger, nil
 }
 
