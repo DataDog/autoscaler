@@ -608,7 +608,11 @@ func buildAutoscaler(debuggingSnapshotter debuggingsnapshot.DebuggingSnapshotter
 	// additional informers might have been registered in the factory during NewAutoscaler.
 	stop := make(chan struct{})
 	informerFactory.Start(stop)
+	klog.V(1).Info("Started shared informer factory, waiting for initial cache sync")
 
+	informerStartTime := time.Now()
+	informerFactory.WaitForCacheSync(stop)
+	klog.V(1).Infof("Shared informer factory finished initial sync, took %v", time.Since(informerStartTime))
 	return autoscaler, nil
 }
 
