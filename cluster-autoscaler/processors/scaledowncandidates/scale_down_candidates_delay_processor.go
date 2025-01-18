@@ -18,6 +18,7 @@ package scaledowncandidates
 
 import (
 	"reflect"
+	"sync"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -28,11 +29,12 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 )
 
-// ScaleDownCandidatesDelayProcessor is a processor to filter out
+// ScaleDownCandidatesDelayProcessor is a processor to filter out  
 // nodes according to scale down delay per nodegroup
 type ScaleDownCandidatesDelayProcessor struct {
+	mutex             sync.RWMutex
 	scaleUps          map[string]time.Time
-	scaleDowns        map[string]time.Time
+	scaleDowns        map[string]time.Time 
 	scaleDownFailures map[string]time.Time
 }
 
@@ -61,9 +63,13 @@ func (p *ScaleDownCandidatesDelayProcessor) GetScaleDownCandidates(ctx *context.
 		currentTime := time.Now()
 
 		recent := func(m map[string]time.Time, d time.Duration, msg string) bool {
-			if !m[nodeGroup.Id()].IsZero() && m[nodeGroup.Id()].Add(d).After(currentTime) {
+			p.mutex.RLock()
+			timeVal := m[nodeGroup.Id()]
+			p.mutex.RUnlock()
+			
+			if !timeVal.IsZero() && timeVal.Add(d).After(currentTime) {
 				klog.V(4).Infof("Skipping scale down on node group %s because it %s recently at %v",
-					nodeGroup.Id(), msg, m[nodeGroup.Id()])
+					nodeGroup.Id(), msg, timeVal)
 				return true
 			}
 
@@ -94,13 +100,17 @@ func (p *ScaleDownCandidatesDelayProcessor) CleanUp() {
 // RegisterScaleUp records when the last scale up happened for a nodegroup.
 func (p *ScaleDownCandidatesDelayProcessor) RegisterScaleUp(nodeGroup cloudprovider.NodeGroup,
 	_ int, currentTime time.Time) {
+	p.mutex.Lock()
 	p.scaleUps[nodeGroup.Id()] = currentTime
+	p.mutex.Unlock()
 }
 
 // RegisterScaleDown records when the last scale down happened for a nodegroup.
 func (p *ScaleDownCandidatesDelayProcessor) RegisterScaleDown(nodeGroup cloudprovider.NodeGroup,
 	nodeName string, currentTime time.Time, _ time.Time) {
+	p.mutex.Lock()
 	p.scaleDowns[nodeGroup.Id()] = currentTime
+	p.mutex.Unlock()
 }
 
 // RegisterFailedScaleUp records when the last scale up failed for a nodegroup.
@@ -111,7 +121,9 @@ func (p *ScaleDownCandidatesDelayProcessor) RegisterFailedScaleUp(_ cloudprovide
 // RegisterFailedScaleDown records failed scale-down for a nodegroup.
 func (p *ScaleDownCandidatesDelayProcessor) RegisterFailedScaleDown(nodeGroup cloudprovider.NodeGroup,
 	reason string, currentTime time.Time) {
+	p.mutex.Lock()
 	p.scaleDownFailures[nodeGroup.Id()] = currentTime
+	p.mutex.Unlock()
 }
 
 // NewScaleDownCandidatesDelayProcessor returns a new ScaleDownCandidatesDelayProcessor.
