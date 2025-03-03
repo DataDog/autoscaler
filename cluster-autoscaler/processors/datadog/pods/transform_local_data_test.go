@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
@@ -31,12 +32,19 @@ import (
 )
 
 var (
-	testRemoteClass    = "remote-data"
-	testLocalClass     = "local-data"
-	testNamespace      = "foons"
-	testEmptyResources = corev1.ResourceList{}
-	testLdResources    = corev1.ResourceList{
-		common.DatadogLocalDataResource: common.DatadogLocalDataQuantity.DeepCopy(),
+	testRemoteClass        = "remote-data"
+	testLocalClass         = "local-data"
+	testNamespace          = "foons"
+	testEmptyResources     = corev1.ResourceList{}
+	testDefaultLdResources = corev1.ResourceList{
+		common.DatadogLocalDataExistsResource: common.DatadogLocalDataQuantity.DeepCopy(),
+		common.DatadogLocalStorageResource:    common.DatadogLocalDataQuantity.DeepCopy(),
+	}
+	localStorage         = "100Gi"
+	localStorageCapacity = resource.MustParse(localStorage)
+	testLdResources      = corev1.ResourceList{
+		common.DatadogLocalDataExistsResource: common.DatadogLocalDataQuantity.DeepCopy(),
+		common.DatadogLocalStorageResource:    localStorageCapacity.DeepCopy(),
 	}
 )
 
@@ -62,9 +70,16 @@ func TestTransformLocalDataProcess(t *testing.T) {
 		},
 
 		{
-			"local-data volumes are removed, and custom resources added",
+			"local-data volumes are removed, and custom resources added with default storage",
 			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
 			[]*corev1.PersistentVolumeClaim{buildPVC("pvc-1", testLocalClass)},
+			[]*corev1.Pod{buildPod("pod1", testDefaultLdResources, testDefaultLdResources)},
+		},
+
+		{
+			"local-data volumes are removed, and custom resources added with local storage capacity",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+			[]*corev1.PersistentVolumeClaim{buildPVCWithStorage("pvc-1", testLocalClass, localStorage)},
 			[]*corev1.Pod{buildPod("pod1", testLdResources, testLdResources)},
 		},
 
@@ -76,7 +91,7 @@ func TestTransformLocalDataProcess(t *testing.T) {
 				buildPVC("pvc-2", testLocalClass),
 				buildPVC("pvc-3", testRemoteClass),
 			},
-			[]*corev1.Pod{buildPod("pod1", testLdResources, testLdResources, "pvc-1", "pvc-3")},
+			[]*corev1.Pod{buildPod("pod1", testDefaultLdResources, testDefaultLdResources, "pvc-1", "pvc-3")},
 		},
 
 		{
@@ -165,4 +180,12 @@ func buildPVC(name string, storageClassName string) *corev1.PersistentVolumeClai
 			StorageClassName: &storageClassName,
 		},
 	}
+}
+
+func buildPVCWithStorage(name, storageClassName, storageQuantity string) *corev1.PersistentVolumeClaim {
+	pvc := buildPVC(name, storageClassName)
+	quantity := resource.MustParse(storageQuantity)
+	pvc.Spec.Resources.Requests = corev1.ResourceList{}
+	pvc.Spec.Resources.Requests["storage"] = quantity
+	return pvc
 }
