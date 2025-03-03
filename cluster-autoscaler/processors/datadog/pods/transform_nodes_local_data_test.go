@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
@@ -31,6 +32,8 @@ import (
 )
 
 func TestTransformDataNodesProcess(t *testing.T) {
+	localStorageValue := "20G"
+	localStorageQuantity := resource.MustParse(localStorageValue)
 	tests := []struct {
 		name     string
 		node     *corev1.Node
@@ -39,20 +42,32 @@ func TestTransformDataNodesProcess(t *testing.T) {
 
 		{
 			"Resource is added to fresh nodes having local-data label",
-			buildTestNode("a", NodeReadyGraceDelay/2, true, false),
-			buildTestNode("a", NodeReadyGraceDelay/2, true, true),
+			buildTestNode("a", NodeReadyGraceDelay/2, true, localStorageValue, nil),
+			buildTestNode("a", NodeReadyGraceDelay/2, true, localStorageValue, &localStorageQuantity),
 		},
 
 		{
 			"Resource is not added to old nodes having local-data label",
-			buildTestNode("b", 2*NodeReadyGraceDelay, true, false),
-			buildTestNode("b", 2*NodeReadyGraceDelay, true, false),
+			buildTestNode("b", 2*NodeReadyGraceDelay, true, localStorageValue, nil),
+			buildTestNode("b", 2*NodeReadyGraceDelay, true, localStorageValue, nil),
 		},
 
 		{
 			"Resource is not added to new nodes without local-data label",
-			buildTestNode("c", NodeReadyGraceDelay/2, false, false),
-			buildTestNode("c", NodeReadyGraceDelay/2, false, false),
+			buildTestNode("c", NodeReadyGraceDelay/2, false, "", nil),
+			buildTestNode("c", NodeReadyGraceDelay/2, false, "", nil),
+		},
+
+		{
+			"Resource is not added to new nodes without local-data label but has local storage capacity label",
+			buildTestNode("d", NodeReadyGraceDelay/2, false, localStorageValue, nil),
+			buildTestNode("d", NodeReadyGraceDelay/2, false, localStorageValue, nil),
+		},
+
+		{
+			"Default resource is added to new nodes without local storage capacity label",
+			buildTestNode("e", NodeReadyGraceDelay/2, true, "", nil),
+			buildTestNode("e", NodeReadyGraceDelay/2, true, "", common.DatadogLocalDataQuantity),
 		},
 	}
 
@@ -80,7 +95,7 @@ func TestTransformDataNodesProcess(t *testing.T) {
 
 }
 
-func buildTestNode(name string, age time.Duration, localDataLabel, localDataResource bool) *corev1.Node {
+func buildTestNode(name string, age time.Duration, localDataLabel bool, localStorageCapacityLabel string, localDataQuantity *resource.Quantity) *corev1.Node {
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
@@ -104,10 +119,16 @@ func buildTestNode(name string, age time.Duration, localDataLabel, localDataReso
 	if localDataLabel {
 		node.ObjectMeta.Labels[common.DatadogLocalStorageLabel] = "true"
 	}
+	if len(localStorageCapacityLabel) > 0 {
+		node.ObjectMeta.Labels[common.DatadogLocalStorageCapacityLabel] = localStorageCapacityLabel
+	}
 
-	if localDataResource {
-		node.Status.Capacity[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
-		node.Status.Allocatable[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
+	if localDataQuantity != nil {
+		node.Status.Capacity[common.DatadogLocalDataExistsResource] = common.DatadogLocalDataQuantity.DeepCopy()
+		node.Status.Allocatable[common.DatadogLocalDataExistsResource] = common.DatadogLocalDataQuantity.DeepCopy()
+
+		node.Status.Capacity[common.DatadogLocalStorageResource] = localDataQuantity.DeepCopy()
+		node.Status.Allocatable[common.DatadogLocalStorageResource] = localDataQuantity.DeepCopy()
 	}
 
 	return node
