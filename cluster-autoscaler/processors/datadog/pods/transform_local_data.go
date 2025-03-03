@@ -27,6 +27,10 @@ limitations under the License.
     candidates. Injecting those requests on pods allows us to upscale only
     nodes having local data, and to know those nodes can host a single pod
     requesting a local-data volume (because allocatable qty = request = 1).
+	We also inject an additional custom resource node.datadoghq.com/local-storage
+	which represents the actual amount of storage available on a node.
+	We use this resource to ensure that pods that have PVCs that request local-storage
+	will get scheduled on nodes that have enough storage available.
 
   Caveats:
   * That's obviously not upstreamable
@@ -113,9 +117,20 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 			if len(po.Spec.Containers[0].Resources.Limits) == 0 {
 				po.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{}
 			}
+			if len(pvc.Spec.Resources.Requests) == 0 {
+				pvc.Spec.Resources.Requests = apiv1.ResourceList{}
+			}
 
-			po.Spec.Containers[0].Resources.Requests[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
-			po.Spec.Containers[0].Resources.Limits[common.DatadogLocalDataResource] = common.DatadogLocalDataQuantity.DeepCopy()
+			if storage, ok := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]; ok {
+				po.Spec.Containers[0].Resources.Requests[common.DatadogLocalStorageResource] = storage.DeepCopy()
+				po.Spec.Containers[0].Resources.Limits[common.DatadogLocalStorageResource] = storage.DeepCopy()
+			} else {
+				po.Spec.Containers[0].Resources.Requests[common.DatadogLocalStorageResource] = common.DatadogLocalDataQuantity.DeepCopy()
+				po.Spec.Containers[0].Resources.Limits[common.DatadogLocalStorageResource] = common.DatadogLocalDataQuantity.DeepCopy()
+			}
+
+			po.Spec.Containers[0].Resources.Requests[common.DatadogLocalDataExistsResource] = common.DatadogLocalDataQuantity.DeepCopy()
+			po.Spec.Containers[0].Resources.Limits[common.DatadogLocalDataExistsResource] = common.DatadogLocalDataQuantity.DeepCopy()
 		}
 		po.Spec.Volumes = volumes
 	}

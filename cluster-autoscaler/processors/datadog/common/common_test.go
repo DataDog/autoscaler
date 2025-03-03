@@ -78,7 +78,7 @@ func TestNodeHasLocalData(t *testing.T) {
 	}
 }
 
-func TestSetNodeLocalDataResource(t *testing.T) {
+func TestSetNodeLocalDataResourceDefault(t *testing.T) {
 	ni := schedulerframework.NewNodeInfo(
 		&corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{Name: "spam"},
@@ -91,11 +91,98 @@ func TestSetNodeLocalDataResource(t *testing.T) {
 
 	SetNodeLocalDataResource(ni)
 
-	nodeValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataResource]
+	nodeValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataExistsResource]
 	assert.True(t, ok)
 	assert.Equal(t, nodeValue, *resource.NewQuantity(1, resource.DecimalSI))
 
-	niValue, ok := ni.Allocatable.ScalarResources[DatadogLocalDataResource]
+	niValue, ok := ni.Allocatable.ScalarResources[DatadogLocalDataExistsResource]
+	assert.True(t, ok)
+	assert.Equal(t, niValue, int64(1))
+
+	nodeValue, ok = ni.Node().Status.Allocatable[DatadogLocalStorageResource]
+	assert.True(t, ok)
+	assert.Equal(t, nodeValue, *resource.NewQuantity(1, resource.DecimalSI))
+
+	niValue, ok = ni.Allocatable.ScalarResources[DatadogLocalStorageResource]
+	assert.True(t, ok)
+	assert.Equal(t, niValue, int64(1))
+
+	assert.Equal(t, len(ni.Pods), 2)
+}
+
+func TestSetNodeLocalDataResourceWithLocalStorageCapacity(t *testing.T) {
+	localStorage := "100Gi"
+	localStorageQuantity := resource.MustParse(localStorage)
+	ni := schedulerframework.NewNodeInfo(
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "spam"},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "egg"},
+		},
+	)
+	ni.SetNode(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				DatadogLocalStorageCapacityLabel: localStorage,
+			},
+		},
+	})
+
+	SetNodeLocalDataResource(ni)
+
+	nodeValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataExistsResource]
+	assert.True(t, ok)
+	assert.Equal(t, nodeValue, *resource.NewQuantity(1, resource.DecimalSI))
+
+	niValue, ok := ni.Allocatable.ScalarResources[DatadogLocalDataExistsResource]
+	assert.True(t, ok)
+	assert.Equal(t, niValue, int64(1))
+
+	nodeValue, ok = ni.Node().Status.Allocatable[DatadogLocalStorageResource]
+	assert.True(t, ok)
+	assert.Equal(t, nodeValue, localStorageQuantity)
+
+	niValue, ok = ni.Allocatable.ScalarResources[DatadogLocalStorageResource]
+	assert.True(t, ok)
+	var hundredGB int64 = 100 * 1024 * 1024 * 1024
+	assert.Equal(t, niValue, hundredGB)
+
+	assert.Equal(t, len(ni.Pods), 2)
+}
+
+func TestSetNodeLocalDataResourceWithFaultyLocalStorageCapacity(t *testing.T) {
+	ni := schedulerframework.NewNodeInfo(
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "spam"},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "egg"},
+		},
+	)
+	ni.SetNode(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				DatadogLocalStorageCapacityLabel: "foo",
+			},
+		},
+	})
+
+	SetNodeLocalDataResource(ni)
+
+	nodeValue, ok := ni.Node().Status.Allocatable[DatadogLocalDataExistsResource]
+	assert.True(t, ok)
+	assert.Equal(t, nodeValue, *resource.NewQuantity(1, resource.DecimalSI))
+
+	niValue, ok := ni.Allocatable.ScalarResources[DatadogLocalDataExistsResource]
+	assert.True(t, ok)
+	assert.Equal(t, niValue, int64(1))
+
+	nodeValue, ok = ni.Node().Status.Allocatable[DatadogLocalStorageResource]
+	assert.True(t, ok)
+	assert.Equal(t, nodeValue, *resource.NewQuantity(1, resource.DecimalSI))
+
+	niValue, ok = ni.Allocatable.ScalarResources[DatadogLocalStorageResource]
 	assert.True(t, ok)
 	assert.Equal(t, niValue, int64(1))
 
