@@ -19,20 +19,32 @@ package common
 import (
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/klog/v2"
 )
 
 const (
 	// DatadogLocalStorageLabel is "true" on nodes offering local storage
 	DatadogLocalStorageLabel = "nodegroups.datadoghq.com/local-storage"
+	// DatadogLocalStorageCapacityLabel is storing the amount of local storage a new node will have
+	// e.g. nodegroups.datadoghq.com/local-storage-capacity=100Gi
+	DatadogLocalStorageCapacityLabel = "nodegroups.datadoghq.com/local-storage-capacity"
 
-	// DatadogLocalDataResource is a virtual resource placed on new or future
+	// DatadogLocalDataExistsResource is a virtual resource placed on new or future
 	// nodes offering local storage, and currently injected as requests on
 	// Pending pods having a PVC for local-data volumes.
-	DatadogLocalDataResource apiv1.ResourceName = "storageclass/local-data"
+	// This resource will always be 1 unit, since there is only 1 local-data volume per node
+	DatadogLocalDataExistsResource apiv1.ResourceName = "storageclass/local-data"
+
+	// DatadogLocalStorageResource is a virtual resource placed on new or future
+	// nodes offering local storage, and currently injected as requests on
+	// Pending pods having a PVC for local-storage volumes.
+	// This is similar to DatadogLocalDataExistsResource, but this resource will have the actual amount of storage available on a node
+	DatadogLocalStorageResource apiv1.ResourceName = "node.datadoghq.com/local-storage"
 )
 
 var (
-	// DatadogLocalDataQuantity is the default amount of DatadogLocalDataResource
+	// DatadogLocalDataQuantity is used to ensure pods that have PVCs that request local-data will not be bin packed
+	// since there is only 1 local-data volume per node
 	DatadogLocalDataQuantity = resource.NewQuantity(1, resource.DecimalSI)
 )
 
@@ -68,8 +80,21 @@ func SetNodeLocalDataResource(nodeInfo ReducedNodeInfo) {
 		node.Status.Capacity = apiv1.ResourceList{}
 	}
 
-	node.Status.Capacity[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
-	node.Status.Allocatable[DatadogLocalDataResource] = DatadogLocalDataQuantity.DeepCopy()
+	// Set the local-data resource to 1 unit
+	node.Status.Capacity[DatadogLocalDataExistsResource] = DatadogLocalDataQuantity.DeepCopy()
+	node.Status.Allocatable[DatadogLocalDataExistsResource] = DatadogLocalDataQuantity.DeepCopy()
+
+	// Set the local-storage resource to the value of the local-storage-capacity label
+	capacity := node.Labels[DatadogLocalStorageCapacityLabel]
+	capacityResource, err := resource.ParseQuantity(capacity)
+	if err != nil {
+		klog.Warningf("failed to parse local storage capacity information (%s) for node (%s): %v", capacity, node.Name, err)
+		// fallback to default if something went wrong with the label value
+		capacityResource = DatadogLocalDataQuantity.DeepCopy()
+	}
+
+	node.Status.Capacity[DatadogLocalStorageResource] = capacityResource.DeepCopy()
+	node.Status.Allocatable[DatadogLocalStorageResource] = capacityResource.DeepCopy()
 
 	// Even though we get a pointer to the original node (and the update above
 	// changes it in place), we still need to call SetNode() in order to trigger
