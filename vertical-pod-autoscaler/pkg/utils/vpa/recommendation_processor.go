@@ -19,6 +19,7 @@ package api
 import (
 	"k8s.io/api/core/v1"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/limitrange"
 )
 
 // ContainerToAnnotationsMap contains annotations per container.
@@ -33,4 +34,12 @@ type RecommendationProcessor interface {
 		policy *vpa_types.PodResourcePolicy,
 		conditions []vpa_types.VerticalPodAutoscalerCondition,
 		pod *v1.Pod) (*vpa_types.RecommendedPodResources, ContainerToAnnotationsMap, error)
+}
+
+// NewDefaultRecommendationProcessor returns the RecommendationProcessor for post-processing recommendations
+func NewDefaultRecommendationProcessor(limitsRangeCalculator limitrange.LimitRangeCalculator, allowedResources []v1.ResourceName) RecommendationProcessor {
+	return NewSequentialProcessor([]RecommendationProcessor{
+		NewCappingRecommendationProcessor(limitsRangeCalculator),
+		NewAllowedResourceFilter(allowedResources),
+	})
 }

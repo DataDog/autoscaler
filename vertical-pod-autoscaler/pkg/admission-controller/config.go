@@ -90,6 +90,22 @@ func selfRegistration(clientset *kubernetes.Clientset, caCert []byte, namespace,
 							Resources:   []string{"verticalpodautoscalers"},
 						},
 					},
+					{
+						Operations: []admissionregistration.OperationType{admissionregistration.Create, admissionregistration.Update},
+						Rule: admissionregistration.Rule{
+							APIGroups:   []string{"apps"},
+							APIVersions: []string{"v1"},
+							Resources:   []string{"deployments"},
+						},
+					},
+					{
+						Operations: []admissionregistration.OperationType{admissionregistration.Create, admissionregistration.Update},
+						Rule: admissionregistration.Rule{
+							APIGroups:   []string{"apps"},
+							APIVersions: []string{"v1"},
+							Resources:   []string{"statefulsets"},
+						},
+					},
 				},
 				FailurePolicy:  &failurePolicy,
 				ClientConfig:   RegisterClientConfig,

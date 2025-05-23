@@ -24,13 +24,16 @@ import (
 
 	"k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
+
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/deployment"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod/patch"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/statefulset"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/vpa"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/limitrange"
 	metrics_admission "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/admission"
-	"k8s.io/klog/v2"
 )
 
 // AdmissionServer is an admission webhook server that modifies pod resources request based on VPA recommendation
@@ -47,6 +50,8 @@ func NewAdmissionServer(podPreProcessor pod.PreProcessor,
 	patchCalculators []patch.Calculator) *AdmissionServer {
 	as := &AdmissionServer{limitsChecker, map[metav1.GroupResource]resource.Handler{}}
 	as.RegisterResourceHandler(pod.NewResourceHandler(podPreProcessor, vpaMatcher, patchCalculators))
+	as.RegisterResourceHandler(deployment.NewResourceHandler(podPreProcessor, vpaMatcher, patchCalculators))
+	as.RegisterResourceHandler(statefulset.NewResourceHandler(podPreProcessor, vpaMatcher, patchCalculators))
 	as.RegisterResourceHandler(vpa.NewResourceHandler(vpaPreProcessor))
 	return as
 }
@@ -92,7 +97,7 @@ func (s *AdmissionServer) admit(data []byte) (*v1.AdmissionResponse, metrics_adm
 			response.Allowed = false
 		}
 	} else {
-		patches, err = nil, fmt.Errorf("not supported resource type: %v", admittedGroupResource)
+		patches, err = nil, fmt.Errorf("not supported resource type: %v/%v", admittedGroupResource.Group, admittedGroupResource.Resource)
 	}
 
 	if err != nil {
@@ -120,6 +125,9 @@ func (s *AdmissionServer) admit(data []byte) (*v1.AdmissionResponse, metrics_adm
 	}
 	if resource == metrics_admission.Pod {
 		metrics_admission.OnAdmittedPod(status == metrics_admission.Applied)
+	}
+	if resource == metrics_admission.Deployment || resource == metrics_admission.StatefulSet {
+		metrics_admission.OnAdmittedWorkload(status == metrics_admission.Applied, resource)
 	}
 
 	return &response, status, resource

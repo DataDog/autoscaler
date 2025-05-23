@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,91 +14,65 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pod
+package deployment
 
 import (
 	"encoding/json"
 	"fmt"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	v1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
-
 	resource_admission "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource"
+
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod/patch"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/vpa"
+	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/workloads"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/admission"
+	"k8s.io/klog/v2"
 )
 
-// resourceHandler builds patches for Pods.
+// resourceHandler builds patches for Deployments.
 type resourceHandler struct {
-	preProcessor     PreProcessor
-	vpaMatcher       vpa.Matcher
-	patchCalculators []patch.Calculator
+	workloads.WorkloadResourceHandler
 }
 
 // NewResourceHandler creates new instance of resourceHandler.
-func NewResourceHandler(preProcessor PreProcessor, vpaMatcher vpa.Matcher, patchCalculators []patch.Calculator) resource_admission.Handler {
+func NewResourceHandler(preProcessor pod.PreProcessor, vpaMatcher vpa.Matcher, patchCalculators []patch.Calculator) resource_admission.Handler {
 	return &resourceHandler{
-		preProcessor:     preProcessor,
-		vpaMatcher:       vpaMatcher,
-		patchCalculators: patchCalculators,
+		*workloads.NewResourceHandler(preProcessor, vpaMatcher, patchCalculators),
 	}
 }
 
 // AdmissionResource returns resource type this handler accepts.
 func (h *resourceHandler) AdmissionResource() admission.AdmissionResource {
-	return admission.Pod
+	return admission.Deployment
 }
 
 // GroupResource returns Group and Resource type this handler accepts.
 func (h *resourceHandler) GroupResource() metav1.GroupResource {
-	return metav1.GroupResource{Group: "", Resource: "pods"}
+	return metav1.GroupResource{Group: "apps", Resource: "deployments"}
 }
 
 // DisallowIncorrectObjects decides whether incorrect objects (eg. unparsable, not passing validations) should be disallowed by Admission Server.
 func (h *resourceHandler) DisallowIncorrectObjects() bool {
-	// Incorrect Pods are validated by API Server.
+	// Incorrect Deployments are validated by API Server.
 	return false
 }
 
-// GetPatches builds patches for Pod in given admission request.
+// GetPatches builds patches for Deployments in given admission request.
 func (h *resourceHandler) GetPatches(ar *admissionv1.AdmissionRequest) ([]resource_admission.PatchRecord, error) {
 	if ar.Resource.Version != "v1" {
-		return nil, fmt.Errorf("only v1 Pods are supported")
+		return nil, fmt.Errorf("only v1 deployments are supported")
 	}
 	raw, namespace := ar.Object.Raw, ar.Namespace
-	pod := v1.Pod{}
-	if err := json.Unmarshal(raw, &pod); err != nil {
-		return nil, err
-	}
-	if len(pod.Name) == 0 {
-		pod.Name = pod.GenerateName + "%"
-		pod.Namespace = namespace
-	}
-	klog.V(4).Infof("Admitting pod %v", pod.ObjectMeta)
-	controllingVpa := h.vpaMatcher.GetMatchingVPA(&pod)
-	if controllingVpa == nil {
-		klog.V(4).Infof("No matching VPA found for pod %s/%s", pod.Namespace, pod.Name)
-		return []resource_admission.PatchRecord{}, nil
-	}
-	pod, err := h.preProcessor.Process(pod)
-	if err != nil {
+	deployment := v1.Deployment{}
+	if err := json.Unmarshal(raw, &deployment); err != nil {
 		return nil, err
 	}
 
-	patches := []resource_admission.PatchRecord{}
-	if pod.Annotations == nil {
-		patches = append(patches, patch.GetAddEmptyAnnotationsPatch())
-	}
-	for _, c := range h.patchCalculators {
-		partialPatches, err := c.CalculatePatches(&pod, controllingVpa)
-		if err != nil {
-			return []resource_admission.PatchRecord{}, err
-		}
-		patches = append(patches, partialPatches...)
-	}
+	klog.V(4).Infof("Admitting deployment %v", deployment.ObjectMeta)
 
-	return patches, nil
+	return h.GetPatchesForWorkload(namespace, &deployment.ObjectMeta, &deployment.Spec.Template)
 }
