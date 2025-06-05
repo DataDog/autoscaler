@@ -21,9 +21,15 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/informers"
+	kube_client "k8s.io/client-go/kubernetes"
+	kube_flag "k8s.io/component-base/cli/flag"
+	"k8s.io/klog/v2"
+
 	"k8s.io/autoscaler/vertical-pod-autoscaler/common"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/logic"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod"
@@ -37,10 +43,6 @@ import (
 	metrics_admission "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/metrics/admission"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/status"
 	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
-	"k8s.io/client-go/informers"
-	kube_client "k8s.io/client-go/kubernetes"
-	kube_flag "k8s.io/component-base/cli/flag"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -68,6 +70,7 @@ var (
 	registerWebhook    = flag.Bool("register-webhook", true, "If set to true, admission webhook object will be created on start up to register with the API server.")
 	registerByURL      = flag.Bool("register-by-url", false, "If set to true, admission webhook will be registered by URL (webhookAddress:webhookPort) instead of by service name")
 	vpaObjectNamespace = flag.String("vpa-object-namespace", apiv1.NamespaceAll, "Namespace to search for VPA objects. Empty means all namespaces will be used.")
+	allowedResources   = flag.String("allowed-resources", strings.Join([]string{string(apiv1.ResourceCPU), string(apiv1.ResourceMemory)}, ","), "Comma-separated list of resources that can be applied from a VPA.")
 )
 
 func main() {
@@ -95,7 +98,14 @@ func main() {
 		klog.Errorf("Failed to create limitRangeCalculator, falling back to not checking limits. Error message: %s", err)
 		limitRangeCalculator = limitrange.NewNoopLimitsCalculator()
 	}
-	recommendationProvider := recommendation.NewProvider(limitRangeCalculator, vpa_api_util.NewCappingRecommendationProcessor(limitRangeCalculator))
+
+	var allowedResourcesNames []apiv1.ResourceName
+	for _, resourceName := range strings.Split(*allowedResources, ",") {
+		if resourceName != "" {
+			allowedResourcesNames = append(allowedResourcesNames, apiv1.ResourceName(resourceName))
+		}
+	}
+	recommendationProvider := recommendation.NewProvider(limitRangeCalculator, vpa_api_util.NewDefaultRecommendationProcessor(limitRangeCalculator, allowedResourcesNames))
 	vpaMatcher := vpa.NewMatcher(vpaLister, targetSelectorFetcher)
 
 	hostname, err := os.Hostname()
@@ -117,7 +127,11 @@ func main() {
 	)
 	defer close(stopCh)
 
-	calculators := []patch.Calculator{patch.NewResourceUpdatesCalculator(recommendationProvider), patch.NewObservedContainersCalculator()}
+	calculators := []patch.Calculator{
+		patch.NewResourceUpdatesCalculator(recommendationProvider),
+		patch.NewObservedContainersCalculator(),
+		patch.NewUpdateTriggerCalculator(),
+	}
 	as := logic.NewAdmissionServer(podPreprocessor, vpaPreprocessor, limitRangeCalculator, vpaMatcher, calculators)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		as.Serve(w, r)

@@ -26,6 +26,8 @@ import (
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/admission-controller/resource/pod/recommendation"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	vpa_api_util "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/utils/vpa"
+
+	"github.com/go-openapi/jsonpointer"
 )
 
 const (
@@ -105,9 +107,11 @@ func appendPatchesAndAnnotations(patches []resource_admission.PatchRecord, annot
 }
 
 func getAddResourceRequirementValuePatch(i int, kind string, resource core.ResourceName, quantity resource.Quantity) resource_admission.PatchRecord {
+	// Patch fields which can contain '/' characters (e.g. domain-qualified extended resources) must conform
+	// to IETF-6901 and escape those characters
 	return resource_admission.PatchRecord{
 		Op:    "add",
-		Path:  fmt.Sprintf("/spec/containers/%d/resources/%s/%s", i, kind, resource),
+		Path:  fmt.Sprintf("/spec/containers/%d/resources/%s/%s", i, kind, jsonpointer.Escape(resource.String())),
 		Value: quantity.String()}
 }
 
