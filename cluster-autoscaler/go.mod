@@ -18,6 +18,8 @@ require (
 	github.com/Azure/go-autorest/autorest/to v0.4.0
 	github.com/Azure/skewer v0.0.14
 	github.com/aws/aws-sdk-go v1.44.241
+	github.com/aws/smithy-go v1.22.3
+	github.com/awslabs/aws-go-multi-module-repository-tools v0.0.0-20230815192901-380e4844cc01
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/digitalocean/godo v1.27.0
 	github.com/gofrs/uuid v4.4.0+incompatible
@@ -160,6 +162,7 @@ require (
 	github.com/opencontainers/runc v1.2.1 // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
 	github.com/opencontainers/selinux v1.11.1 // indirect
+	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
