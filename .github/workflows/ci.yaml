@@ -49,6 +49,12 @@ jobs:
           args: --timeout=30m
           working-directory: ${{ env.GOPATH }}/src/k8s.io/autoscaler/vertical-pod-autoscaler
 
+      - name: "Check disk usage"
+        run: df -h
+
+      - name: Check large directories
+        run: sudo du -h -d1 / | sort -hr | head -n 20
+
       - name: Test
         working-directory: ${{ env.GOPATH }}/src/k8s.io/autoscaler
         run: hack/for-go-proj.sh test

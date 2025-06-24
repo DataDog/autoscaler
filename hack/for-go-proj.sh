@@ -46,6 +46,7 @@ for project_name in ${PROJECT_NAMES[*]}; do
     export GO111MODULE=auto
     project=${CONTRIB_ROOT}/${project_name}
     echo "${CMD}ing ${project}"
+    df -h
     cd "${project}"
     case "${CMD}" in
       "test")
@@ -59,18 +60,23 @@ for project_name in ${PROJECT_NAMES[*]}; do
         godep go "${CMD}" ./...
         ;;
     esac
+    df -h
   )
 done;
 
 if [ "${CMD}" = "build" ] || [ "${CMD}" == "test" ]; then
+  df -h
   pushd ${CONTRIB_ROOT}/vertical-pod-autoscaler/e2e
   go test -run=None ./...
   popd
+  df -h
   pushd ${CONTRIB_ROOT}/cluster-autoscaler/
   # TODO: #8127 - Use default analyzers set by `go test` to include `printf` analyzer.
   # Default analyzers that go test runs according to https://github.com/golang/go/blob/52624e533fe52329da5ba6ebb9c37712048168e0/src/cmd/go/internal/test/test.go#L649
   # This doesn't include the `printf` analyzer until cluster-autoscaler libraries are updated.
   ANALYZERS="atomic,bool,buildtags,directive,errorsas,ifaceassert,nilfunc,slog,stringintconv,tests"
-  go test -count=1 ./... -vet="${ANALYZERS}"
+  # Tests have been explicitly purged from these vendored packages, so don't waste time looking for tests here
+  go test -count=1 $(go list ./... | grep -v cloudprovider/aws/aws-sdk-go | grep -v cloudprovider/aws/aws-sdk-go-v2 | grep -v cloudprovider/aws/smithy-go) -vet="${ANALYZERS}"
   popd
+  df -h
 fi
