@@ -80,17 +80,21 @@ func (p *TemplateOnlyNodeInfoProvider) Process(ctx *context.AutoscalingContext, 
 		id := nodeGroup.Id()
 		if cacheEntry, found := p.nodeInfoCache[id]; found {
 			nodeInfo, err = p.SanitizedTemplateNodeInfoFromNodeGroupCached(id, cacheEntry.nodeInfo, daemonsets, taintConfig)
+			if err != nil {
+				klog.Warningf("Failed to obtain NodeInfo template from cache for %s: %v", id, err)
+				continue
+			}
 		} else {
 			// new nodegroup: this can be slow (locked) but allows discovering new nodegroups faster
 			klog.V(4).Infof("No cached base NodeInfo for %s yet", id)
 			nodeInfo, err = simulator.SanitizedTemplateNodeInfoFromNodeGroup(nodeGroup, daemonsets, taintConfig)
+			if err != nil {
+				klog.Warningf("Failed to build NodeInfo template for %s: %v", id, err)
+				continue
+			}
 			if common.NodeHasLocalData(nodeInfo.Node()) {
 				common.SetNodeLocalDataResource(nodeInfo)
 			}
-		}
-		if err != nil {
-			klog.Warningf("Failed to build NodeInfo template for %s: %v", id, err)
-			continue
 		}
 
 		labels.UpdateDeprecatedLabels(nodeInfo.Node().ObjectMeta.Labels)
