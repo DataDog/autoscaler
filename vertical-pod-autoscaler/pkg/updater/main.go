@@ -20,9 +20,11 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	kube_client "k8s.io/client-go/kubernetes"
 	kube_flag "k8s.io/component-base/cli/flag"
@@ -67,6 +69,9 @@ var (
 
 	namespace          = os.Getenv("NAMESPACE")
 	vpaObjectNamespace = flag.String("vpa-object-namespace", apiv1.NamespaceAll, "Namespace to search for VPA objects. Empty means all namespaces will be used.")
+
+	podLabelSelector = flag.String("pod-label-selector", "", "Label selector for pods that are eligible for the Updater")
+	allowedResources = flag.String("allowed-resources", strings.Join([]string{string(apiv1.ResourceCPU), string(apiv1.ResourceMemory)}, ","), "Comma-separated list of resources that can be applied from a VPA.")
 )
 
 const (
@@ -85,6 +90,7 @@ func main() {
 	metrics.Initialize(*address, healthCheck)
 	metrics_updater.Register()
 
+	podSelector := labelSelectorOrDie(*podLabelSelector)
 	config := common.CreateKubeConfigOrDie(*kubeconfig, float32(*kubeApiQps), int(*kubeApiBurst))
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	vpaClient := vpa_clientset.NewForConfigOrDie(config)
@@ -101,6 +107,14 @@ func main() {
 	if namespace != "" {
 		admissionControllerStatusNamespace = namespace
 	}
+
+	var allowedResourcesNames []apiv1.ResourceName
+	for _, resourceName := range strings.Split(*allowedResources, ",") {
+		if resourceName != "" {
+			allowedResourcesNames = append(allowedResourcesNames, apiv1.ResourceName(resourceName))
+		}
+	}
+
 	// TODO: use SharedInformerFactory in updater
 	updater, err := updater.NewUpdater(
 		kubeClient,
@@ -111,12 +125,13 @@ func main() {
 		*evictionToleranceFraction,
 		*useAdmissionControllerStatus,
 		admissionControllerStatusNamespace,
-		vpa_api_util.NewCappingRecommendationProcessor(limitRangeCalculator),
+		vpa_api_util.NewDefaultRecommendationProcessor(limitRangeCalculator, allowedResourcesNames),
 		priority.NewScalingDirectionPodEvictionAdmission(),
 		targetSelectorFetcher,
 		controllerFetcher,
 		priority.NewProcessor(),
 		*vpaObjectNamespace,
+		podSelector,
 	)
 	if err != nil {
 		klog.Fatalf("Failed to create updater: %v", err)
@@ -128,4 +143,16 @@ func main() {
 		healthCheck.UpdateLastActivity()
 		cancel()
 	}
+}
+
+func labelSelectorOrDie(podLabelSelectorStr string) labels.Selector {
+	podSelector := labels.Everything()
+	if podLabelSelectorStr != "" {
+		var err error
+		if podSelector, err = labels.Parse(podLabelSelectorStr); err != nil {
+			klog.Fatalf("Failed to parse pod label selector: %v", err)
+			panic(err)
+		}
+	}
+	return podSelector
 }
