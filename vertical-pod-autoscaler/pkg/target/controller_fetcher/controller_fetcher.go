@@ -83,6 +83,7 @@ type controllerFetcher struct {
 	mapper                       apimeta.RESTMapper
 	informersMap                 map[wellKnownController]cache.SharedIndexInformer
 	scaleSubresourceCacheStorage controllerCacheStorage
+	excludeUnknownResources      bool
 }
 
 func (f *controllerFetcher) periodicallyRefreshCache(ctx context.Context, period time.Duration) {
@@ -108,7 +109,8 @@ func (f *controllerFetcher) Start(ctx context.Context, loopPeriod time.Duration)
 }
 
 // NewControllerFetcher returns a new instance of controllerFetcher
-func NewControllerFetcher(config *rest.Config, kubeClient kube_client.Interface, factory informers.SharedInformerFactory, betweenRefreshes, lifeTime time.Duration, jitterFactor float64) *controllerFetcher {
+func NewControllerFetcher(config *rest.Config, kubeClient kube_client.Interface, factory informers.SharedInformerFactory, betweenRefreshes, lifeTime time.Duration, jitterFactor float64, excludeUnknownResources bool) *controllerFetcher {
+	// TODO: would it be better to just create a fake RESTMapper and use it if excludeUnknownResources is true?
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
 	if err != nil {
 		klog.Fatalf("Could not create discoveryClient: %v", err)
@@ -148,6 +150,7 @@ func NewControllerFetcher(config *rest.Config, kubeClient kube_client.Interface,
 		mapper:                       mapper,
 		informersMap:                 informersMap,
 		scaleSubresourceCacheStorage: newControllerCacheStorage(betweenRefreshes, lifeTime, jitterFactor),
+		excludeUnknownResources:      excludeUnknownResources,
 	}
 }
 
@@ -205,6 +208,9 @@ func (f *controllerFetcher) getParentOfController(controllerKey ControllerKeyWit
 	if exists {
 		return getParentOfWellKnownController(informer, controllerKey)
 	}
+	if f.excludeUnknownResources {
+		return nil, nil
+	}
 
 	groupKind, err := controllerKey.groupKind()
 	if err != nil {
@@ -258,6 +264,9 @@ func (f *controllerFetcher) isWellKnownOrScalable(key *ControllerKeyWithAPIVersi
 		return true
 	}
 	if gk, err := key.groupKind(); err != nil && wellKnownController(gk.Kind) == node {
+		return false
+	}
+	if f.excludeUnknownResources {
 		return false
 	}
 
