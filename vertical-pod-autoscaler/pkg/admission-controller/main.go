@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -82,6 +83,9 @@ func main() {
 	kube_flag.InitFlags()
 	klog.V(1).Infof("Vertical Pod Autoscaler %s Admission Controller", common.VerticalPodAutoscalerVersion)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	healthCheck := metrics.NewHealthCheck(time.Minute, false)
 	metrics.Initialize(*address, healthCheck)
 	metrics_admission.Register()
@@ -122,7 +126,9 @@ func main() {
 	if namespace != "" {
 		statusNamespace = namespace
 	}
+	// TODO: should I update all usages of stop channel to use context? or other way around?
 	stopCh := make(chan struct{})
+
 	statusUpdater := status.NewUpdater(
 		kubeClient,
 		status.AdmissionControllerStatusName,
@@ -131,6 +137,9 @@ func main() {
 		hostname,
 	)
 	defer close(stopCh)
+
+	// Start the controller fetcher with periodic discovery refresh
+	controllerFetcher.Start(ctx, scaleCacheEntryFreshnessTime)
 
 	calculators := []patch.Calculator{
 		patch.NewResourceUpdatesCalculator(recommendationProvider),
