@@ -52,6 +52,7 @@ const (
 	statusUpdateInterval                       = 10 * time.Second
 	scaleCacheEntryLifetime      time.Duration = time.Hour
 	scaleCacheEntryFreshnessTime time.Duration = 10 * time.Minute
+	scaleCacheLoopPeriod                       = 7 * time.Second
 	scaleCacheEntryJitterFactor  float64       = 1.
 )
 
@@ -99,6 +100,7 @@ func main() {
 	factory := informers.NewSharedInformerFactory(kubeClient, defaultResyncPeriod)
 	targetSelectorFetcher := target.NewVpaTargetSelectorFetcher(config, kubeClient, factory)
 	controllerFetcher := controllerfetcher.NewControllerFetcher(config, kubeClient, factory, scaleCacheEntryFreshnessTime, scaleCacheEntryLifetime, scaleCacheEntryJitterFactor)
+	controllerFetcher.Start(ctx, scaleCacheLoopPeriod)
 	podPreprocessor := pod.NewDefaultPreProcessor()
 	vpaPreprocessor := vpa.NewDefaultPreProcessor()
 	var limitRangeCalculator limitrange.LimitRangeCalculator
@@ -135,9 +137,6 @@ func main() {
 		hostname,
 	)
 	defer close(stopCh)
-
-	// Start the controller fetcher with periodic discovery refresh
-	controllerFetcher.Start(ctx, scaleCacheEntryFreshnessTime)
 
 	calculators := []patch.Calculator{
 		patch.NewResourceUpdatesCalculator(recommendationProvider),
