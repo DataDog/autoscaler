@@ -78,6 +78,7 @@ const (
 	defaultResyncPeriod          time.Duration = 10 * time.Minute
 	scaleCacheEntryLifetime      time.Duration = time.Hour
 	scaleCacheEntryFreshnessTime time.Duration = 10 * time.Minute
+	scaleCacheLoopPeriod                       = 7 * time.Second
 	scaleCacheEntryJitterFactor  float64       = 1.
 )
 
@@ -85,6 +86,9 @@ func main() {
 	klog.InitFlags(nil)
 	kube_flag.InitFlags()
 	klog.V(1).Infof("Vertical Pod Autoscaler %s Updater", common.VerticalPodAutoscalerVersion)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	healthCheck := metrics.NewHealthCheck(*updaterInterval*5, true)
 	metrics.Initialize(*address, healthCheck)
@@ -97,6 +101,7 @@ func main() {
 	factory := informers.NewSharedInformerFactory(kubeClient, defaultResyncPeriod)
 	targetSelectorFetcher := target.NewVpaTargetSelectorFetcher(config, kubeClient, factory)
 	controllerFetcher := controllerfetcher.NewControllerFetcher(config, kubeClient, factory, scaleCacheEntryFreshnessTime, scaleCacheEntryLifetime, scaleCacheEntryJitterFactor)
+	controllerFetcher.Start(ctx, scaleCacheLoopPeriod)
 	var limitRangeCalculator limitrange.LimitRangeCalculator
 	limitRangeCalculator, err := limitrange.NewLimitsRangeCalculator(factory)
 	if err != nil {

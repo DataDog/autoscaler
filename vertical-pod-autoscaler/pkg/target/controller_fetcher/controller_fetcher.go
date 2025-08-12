@@ -19,6 +19,7 @@ package controllerfetcher
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -31,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
-	cacheddiscovery "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	kube_client "k8s.io/client-go/kubernetes"
@@ -56,8 +56,64 @@ const (
 )
 
 const (
-	discoveryResetPeriod time.Duration = 5 * time.Minute
+	discoveryResetPeriod = 5 * time.Minute
 )
+
+// periodicDiscoveryManager manages API resource discovery with periodic updates
+type periodicDiscoveryManager struct {
+	mu              sync.RWMutex
+	mapper          apimeta.RESTMapper
+	discoveryClient discovery.DiscoveryInterface
+	refreshPeriod   time.Duration
+}
+
+// newPeriodicDiscoveryManager creates a new periodic discovery manager
+func newPeriodicDiscoveryManager(discoveryClient discovery.DiscoveryInterface, refreshPeriod time.Duration) (*periodicDiscoveryManager, error) {
+	manager := &periodicDiscoveryManager{
+		discoveryClient: discoveryClient,
+		refreshPeriod:   refreshPeriod,
+	}
+
+	if err := manager.refreshMapper(); err != nil {
+		return nil, fmt.Errorf("failed to initialize REST mapper: %v", err)
+	}
+
+	return manager, nil
+}
+
+// refreshMapper fetches all API resources and creates a new REST mapper
+func (m *periodicDiscoveryManager) refreshMapper() error {
+	resources, err := restmapper.GetAPIGroupResources(m.discoveryClient)
+	if err != nil {
+		return fmt.Errorf("failed to get API group resources: %v", err)
+	}
+
+	newMapper := restmapper.NewDiscoveryRESTMapper(resources)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.mapper = newMapper
+
+	return nil
+}
+
+// getMapper returns the current REST mapper (thread-safe)
+func (m *periodicDiscoveryManager) getMapper() apimeta.RESTMapper {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.mapper
+}
+
+// start begins the periodic refresh process
+func (m *periodicDiscoveryManager) start(ctx context.Context) {
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		if err := m.refreshMapper(); err != nil {
+			klog.Errorf("Failed to refresh API resource mappings: %v", err)
+		} else {
+			klog.V(5).Info("Successfully refreshed API resource mappings")
+		}
+	}, m.refreshPeriod)
+}
 
 // ControllerKey identifies a controller.
 type ControllerKey struct {
@@ -80,7 +136,7 @@ type ControllerFetcher interface {
 
 type controllerFetcher struct {
 	scaleNamespacer              scale.ScalesGetter
-	mapper                       apimeta.RESTMapper
+	discoveryManager             *periodicDiscoveryManager
 	informersMap                 map[wellKnownController]cache.SharedIndexInformer
 	scaleSubresourceCacheStorage controllerCacheStorage
 }
@@ -104,6 +160,7 @@ func (f *controllerFetcher) periodicallyRefreshCache(ctx context.Context, period
 }
 
 func (f *controllerFetcher) Start(ctx context.Context, loopPeriod time.Duration) {
+	f.discoveryManager.start(ctx)
 	go f.periodicallyRefreshCache(ctx, loopPeriod)
 }
 
@@ -115,11 +172,11 @@ func NewControllerFetcher(config *rest.Config, kubeClient kube_client.Interface,
 	}
 	resolver := scale.NewDiscoveryScaleKindResolver(discoveryClient)
 	restClient := kubeClient.CoreV1().RESTClient()
-	cachedDiscoveryClient := cacheddiscovery.NewMemCacheClient(discoveryClient)
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(cachedDiscoveryClient)
-	go wait.Until(func() {
-		mapper.Reset()
-	}, discoveryResetPeriod, make(chan struct{}))
+
+	discoveryManager, err := newPeriodicDiscoveryManager(discoveryClient, discoveryResetPeriod)
+	if err != nil {
+		klog.Fatalf("Could not create periodic discovery manager: %v", err)
+	}
 
 	informersMap := map[wellKnownController]cache.SharedIndexInformer{
 		daemonSet:             factory.Apps().V1().DaemonSets().Informer(),
@@ -142,10 +199,10 @@ func NewControllerFetcher(config *rest.Config, kubeClient kube_client.Interface,
 		}
 	}
 
-	scaleNamespacer := scale.New(restClient, mapper, dynamic.LegacyAPIPathResolverFunc, resolver)
+	scaleNamespacer := scale.New(restClient, discoveryManager.getMapper(), dynamic.LegacyAPIPathResolverFunc, resolver)
 	return &controllerFetcher{
 		scaleNamespacer:              scaleNamespacer,
-		mapper:                       mapper,
+		discoveryManager:             discoveryManager,
 		informersMap:                 informersMap,
 		scaleSubresourceCacheStorage: newControllerCacheStorage(betweenRefreshes, lifeTime, jitterFactor),
 	}
@@ -268,7 +325,7 @@ func (f *controllerFetcher) isWellKnownOrScalable(key *ControllerKeyWithAPIVersi
 		return false
 	}
 
-	mappings, err := f.mapper.RESTMappings(groupKind)
+	mappings, err := f.discoveryManager.getMapper().RESTMappings(groupKind)
 	if err != nil {
 		klog.Errorf("Could not find mappings for %s: %v", groupKind, err)
 		return false
@@ -291,7 +348,7 @@ func (f *controllerFetcher) getOwnerForScaleResource(groupKind schema.GroupKind,
 		// valid controllers so we can skip trying to fetch them.
 		return nil, fmt.Errorf("node is not a valid owner")
 	}
-	mappings, err := f.mapper.RESTMappings(groupKind)
+	mappings, err := f.discoveryManager.getMapper().RESTMappings(groupKind)
 	if err != nil {
 		return nil, err
 	}

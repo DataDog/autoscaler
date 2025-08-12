@@ -110,6 +110,9 @@ func main() {
 	kube_flag.InitFlags()
 	klog.V(1).Infof("Vertical Pod Autoscaler %s Recommender: %v", common.VerticalPodAutoscalerVersion, *recommenderName)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	config := common.CreateKubeConfigOrDie(*kubeconfig, float32(*kubeApiQps), int(*kubeApiBurst))
 	kubeClient := kube_client.NewForConfigOrDie(config)
 	clusterState := model.NewClusterState(aggregateContainerStateGCInterval)
@@ -163,7 +166,7 @@ func main() {
 		ControllerFetcher:   controllerFetcher,
 		RecommenderName:     *recommenderName,
 	}.Make()
-	controllerFetcher.Start(context.Background(), scaleCacheLoopPeriod)
+	controllerFetcher.Start(ctx, scaleCacheLoopPeriod)
 
 	recommender := routines.RecommenderFactory{
 		ClusterState:                 clusterState,
