@@ -68,11 +68,9 @@ func simpleControllerFetcher() *controllerFetcher {
 		},
 	}
 	mapper := restmapper.NewDiscoveryRESTMapper(fakeMapper)
-	
-	// Create a simple discovery manager for testing with the fake mapper
 	f.discoveryManager = &periodicDiscoveryManager{
 		mapper:        mapper,
-		refreshPeriod: time.Hour, // Long period for testing
+		refreshPeriod: time.Hour,
 	}
 
 	scaleNamespacer := &scalefake.FakeScaleClient{}

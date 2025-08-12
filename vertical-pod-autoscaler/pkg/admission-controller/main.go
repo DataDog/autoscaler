@@ -126,9 +126,7 @@ func main() {
 	if namespace != "" {
 		statusNamespace = namespace
 	}
-	// TODO: should I update all usages of stop channel to use context? or other way around?
 	stopCh := make(chan struct{})
-
 	statusUpdater := status.NewUpdater(
 		kubeClient,
 		status.AdmissionControllerStatusName,
