@@ -44,5 +44,5 @@ type CustomResourcesProcessor interface {
 
 // NewDefaultCustomResourcesProcessor returns a default instance of CustomResourcesProcessor.
 func NewDefaultCustomResourcesProcessor() CustomResourcesProcessor {
-	return &GpuCustomResourcesProcessor{}
+	return &DatadogCustomResourcesProcessor{}
 }
