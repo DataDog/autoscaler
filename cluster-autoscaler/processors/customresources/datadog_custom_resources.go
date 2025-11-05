@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const datadogCustomResourceLabelPrefix = "k8s.io/cluster-autoscaler/node-template/resources/datadog/"
+const datadogCustomResourceLabelPrefix = "customresource.nodegroups.datadoghq.com/"
 
 // DatadogCustomResourcesProcessor handles regular GPU resources and Datadog custom resources.
 // It assumes, that the resources may not become allocatable immediately after the node creation.
@@ -102,7 +102,7 @@ func getDatadogCustomResources(node *apiv1.Node) map[string]string {
 	if node != nil {
 		for label, value := range node.Labels {
 			if strings.HasPrefix(label, datadogCustomResourceLabelPrefix) {
-				customResource := label[len(datadogCustomResourceLabelPrefix):]
+				customResource := strings.ReplaceAll(label[len(datadogCustomResourceLabelPrefix):], "_", "/")
 				customResources[customResource] = value
 			}
 		}
