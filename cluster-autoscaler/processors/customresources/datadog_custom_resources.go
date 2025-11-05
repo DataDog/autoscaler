@@ -67,6 +67,9 @@ func (p *DatadogCustomResourcesProcessor) GetNodeResourceTargets(context *contex
 		return targets, err
 	}
 
+	klog.Errorf("WIP just1not2 LABELS: %v", node.Labels)
+	klog.Errorf("WIP just1not2 RESOURCES: %v", getDatadogCustomResources(node))
+
 	for customResource, value := range getDatadogCustomResources(node) {
 		var targetValue int64 = 0
 
