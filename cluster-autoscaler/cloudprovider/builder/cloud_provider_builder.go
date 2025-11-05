@@ -35,6 +35,7 @@ func NewCloudProvider(opts config.AutoscalingOptions, informerFactory informers.
 	}
 
 	rl := context.NewResourceLimiterFromAutoscalingOptions(opts)
+	klog.Errorf("WIP just1not2 RLCP: %v", *rl)
 
 	if opts.CloudProviderName == "" {
 		// Ideally this would be an error, but several unit tests of the

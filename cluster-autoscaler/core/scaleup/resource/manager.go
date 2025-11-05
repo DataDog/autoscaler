@@ -102,6 +102,7 @@ func (m *Manager) ResourcesLeft(ctx *context.AutoscalingContext, nodeInfos map[s
 	var totalResourcesErr error
 	if cloudprovider.ContainsCustomResources(resourceLimiter.GetResources()) {
 		totalResources, totalResourcesErr = m.customResourcesTotal(ctx, nodeInfos, nodesFromNotAutoscaledGroups)
+		klog.Errorf("WIP just1not2 RESOURCELEFT: %v", totalResources)
 	}
 
 	resultScaleUpLimits := make(Limits)
@@ -133,6 +134,7 @@ func (m *Manager) ResourcesLeft(ctx *context.AutoscalingContext, nodeInfos map[s
 				} else {
 					resultScaleUpLimits[resource] = computeBelowMax(totalResources[resource], max)
 				}
+				klog.Errorf("WIP just1not2 RESOURCELEFT2: %v", resultScaleUpLimits[resource])
 			default:
 				klog.Errorf("Scale up limits defined for unsupported resource '%s'", resource)
 			}

@@ -87,6 +87,8 @@ func (p *DatadogCustomResourcesProcessor) GetNodeResourceTargets(context *contex
 			}
 			targetValue = intValue
 		}
+
+		klog.Errorf("WIP just1not2 CR: %v - %v", customResource, targetValue)
 		targets = append(targets, CustomResourceTarget{
 			ResourceType:  customResource,
 			ResourceCount: targetValue,

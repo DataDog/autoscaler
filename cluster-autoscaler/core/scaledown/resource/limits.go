@@ -161,6 +161,7 @@ func (lf *LimitsFinder) customResourcesTotal(context *context.AutoscalingContext
 		}
 	}
 
+	klog.Errorf("WIP just1not2 CRTLIMITS: %v", result)
 	return result, nil
 }
 
