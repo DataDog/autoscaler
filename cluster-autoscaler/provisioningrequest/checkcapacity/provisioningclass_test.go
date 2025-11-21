@@ -80,6 +80,27 @@ func TestCombinedStatusSet(t *testing.T) {
 			exportedResut: status.ScaleUpSuccessful,
 			exportedError: errors.NewAutoscalerError(errors.InternalError, "error 0"),
 		},
+		{
+			name:          "all partial capacity",
+			statuses:      generateStatuses(2, status.ScaleUpPartialCapacityAvailable),
+			exportedResut: status.ScaleUpPartialCapacityAvailable,
+		},
+		{
+			name:          "successful and partial capacity",
+			statuses:      append(generateStatuses(1, status.ScaleUpPartialCapacityAvailable), generateStatuses(1, status.ScaleUpSuccessful)...),
+			exportedResut: status.ScaleUpSuccessful,
+		},
+		{
+			name:          "partial capacity and no options available",
+			statuses:      append(generateStatuses(1, status.ScaleUpPartialCapacityAvailable), generateStatuses(1, status.ScaleUpNoOptionsAvailable)...),
+			exportedResut: status.ScaleUpPartialCapacityAvailable,
+		},
+		{
+			name:          "error and partial capacity",
+			statuses:      append(generateStatuses(1, status.ScaleUpError), generateStatuses(1, status.ScaleUpPartialCapacityAvailable)...),
+			exportedResut: status.ScaleUpPartialCapacityAvailable,
+			exportedError: errors.NewAutoscalerError(errors.InternalError, "error 0"),
+		},
 	}
 
 	for _, tc := range testCases {
