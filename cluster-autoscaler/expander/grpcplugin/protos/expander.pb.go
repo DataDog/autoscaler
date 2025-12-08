@@ -158,11 +158,12 @@ type Option struct {
 	//
 	// Deprecated: Marked as deprecated in expander/grpcplugin/protos/expander.proto.
 	Pod []*v1.Pod `protobuf:"bytes,4,rep,name=pod,proto3" json:"pod,omitempty"`
+	// Datadog specific change, used by k8s-shaping-expander.
+	SimilarNodeGroupIds []string `protobuf:"bytes,5,rep,name=similarNodeGroupIds,proto3" json:"similarNodeGroupIds,omitempty"`
 	// proto-serialized v1.Pod object
-	PodBytes            [][]byte `protobuf:"bytes,5,rep,name=podBytes,proto3" json:"podBytes,omitempty"`
-	SimilarNodeGroupIds []string `protobuf:"bytes,6,rep,name=similarNodeGroupIds,proto3" json:"similarNodeGroupIds,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	PodBytes      [][]byte `protobuf:"bytes,6,rep,name=podBytes,proto3" json:"podBytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Option) Reset() {
@@ -224,16 +225,16 @@ func (x *Option) GetPod() []*v1.Pod {
 	return nil
 }
 
-func (x *Option) GetPodBytes() [][]byte {
+func (x *Option) GetSimilarNodeGroupIds() []string {
 	if x != nil {
-		return x.PodBytes
+		return x.SimilarNodeGroupIds
 	}
 	return nil
 }
 
-func (x *Option) GetSimilarNodeGroupIds() []string {
+func (x *Option) GetPodBytes() [][]byte {
 	if x != nil {
-		return x.SimilarNodeGroupIds
+		return x.PodBytes
 	}
 	return nil
 }
@@ -260,9 +261,9 @@ const file_expander_grpcplugin_protos_expander_proto_rawDesc = "" +
 	"\vnodeGroupId\x18\x01 \x01(\tR\vnodeGroupId\x12\x1c\n" +
 	"\tnodeCount\x18\x02 \x01(\x05R\tnodeCount\x12\x14\n" +
 	"\x05debug\x18\x03 \x01(\tR\x05debug\x12-\n" +
-	"\x03pod\x18\x04 \x03(\v2\x17.k8s.io.api.core.v1.PodB\x02\x18\x01R\x03pod\x12\x1a\n" +
-	"\bpodBytes\x18\x05 \x03(\fR\bpodBytes\x120\n" +
-	"\x13similarNodeGroupIds\x18\x06 \x03(\tR\x13similarNodeGroupIds2\\\n" +
+	"\x03pod\x18\x04 \x03(\v2\x17.k8s.io.api.core.v1.PodB\x02\x18\x01R\x03pod\x120\n" +
+	"\x13similarNodeGroupIds\x18\x05 \x03(\tR\x13similarNodeGroupIds\x12\x1a\n" +
+	"\bpodBytes\x18\x06 \x03(\fR\bpodBytes2\\\n" +
 	"\bExpander\x12P\n" +
 	"\vBestOptions\x12\x1e.grpcplugin.BestOptionsRequest\x1a\x1f.grpcplugin.BestOptionsResponse\"\x00B\x1cZ\x1aexpander/grpcplugin/protosb\x06proto3"
 

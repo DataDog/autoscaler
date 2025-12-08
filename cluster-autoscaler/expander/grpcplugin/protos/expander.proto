@@ -51,8 +51,9 @@ message Option {
   // Deprecated: Writers cannot set this field in Kubernetes 1.35 and higher, and should set this field and podBytes. Readers should prefer podBytes if set.
   repeated k8s.io.api.core.v1.Pod pod = 4 [deprecated = true];
 
-  // proto-serialized v1.Pod object
-  repeated bytes podBytes = 5;
+  // Datadog specific change, used by k8s-shaping-expander.
+  repeated string similarNodeGroupIds = 5;
 
-  repeated string similarNodeGroupIds = 6;
+  // proto-serialized v1.Pod object
+  repeated bytes podBytes = 6;
 }
