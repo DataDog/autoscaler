@@ -5,8 +5,9 @@ Copyright 2021-2023 Oracle and/or its affiliates.
 package consts
 
 import (
-	v1 "k8s.io/api/core/v1"
 	"time"
+
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -20,6 +21,10 @@ const (
 	OciCompartmentEnvVar = "OCI_COMPARTMENT_ID"
 	// OciRegionEnvVar indicates to use a specific region
 	OciRegionEnvVar = "OCI_REGION"
+	// OciNodeTemplateTagNamespaceEnvVar indicates the defined tag namespace to search for node template tags
+	OciNodeTemplateTagNamespaceEnvVar = "OCI_NODE_TEMPLATE_TAG_NAMESPACE"
+	// DefaultOciNodeTemplateTagNamespace is the default OCI defined-tags namespace used to look up node template tags
+	DefaultOciNodeTemplateTagNamespace = "ClusterAutoscaler"
 	// OciRefreshInterval indicates the rate at which the internal instance pool cache will be refreshed (by querying compute)
 	OciRefreshInterval = "OCI_REFRESH_INTERVAL"
 	// DefaultRefreshInterval is the default rate to refresh the cache
