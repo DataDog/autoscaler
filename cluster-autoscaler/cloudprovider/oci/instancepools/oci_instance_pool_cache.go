@@ -29,6 +29,7 @@ type ComputeMgmtClient interface {
 	GetInstancePoolInstance(context.Context, core.GetInstancePoolInstanceRequest) (core.GetInstancePoolInstanceResponse, error)
 	ListInstancePoolInstances(context.Context, core.ListInstancePoolInstancesRequest) (core.ListInstancePoolInstancesResponse, error)
 	DetachInstancePoolInstance(context.Context, core.DetachInstancePoolInstanceRequest) (core.DetachInstancePoolInstanceResponse, error)
+	ListInstancePools(context.Context, core.ListInstancePoolsRequest) (core.ListInstancePoolsResponse, error)
 }
 
 // ComputeClient wraps core.ComputeClient exposing the functions we actually require.
@@ -81,8 +82,6 @@ func (c *instancePoolCache) InstancePools() map[string]*core.InstancePool {
 }
 
 func (c *instancePoolCache) rebuild(staticInstancePools map[string]*InstancePoolNodeGroup, cfg ocicommon.CloudConfig) error {
-	// Since we only support static instance-pools we don't need to worry about pruning.
-
 	for id := range staticInstancePools {
 		getInstancePoolResp, err := c.computeManagementClient.GetInstancePool(context.Background(), core.GetInstancePoolRequest{
 			InstancePoolId: common.String(id),

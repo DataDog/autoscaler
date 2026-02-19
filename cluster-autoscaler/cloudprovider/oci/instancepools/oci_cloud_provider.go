@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	ocicommon "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/common"
+	ipconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/instancepools/consts"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools"
 	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
@@ -70,21 +71,26 @@ func (ocp *OciCloudProvider) NodeGroupForNode(n *apiv1.Node) (cloudprovider.Node
 func (ocp *OciCloudProvider) HasInstance(node *apiv1.Node) (bool, error) {
 	instance, err := ocicommon.NodeToOciRef(node)
 	if err != nil {
+		klog.Errorf("[%s] Failed to convert node to OCI reference for node: %v", node.Name, err)
 		return false, err
 	}
 	instancePool, err := ocp.poolManager.GetInstancePoolForInstance(instance)
 	if err != nil {
+		klog.Errorf("[%s] Failed to get instance pool for instance %s: %v", node.Name, instance.InstanceID, err)
 		return false, err
 	}
 	instances, err := ocp.poolManager.GetInstancePoolNodes(*instancePool)
 	if err != nil {
+		klog.Errorf("[%s] Failed to get instances for instance pool %s: %v", node.Name, instancePool.Id(), err)
 		return false, err
 	}
 	for _, i := range instances {
 		if i.Id == instance.InstanceID {
+			klog.V(4).Infof("[%s] Instance %s found in instance pool %s", node.Name, instance.InstanceID, instancePool.Id())
 			return true, nil
 		}
 	}
+	klog.V(4).Infof("[%s] Instance %s not found in instance pool %s", node.Name, instance.InstanceID, instancePool.Id())
 	return false, nil
 }
 
@@ -149,25 +155,29 @@ func (ocp *OciCloudProvider) Refresh() error {
 
 // BuildOCI constructs the OciCloudProvider object that implements the could provider interface (InstancePoolManager).
 func BuildOCI(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
-	ocidType, err := ocicommon.GetAllPoolTypes(opts.NodeGroups)
+	ocidType, err := ocicommon.GetAllPoolTypes(do.NodeGroupSpecs)
 	if err != nil {
 		klog.Fatalf("Failed to get pool type: %v", err)
 	}
-	_, nodepoolTagsFound, err := ocicommon.HasNodeGroupTags(opts.NodeGroupAutoDiscovery)
+	instancepoolTagsFound, nodepoolTagsFound, err := ocicommon.HasNodeGroupTags(do.NodeGroupAutoDiscoverySpecs)
 	if err != nil {
 		klog.Fatalf("Failed to get auto discovery tags: %v", err)
 	}
-	if strings.HasPrefix(ocidType, npconsts.OciNodePoolResourceIdent) && nodepoolTagsFound == true {
-		klog.Fatalf("-nodes and -node-group-auto-discovery parameters can not be used together.")
-	} else if strings.HasPrefix(ocidType, npconsts.OciNodePoolResourceIdent) || nodepoolTagsFound == true {
-		manager, err := nodepools.CreateNodePoolManager(opts.CloudConfig, opts.NodeGroupAutoDiscovery, do, createKubeClient(opts))
+	if strings.HasPrefix(ocidType, npconsts.OciNodePoolResourceIdent) && nodepoolTagsFound {
+		klog.Fatalf("-nodes and -node-group-auto-discovery parameters can not be used together for nodepools.")
+	} else if strings.HasPrefix(ocidType, npconsts.OciNodePoolResourceIdent) || nodepoolTagsFound {
+		manager, err := nodepools.CreateNodePoolManager(opts.CloudConfig, do.NodeGroupAutoDiscoverySpecs, do, createKubeClient(opts))
 		if err != nil {
 			klog.Fatalf("Could not create OCI OKE cloud provider: %v", err)
 		}
 		return nodepools.NewOciCloudProvider(manager, rl)
 	}
-	// theoretically the only other possible value is no value (if no node groups are passed in)
+
+	// Theoretically, the only other possible value is no value (if no node groups are passed in)
 	// or instancepool, but either way, we'll just default to the instance pool implementation
+	if strings.HasPrefix(ocidType, ipconsts.OciInstancePoolResourceIdent) && instancepoolTagsFound {
+		klog.Fatalf("-nodes and -node-group-auto-discovery parameters can not be used together for instancepools.")
+	}
 	ipManager, err := CreateInstancePoolManager(opts.CloudConfig, do, createKubeClient(opts))
 	if err != nil {
 		klog.Fatalf("Could not create OCI cloud provider: %v", err)
