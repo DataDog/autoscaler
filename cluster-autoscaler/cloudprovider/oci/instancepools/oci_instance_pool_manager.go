@@ -452,6 +452,7 @@ func (m *InstancePoolManagerImpl) buildNodeFromTemplate(instancePool *core.Insta
 		return nil, err
 	}
 	attrs := m.nodeTemplater.ExtractNodeTemplateAttributes(freeformTags, definedTags)
+	klog.V(1).Infof("node template attributes for pool %s: %+v", *instancePool.Id, attrs)
 
 	// Labels
 	availabilityDomain, err := getInstancePoolAvailabilityDomain(instancePool)
