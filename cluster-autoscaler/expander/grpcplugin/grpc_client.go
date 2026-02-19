@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	gRPCTimeout        = 5 * time.Second
-	gRPCMaxRecvMsgSize = 128 << 20
+	gRPCTimeout        = 10 * time.Second
+	gRPCMaxRecvMsgSize = 512 << 20
 )
 
 type grpcclientstrategy struct {
