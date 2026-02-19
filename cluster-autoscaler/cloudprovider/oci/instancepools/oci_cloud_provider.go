@@ -70,21 +70,26 @@ func (ocp *OciCloudProvider) NodeGroupForNode(n *apiv1.Node) (cloudprovider.Node
 func (ocp *OciCloudProvider) HasInstance(node *apiv1.Node) (bool, error) {
 	instance, err := ocicommon.NodeToOciRef(node)
 	if err != nil {
+		klog.Errorf("[%s] Failed to convert node to OCI reference for node: %v", node.Name, err)
 		return false, err
 	}
 	instancePool, err := ocp.poolManager.GetInstancePoolForInstance(instance)
 	if err != nil {
+		klog.Errorf("[%s] Failed to get instance pool for instance %s: %v", node.Name, instance.InstanceID, err)
 		return false, err
 	}
 	instances, err := ocp.poolManager.GetInstancePoolNodes(*instancePool)
 	if err != nil {
+		klog.Errorf("[%s] Failed to get instances for instance pool %s: %v", node.Name, instancePool.Id(), err)
 		return false, err
 	}
 	for _, i := range instances {
 		if i.Id == instance.InstanceID {
+			klog.V(4).Infof("[%s] Instance %s found in instance pool %s", node.Name, instance.InstanceID, instancePool.Id())
 			return true, nil
 		}
 	}
+	klog.V(4).Infof("[%s] Instance %s not found in instance pool %s", node.Name, instance.InstanceID, instancePool.Id())
 	return false, nil
 }
 
@@ -168,7 +173,7 @@ func BuildOCI(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDiscover
 	}
 	// theoretically the only other possible value is no value (if no node groups are passed in)
 	// or instancepool, but either way, we'll just default to the instance pool implementation
-	ipManager, err := CreateInstancePoolManager(opts.CloudConfig, do, createKubeClient(opts))
+	ipManager, err := CreateInstancePoolManager(opts.CloudConfig, opts.NodeGroupAutoDiscovery, do, createKubeClient(opts))
 	if err != nil {
 		klog.Fatalf("Could not create OCI cloud provider: %v", err)
 	}

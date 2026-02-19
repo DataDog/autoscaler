@@ -5,9 +5,11 @@ Copyright 2021-2023 Oracle and/or its affiliates.
 package instancepools
 
 import (
+	"context"
 	"fmt"
-	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
+
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,10 +27,18 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 
 	"github.com/pkg/errors"
+	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/common"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/common/auth"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/core"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/workrequests"
+)
+
+const (
+	autoDiscoveryLabelCompartmentId = "compartmentId"
+	autoDiscoveryInstancePoolTags   = "instancepoolTags"
+	autoDiscoveryMin                = "min"
+	autoDiscoveryMax                = "max"
 )
 
 var (
@@ -61,10 +71,14 @@ type InstancePoolManager interface {
 
 // InstancePoolManagerImpl is the implementation of an instance-pool based autoscaler on OCI.
 type InstancePoolManagerImpl struct {
-	cfg                 *ocicommon.CloudConfig
-	ShapeGetter         ocicommon.ShapeGetter
-	staticInstancePools map[string]*InstancePoolNodeGroup
-	lastRefresh         time.Time
+	cfg                     *ocicommon.CloudConfig
+	computeManagementClient *core.ComputeManagementClient
+	ShapeGetter             ocicommon.ShapeGetter
+	tagsGetter              ocicommon.TagsGetter
+	staticInstancePools     map[string]*InstancePoolNodeGroup
+	nodeGroups              []nodeGroupAutoDiscovery
+
+	lastRefresh time.Time
 	// caches the instance pool and instance summary objects received from OCI.
 	// All interactions with OCI's API should go through the poolCache.
 	instancePoolCache *instancePoolCache
@@ -72,7 +86,7 @@ type InstancePoolManagerImpl struct {
 }
 
 // CreateInstancePoolManager constructs the InstancePoolManager object.
-func CreateInstancePoolManager(cloudConfigPath string, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, kubeClient kubernetes.Interface) (InstancePoolManager, error) {
+func CreateInstancePoolManager(cloudConfigPath string, nodeGroupAutoDiscoveryList []string, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, kubeClient kubernetes.Interface) (InstancePoolManager, error) {
 
 	var err error
 	var configProvider common.ConfigurationProvider
@@ -133,11 +147,28 @@ func CreateInstancePoolManager(cloudConfigPath string, discoveryOpts cloudprovid
 	workRequestClient.SetCustomClientConfiguration(clientConfig)
 
 	ipManager := &InstancePoolManagerImpl{
-		cfg:                 cloudConfig,
-		staticInstancePools: map[string]*InstancePoolNodeGroup{},
-		ShapeGetter:         ocicommon.CreateShapeGetter(ocicommon.ShapeClientImpl{ComputeMgmtClient: computeMgmtClient, ComputeClient: computeClient}),
-		instancePoolCache:   newInstancePoolCache(&computeMgmtClient, &computeClient, &networkClient, &workRequestClient),
-		kubeClient:          kubeClient,
+		cfg:                     cloudConfig,
+		computeManagementClient: &computeMgmtClient,
+		staticInstancePools:     map[string]*InstancePoolNodeGroup{},
+		ShapeGetter:             ocicommon.CreateShapeGetter(ocicommon.ShapeClientImpl{ComputeMgmtClient: computeMgmtClient, ComputeClient: computeClient}),
+		tagsGetter:              ocicommon.CreateTagsGetter(),
+		instancePoolCache:       newInstancePoolCache(&computeMgmtClient, &computeClient, &networkClient, &workRequestClient),
+		kubeClient:              kubeClient,
+	}
+
+	klog.Infof("checking node groups for autodiscovery...")
+	for _, arg := range nodeGroupAutoDiscoveryList {
+		nodeGroup, err := nodeGroupFromArg(arg)
+		if err != nil {
+			return nil, fmt.Errorf("unable to construct instance pool from argument: %v", err)
+		}
+		nodeGroup.manager = ipManager
+		nodeGroup.kubeClient = kubeClient
+
+		ipManager.nodeGroups = append(ipManager.nodeGroups, *nodeGroup)
+		if _, err = autoDiscoverNodeGroups(ipManager, ipManager.computeManagementClient, *nodeGroup); err != nil {
+			return nil, fmt.Errorf("unable to auto discover instance pools: %v", err)
+		}
 	}
 
 	// Contains all the specs from the args that give us the pools.
@@ -204,6 +235,112 @@ func instancePoolFromArg(value string) (*InstancePoolNodeGroup, error) {
 	return spec, nil
 }
 
+// nodeGroupFromArg parses a node group spec represented in the form of
+// `compartmentId:<compartmentId>,instancePoolTags:<tagKey1>=<tagValue1>&<tagKey2>=<tagValue2>,min:<min>,max:<max>`
+// and produces a node group auto discovery object
+func nodeGroupFromArg(value string) (*nodeGroupAutoDiscovery, error) {
+	// this regex will find the key-value pairs in any given order if separated with a colon
+	regexPattern := `(?:` + autoDiscoveryLabelCompartmentId + `:(?P<` + autoDiscoveryLabelCompartmentId + `>[^,]+)`
+	regexPattern = regexPattern + `|` + autoDiscoveryInstancePoolTags + `:(?P<` + autoDiscoveryInstancePoolTags + `>[^,]+)`
+	regexPattern = regexPattern + `|` + autoDiscoveryMax + `:(?P<` + autoDiscoveryMax + `>[^,]+)`
+	regexPattern = regexPattern + `|` + autoDiscoveryMin + `:(?P<` + autoDiscoveryMin + `>[^,]+)`
+	regexPattern = regexPattern + `)(?:,|$)`
+
+	re := regexp.MustCompile(regexPattern)
+
+	parametersMap := make(map[string]string)
+
+	// push key-value pairs into a map
+	for _, match := range re.FindAllStringSubmatch(value, -1) {
+		for i, name := range re.SubexpNames() {
+			if i != 0 && match[i] != "" {
+				parametersMap[name] = match[i]
+			}
+		}
+	}
+
+	spec := &nodeGroupAutoDiscovery{}
+	if parametersMap[autoDiscoveryLabelCompartmentId] != "" {
+		spec.compartmentId = parametersMap[autoDiscoveryLabelCompartmentId]
+	} else {
+		return nil, fmt.Errorf("failed to set %s, it is missing in node-group-auto-discovery parameter", autoDiscoveryLabelCompartmentId)
+	}
+
+	if size, err := strconv.Atoi(parametersMap[autoDiscoveryMin]); err == nil {
+		spec.minSize = size
+	} else {
+		return nil, fmt.Errorf("failed to set %s size: %s, expected integer", autoDiscoveryMin, parametersMap[autoDiscoveryMin])
+	}
+
+	if size, err := strconv.Atoi(parametersMap[autoDiscoveryMax]); err == nil {
+		spec.maxSize = size
+	} else {
+		return nil, fmt.Errorf("failed to set %s size: %s, expected integer", autoDiscoveryMax, parametersMap[autoDiscoveryMax])
+	}
+
+	if parametersMap[autoDiscoveryInstancePoolTags] != "" {
+		tags := parametersMap[autoDiscoveryInstancePoolTags]
+
+		spec.tags = make(map[string]string)
+
+		pairs := strings.Split(tags, "&")
+
+		for _, pair := range pairs {
+			parts := strings.Split(pair, "=")
+			if len(parts) == 2 {
+				spec.tags[parts[0]] = parts[1]
+			} else {
+				return nil, fmt.Errorf("%s should be given in tagKey=tagValue format, this is not valid: %s", autoDiscoveryInstancePoolTags, pair)
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("failed to set %s, it is missing in node-group-auto-discovery parameter", autoDiscoveryInstancePoolTags)
+	}
+
+	klog.Infof("node group auto discovery spec constructed: %+v", spec)
+	return spec, nil
+}
+
+func autoDiscoverNodeGroups(m *InstancePoolManagerImpl, computeMgmtClient *core.ComputeManagementClient, nodeGroup nodeGroupAutoDiscovery) (bool, error) {
+	var resp, reqErr = computeMgmtClient.ListInstancePools(context.Background(), core.ListInstancePoolsRequest{
+		CompartmentId: &nodeGroup.compartmentId},
+	)
+	if reqErr != nil {
+		klog.Errorf("unable to list instance pools for compartment %s: %+v", nodeGroup.compartmentId, reqErr)
+		return false, reqErr
+	}
+	for _, instancePoolSummary := range resp.Items {
+		if validateInstancePoolTags(nodeGroup.tags, instancePoolSummary.FreeformTags, instancePoolSummary.DefinedTags) {
+			instancePool := &InstancePoolNodeGroup{}
+			instancePool.id = *instancePoolSummary.Id
+			instancePool.minSize = nodeGroup.minSize
+			instancePool.maxSize = nodeGroup.maxSize
+			instancePool.manager = nodeGroup.manager
+			instancePool.kubeClient = nodeGroup.kubeClient
+			m.staticInstancePools[instancePool.id] = instancePool
+			klog.V(4).Infof("auto discovered instance pool in compartment: %s, instancePoolId: %s, minSize: %d, maxSize: %d", nodeGroup.compartmentId, instancePool.id, instancePool.minSize, instancePool.maxSize)
+		} else {
+			klog.Warningf("instance pool ignored as the tags do not satisfy the requirement: %s, %v, %v", *instancePoolSummary.Id, instancePoolSummary.FreeformTags, instancePoolSummary.DefinedTags)
+		}
+	}
+
+	return false, nil
+}
+
+func validateInstancePoolTags(nodeGroupTags map[string]string, freeFormTags map[string]string, definedTags map[string]map[string]interface{}) bool {
+	if nodeGroupTags != nil {
+		for tagKey, tagValue := range nodeGroupTags {
+			namespacedTagKey := strings.Split(tagKey, ".")
+			if len(namespacedTagKey) == 2 && tagValue != definedTags[namespacedTagKey[0]][namespacedTagKey[1]] {
+				return false
+			} else if len(namespacedTagKey) != 2 && tagValue != freeFormTags[tagKey] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // Refresh triggers refresh of cached resources.
 func (m *InstancePoolManagerImpl) Refresh() error {
 	if m.lastRefresh.Add(m.cfg.Global.RefreshInterval).After(time.Now()) {
@@ -218,6 +355,33 @@ func (m *InstancePoolManagerImpl) forceRefresh() error {
 		return errors.New("instance pool manager does have a required config")
 	}
 	m.ShapeGetter.Refresh()
+
+	if m.nodeGroups != nil {
+		staticInstancePoolsCopy := make(map[string]*InstancePoolNodeGroup)
+		for k, v := range m.staticInstancePools {
+			staticInstancePoolsCopy[k] = v
+		}
+
+		m.staticInstancePools = make(map[string]*InstancePoolNodeGroup)
+		for _, nodeGroup := range m.nodeGroups {
+			_, _ = autoDiscoverNodeGroups(m, m.computeManagementClient, nodeGroup)
+		}
+
+		for instancePoolId, instancePool := range m.staticInstancePools {
+			if _, ok := staticInstancePoolsCopy[instancePoolId]; !ok {
+				klog.Infof("New instance pool discovered. [id: %s, minSize: %d, maxSize: %d]", instancePool.Id(), instancePool.MinSize(), instancePool.MaxSize())
+			} else if staticInstancePoolsCopy[instancePoolId].MinSize() != instancePool.MinSize() || staticInstancePoolsCopy[instancePoolId].MaxSize() != instancePool.MaxSize() {
+				klog.Infof("Instance pool min/max sizes are updated. [id: %s, minSize: %d, maxSize: %d]", instancePool.Id(), instancePool.MinSize(), instancePool.MaxSize())
+			}
+		}
+
+		for k := range staticInstancePoolsCopy {
+			if _, ok := m.staticInstancePools[k]; !ok {
+				klog.Infof("Previously auto-discovered instance pool removed from the managed instance pool list [id: %s]", k)
+			}
+		}
+	}
+
 	err := m.instancePoolCache.rebuild(m.staticInstancePools, *m.cfg)
 	if err != nil {
 		return err
@@ -310,7 +474,7 @@ func (m *InstancePoolManagerImpl) GetInstancePoolNodes(ip InstancePoolNodeGroup)
 func (m *InstancePoolManagerImpl) GetInstancePoolForInstance(instanceDetails ocicommon.OciRef) (*InstancePoolNodeGroup, error) {
 	if m.cfg.Global.UseNonMemberAnnotation && instanceDetails.InstancePoolID == consts.OciInstancePoolIDNonPoolMember {
 		// Instance is not part of a configured pool. Return early and avoid additional API calls.
-		klog.V(4).Infof(instanceDetails.Name + " is not a member of any of the specified instance pool(s) and already annotated as " +
+		klog.V(4).Info(instanceDetails.Name + " is not a member of any of the specified instance pool(s) and already annotated as " +
 			consts.OciInstancePoolIDNonPoolMember)
 		return nil, errInstanceInstancePoolNotFound
 	}
