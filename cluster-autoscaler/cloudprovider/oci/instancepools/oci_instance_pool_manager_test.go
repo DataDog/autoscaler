@@ -400,6 +400,12 @@ func TestGetInstancePoolNodes(t *testing.T) {
 		AvailabilityDomain: common.String("PHX-AD-1"),
 		State:              common.String(string(core.InstanceLifecycleStateTerminating)),
 	},
+		{
+			// Instance state is running with varied capitalization
+			Id:                 common.String("ocid1.instance.oc1.phx.aaa3"),
+			AvailabilityDomain: common.String("PHX-AD-1"),
+			State:              common.String("Running"),
+		},
 	}
 
 	expected := []cloudprovider.Instance{
@@ -413,6 +419,12 @@ func TestGetInstancePoolNodes(t *testing.T) {
 			Id: "ocid1.instance.oc1.phx.aaa2",
 			Status: &cloudprovider.InstanceStatus{
 				State: cloudprovider.InstanceDeleting,
+			},
+		},
+		{
+			Id: "ocid1.instance.oc1.phx.aaa3",
+			Status: &cloudprovider.InstanceStatus{
+				State: cloudprovider.InstanceRunning,
 			},
 		},
 	}
