@@ -6,16 +6,19 @@ package instancepools
 
 import (
 	"context"
-	apiv1 "k8s.io/api/core/v1"
-	ocicommon "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/common"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/core"
-	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/workrequests"
-	kubeletapis "k8s.io/kubelet/pkg/apis"
 	"reflect"
 	"testing"
 
+	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	ocicommon "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/common"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/instancepools/consts"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/common"
+	oke "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/containerengine"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/core"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/workrequests"
+	kubeletapis "k8s.io/kubelet/pkg/apis"
 )
 
 // this is a copy of the mockShapeClient code in common/oci_shape_test.go
@@ -141,6 +144,31 @@ func (m *mockComputeManagementClient) GetInstancePoolInstance(context.Context, c
 
 func (m *mockComputeManagementClient) DetachInstancePoolInstance(context.Context, core.DetachInstancePoolInstanceRequest) (core.DetachInstancePoolInstanceResponse, error) {
 	return m.detachInstancePoolInstanceResponse, m.err
+}
+
+// mockTagsGetter returns configurable freeform and defined tags for instance pools.
+type mockTagsGetter struct {
+	freeformTags map[string]string
+	definedTags  map[string]map[string]string
+}
+
+func (m *mockTagsGetter) GetNodePoolFreeformTags(_ *oke.NodePool) (map[string]string, error) {
+	return nil, nil
+}
+func (m *mockTagsGetter) GetNodePoolDefinedTags(_ *oke.NodePool) (map[string]map[string]string, error) {
+	return nil, nil
+}
+func (m *mockTagsGetter) GetInstancePoolFreeformTags(_ *core.InstancePool) (map[string]string, error) {
+	if m.freeformTags == nil {
+		return map[string]string{}, nil
+	}
+	return m.freeformTags, nil
+}
+func (m *mockTagsGetter) GetInstancePoolDefinedTags(_ *core.InstancePool) (map[string]map[string]string, error) {
+	if m.definedTags == nil {
+		return map[string]map[string]string{}, nil
+	}
+	return m.definedTags, nil
 }
 
 var computeClient = &mockComputeClient{
@@ -554,8 +582,10 @@ func TestGetInstancePoolTemplateNode(t *testing.T) {
 	cloudConfig := &ocicommon.CloudConfig{}
 	cloudConfig.Global.CompartmentID = "ocid1.compartment.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	var manager = &InstancePoolManagerImpl{
-		cfg:         cloudConfig,
-		ShapeGetter: ocicommon.CreateShapeGetter(shapeClient),
+		cfg:           cloudConfig,
+		ShapeGetter:   ocicommon.CreateShapeGetter(shapeClient),
+		tagsGetter:    &mockTagsGetter{},
+		nodeTemplater: NewNodeTemplater(consts.DefaultOciNodeTemplateTagNamespace),
 		staticInstancePools: map[string]*InstancePoolNodeGroup{
 			"ocid1.instancepool.oc1.phx.aaaaaaaa1": {id: "ocid1.instancepool.oc1.phx.aaaaaaaa1"},
 		},
@@ -664,6 +694,201 @@ func TestDeleteInstances(t *testing.T) {
 	}
 	if size != 1 {
 		t.Errorf("got size %d ; wanted size 1 *after* delete", size)
+	}
+}
+
+// instancePool used across buildNodeFromTemplate tests.
+var templateInstancePool = &core.InstancePool{
+	Id:             common.String("ocid1.instancepool.oc1.phx.aaaaaaaa1"),
+	CompartmentId:  common.String("ocid1.compartment.oc1..aaaaaaaa1"),
+	LifecycleState: core.InstancePoolLifecycleStateRunning,
+	PlacementConfigurations: []core.InstancePoolPlacementConfiguration{{
+		AvailabilityDomain: common.String("hash:US-ASHBURN-1"),
+		PrimarySubnetId:    common.String("ocid1.subnet.oc1.phx.aaaaaaaa1"),
+	}},
+}
+
+func newTemplateManager(tagsGetter ocicommon.TagsGetter, shapeGetter ocicommon.ShapeGetter) *InstancePoolManagerImpl {
+	cloudConfig := &ocicommon.CloudConfig{}
+	cloudConfig.Global.CompartmentID = "ocid1.compartment.oc1..aaaaaaaa1"
+	return &InstancePoolManagerImpl{
+		cfg:           cloudConfig,
+		ShapeGetter:   shapeGetter,
+		tagsGetter:    tagsGetter,
+		nodeTemplater: NewNodeTemplater(consts.DefaultOciNodeTemplateTagNamespace),
+	}
+}
+
+// TestBuildNodeFromTemplate_TagPrecedence validates that node template attributes sourced
+// from instance pool tags take precedence over values inferred from the shape.
+func TestBuildNodeFromTemplate_TagPrecedence(t *testing.T) {
+	// shapeClient returns VM.Standard.E3.Flex: 8 OCPUs, 128 GiB memory, 0 GPUs.
+	// CPU=8, MemoryInBytes=128*1024^3.
+	shapeGetter := ocicommon.CreateShapeGetter(shapeClient)
+
+	tests := []struct {
+		name         string
+		freeformTags map[string]string
+		definedTags  map[string]map[string]string
+		// wantCapacity entries are checked as a subset of node capacity.
+		wantCapacity map[apiv1.ResourceName]resource.Quantity
+		// wantLabels entries are checked as a subset of node labels.
+		wantLabels map[string]string
+		// wantTaints is checked as an exact (order-independent) match.
+		wantTaints []apiv1.Taint
+	}{
+		{
+			name: "tag resource overrides shape CPU",
+			freeformTags: map[string]string{
+				"cluster-autoscaler/node-template/resources/cpu": "16",
+			},
+			wantCapacity: map[apiv1.ResourceName]resource.Quantity{
+				apiv1.ResourceCPU: resource.MustParse("16"),
+			},
+		},
+		{
+			name: "tag resource overrides shape memory",
+			freeformTags: map[string]string{
+				"cluster-autoscaler/node-template/resources/memory": "256Gi",
+			},
+			wantCapacity: map[apiv1.ResourceName]resource.Quantity{
+				apiv1.ResourceMemory: resource.MustParse("256Gi"),
+			},
+		},
+		{
+			name: "tag resource adds custom extended resource",
+			freeformTags: map[string]string{
+				"cluster-autoscaler/node-template/resources/nvidia~2com/gpu": "4",
+			},
+			wantCapacity: map[apiv1.ResourceName]resource.Quantity{
+				"nvidia.com/gpu": resource.MustParse("4"),
+			},
+		},
+		{
+			name: "tag label overrides shape-inferred instance-type label",
+			freeformTags: map[string]string{
+				// node.kubernetes.io/instance-type — periods encoded as ~2
+				"cluster-autoscaler/node-template/label/node~2kubernetes~2io/instance-type": "custom-shape",
+			},
+			wantLabels: map[string]string{
+				apiv1.LabelInstanceTypeStable: "custom-shape",
+			},
+		},
+		{
+			name: "tag label overrides shape-inferred zone label",
+			freeformTags: map[string]string{
+				// topology.kubernetes.io/zone — periods encoded as ~2
+				"cluster-autoscaler/node-template/label/topology~2kubernetes~2io/zone": "custom-zone",
+			},
+			wantLabels: map[string]string{
+				apiv1.LabelTopologyZone: "custom-zone",
+			},
+		},
+		{
+			name: "tag taint is applied",
+			freeformTags: map[string]string{
+				"cluster-autoscaler/node-template/taint/dedicated": "gpu:NoSchedule",
+			},
+			wantTaints: []apiv1.Taint{
+				{Key: "dedicated", Value: "gpu", Effect: apiv1.TaintEffectNoSchedule},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := newTemplateManager(&mockTagsGetter{
+				freeformTags: tt.freeformTags,
+				definedTags:  tt.definedTags,
+			}, shapeGetter)
+
+			node, err := manager.buildNodeFromTemplate(templateInstancePool)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			for resourceName, wantQty := range tt.wantCapacity {
+				gotQty, ok := node.Status.Capacity[resourceName]
+				if !ok {
+					t.Errorf("resource %q not found in capacity", resourceName)
+					continue
+				}
+				if !gotQty.Equal(wantQty) {
+					t.Errorf("capacity[%q]: got %s, want %s", resourceName, gotQty.String(), wantQty.String())
+				}
+			}
+
+			for k, want := range tt.wantLabels {
+				if got := node.Labels[k]; got != want {
+					t.Errorf("label %q: got %q, want %q", k, got, want)
+				}
+			}
+
+			if tt.wantTaints != nil {
+				if len(node.Spec.Taints) != len(tt.wantTaints) {
+					t.Errorf("taints: got %v, want %v", node.Spec.Taints, tt.wantTaints)
+				} else {
+					for _, want := range tt.wantTaints {
+						found := false
+						for _, got := range node.Spec.Taints {
+							if got.Key == want.Key && got.Value == want.Value && got.Effect == want.Effect {
+								found = true
+								break
+							}
+						}
+						if !found {
+							t.Errorf("taint %+v not found in %v", want, node.Spec.Taints)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestBuildNodeFromTemplate_DefaultGpuTaintNotDuplicated(t *testing.T) {
+	// Shape with 1 GPU to trigger the default nvidia.com/gpu taint.
+	gpuShapeClient := &mockShapeClient{
+		getInstanceConfigResp: core.GetInstanceConfigurationResponse{
+			InstanceConfiguration: core.InstanceConfiguration{
+				Id: common.String("ocid1.instanceconfiguration.oc1.phx.aaaaaaaa1"),
+				InstanceDetails: core.ComputeInstanceDetails{
+					LaunchDetails: &core.InstanceConfigurationLaunchInstanceDetails{
+						Shape: common.String("BM.GPU4.8"),
+					},
+				},
+			},
+		},
+		listShapeResp: core.ListShapesResponse{
+			Items: []core.Shape{{
+				Shape:       common.String("BM.GPU4.8"),
+				Ocpus:       common.Float32(64),
+				MemoryInGBs: common.Float32(1024),
+				Gpus:        common.Int(1),
+			}},
+		},
+	}
+
+	// Also provide the same taint via a tag — it must not appear twice.
+	manager := newTemplateManager(&mockTagsGetter{
+		freeformTags: map[string]string{
+			"cluster-autoscaler/node-template/taint/nvidia~2com/gpu": ":NoSchedule",
+		},
+	}, ocicommon.CreateShapeGetter(gpuShapeClient))
+
+	node, err := manager.buildNodeFromTemplate(templateInstancePool)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	gpuTaintCount := 0
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == "nvidia.com/gpu" {
+			gpuTaintCount++
+		}
+	}
+	if gpuTaintCount != 1 {
+		t.Errorf("expected exactly 1 nvidia.com/gpu taint, got %d: %v", gpuTaintCount, node.Spec.Taints)
 	}
 }
 
