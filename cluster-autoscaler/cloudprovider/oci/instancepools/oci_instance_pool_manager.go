@@ -13,13 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
-
 	ocicommon "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/common"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/instancepools/consts"
+	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
 
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -28,7 +27,6 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 
 	"github.com/pkg/errors"
-	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/common"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/common/auth"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/v65/core"
@@ -76,7 +74,7 @@ type InstancePoolManagerImpl struct {
 	computeManagementClient *core.ComputeManagementClient
 	ShapeGetter             ocicommon.ShapeGetter
 	tagsGetter              ocicommon.TagsGetter
-	nodeTemplater			NodeTemplater
+	nodeTemplater           NodeTemplater
 	staticInstancePools     map[string]*InstancePoolNodeGroup
 	nodeGroups              []nodeGroupAutoDiscovery
 
@@ -159,7 +157,7 @@ func CreateInstancePoolManager(cloudConfigPath string, nodeGroupAutoDiscoveryLis
 		staticInstancePools:     map[string]*InstancePoolNodeGroup{},
 		ShapeGetter:             ocicommon.CreateShapeGetter(ocicommon.ShapeClientImpl{ComputeMgmtClient: computeMgmtClient, ComputeClient: computeClient}),
 		tagsGetter:              ocicommon.CreateTagsGetter(),
-		nodeTemplater:       NewNodeTemplater(ns),
+		nodeTemplater:           NewNodeTemplater(ns),
 		instancePoolCache:       newInstancePoolCache(&computeMgmtClient, &computeClient, &networkClient, &workRequestClient),
 		kubeClient:              kubeClient,
 	}
@@ -439,30 +437,32 @@ func (m *InstancePoolManagerImpl) GetInstancePoolNodes(ip InstancePoolNodeGroup)
 	var providerInstances []cloudprovider.Instance
 	for _, instance := range *instanceSummaries {
 		status := &cloudprovider.InstanceStatus{}
-		switch *instance.State {
-		case string(core.InstanceLifecycleStateStopped), string(core.InstanceLifecycleStateTerminated):
+		switch strings.ToLower(*instance.State) {
+		case strings.ToLower(string(core.InstanceLifecycleStateStopped)), strings.ToLower(string(core.InstanceLifecycleStateTerminated)):
 			klog.V(4).Infof("skipping instance is in stopped/terminated state: %q", *instance.Id)
-		case string(core.InstanceLifecycleStateRunning):
+		case strings.ToLower(string(core.InstanceLifecycleStateRunning)):
 			status.State = cloudprovider.InstanceRunning
-		case string(core.InstanceLifecycleStateCreatingImage):
+		case strings.ToLower(string(core.InstanceLifecycleStateCreatingImage)):
 			status.State = cloudprovider.InstanceCreating
-		case string(core.InstanceLifecycleStateStarting):
+		case strings.ToLower(string(core.InstanceLifecycleStateStarting)):
 			status.State = cloudprovider.InstanceCreating
-		case string(core.InstanceLifecycleStateMoving):
+		case strings.ToLower(string(core.InstanceLifecycleStateMoving)):
 			status.State = cloudprovider.InstanceCreating
-		case string(core.InstanceLifecycleStateProvisioning):
+		case strings.ToLower(string(core.InstanceLifecycleStateProvisioning)):
 			status.State = cloudprovider.InstanceCreating
-		case string(core.InstanceLifecycleStateTerminating):
+		case strings.ToLower(string(core.InstanceLifecycleStateTerminating)):
 			status.State = cloudprovider.InstanceDeleting
-		case string(core.InstanceLifecycleStateStopping):
+		case strings.ToLower(string(core.InstanceLifecycleStateStopping)):
 			status.State = cloudprovider.InstanceDeleting
-		case consts.InstanceStateUnfulfilled:
+		case strings.ToLower(consts.InstanceStateUnfulfilled):
 			status.State = cloudprovider.InstanceCreating
 			status.ErrorInfo = &cloudprovider.InstanceErrorInfo{
 				ErrorClass:   cloudprovider.OutOfResourcesErrorClass,
 				ErrorCode:    consts.InstanceStateUnfulfilled,
 				ErrorMessage: "OCI cannot provision additional instances for this instance pool. Review quota and/or capacity.",
 			}
+		default:
+			klog.Warningf("instance %s has unknown state: %s", *instance.Id, *instance.State)
 		}
 
 		// Instance not in a terminal or unknown state, ok to add.
