@@ -6,17 +6,18 @@ package instancepools
 
 import (
 	"fmt"
-	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+	npconsts "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/nodepools/consts"
+
 	ocicommon "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/common"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/oci/instancepools/consts"
 
 	apiv1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -63,6 +64,8 @@ type InstancePoolManager interface {
 type InstancePoolManagerImpl struct {
 	cfg                 *ocicommon.CloudConfig
 	ShapeGetter         ocicommon.ShapeGetter
+	tagsGetter          ocicommon.TagsGetter
+	nodeTemplater       NodeTemplater
 	staticInstancePools map[string]*InstancePoolNodeGroup
 	lastRefresh         time.Time
 	// caches the instance pool and instance summary objects received from OCI.
@@ -132,10 +135,17 @@ func CreateInstancePoolManager(cloudConfigPath string, discoveryOpts cloudprovid
 	}
 	workRequestClient.SetCustomClientConfiguration(clientConfig)
 
+	ns := os.Getenv(consts.OciNodeTemplateTagNamespaceEnvVar)
+	if ns == "" {
+		ns = consts.DefaultOciNodeTemplateTagNamespace
+	}
+
 	ipManager := &InstancePoolManagerImpl{
 		cfg:                 cloudConfig,
 		staticInstancePools: map[string]*InstancePoolNodeGroup{},
 		ShapeGetter:         ocicommon.CreateShapeGetter(ocicommon.ShapeClientImpl{ComputeMgmtClient: computeMgmtClient, ComputeClient: computeClient}),
+		tagsGetter:          ocicommon.CreateTagsGetter(),
+		nodeTemplater:       NewNodeTemplater(ns),
 		instancePoolCache:   newInstancePoolCache(&computeMgmtClient, &computeClient, &networkClient, &workRequestClient),
 		kubeClient:          kubeClient,
 	}
@@ -310,7 +320,7 @@ func (m *InstancePoolManagerImpl) GetInstancePoolNodes(ip InstancePoolNodeGroup)
 func (m *InstancePoolManagerImpl) GetInstancePoolForInstance(instanceDetails ocicommon.OciRef) (*InstancePoolNodeGroup, error) {
 	if m.cfg.Global.UseNonMemberAnnotation && instanceDetails.InstancePoolID == consts.OciInstancePoolIDNonPoolMember {
 		// Instance is not part of a configured pool. Return early and avoid additional API calls.
-		klog.V(4).Infof(instanceDetails.Name + " is not a member of any of the specified instance pool(s) and already annotated as " +
+		klog.V(4).Info(instanceDetails.Name + " is not a member of any of the specified instance pool(s) and already annotated as " +
 			consts.OciInstancePoolIDNonPoolMember)
 		return nil, errInstanceInstancePoolNotFound
 	}
@@ -431,29 +441,53 @@ func (m *InstancePoolManagerImpl) buildNodeFromTemplate(instancePool *core.Insta
 		return nil, err
 	}
 
-	if shape.GPU > 0 {
-		node.Spec.Taints = append(node.Spec.Taints, apiv1.Taint{
-			Key:    "nvidia.com/gpu",
-			Value:  "",
-			Effect: "NoSchedule",
-		})
+	// Gather node template information expressed in tags.
+	// These values take precedence over defaults inferred from the shape.
+	freeformTags, err := m.tagsGetter.GetInstancePoolFreeformTags(instancePool)
+	if err != nil {
+		return nil, err
 	}
+	definedTags, err := m.tagsGetter.GetInstancePoolDefinedTags(instancePool)
+	if err != nil {
+		return nil, err
+	}
+	attrs := m.nodeTemplater.ExtractNodeTemplateAttributes(freeformTags, definedTags)
 
-	node.Status.Capacity[apiv1.ResourcePods] = *resource.NewQuantity(110, resource.DecimalSI)
-	node.Status.Capacity[apiv1.ResourceCPU] = *resource.NewQuantity(int64(shape.CPU), resource.DecimalSI)
-	node.Status.Capacity[apiv1.ResourceMemory] = *resource.NewQuantity(int64(shape.MemoryInBytes), resource.DecimalSI)
-	node.Status.Capacity[consts.ResourceGPU] = *resource.NewQuantity(int64(shape.GPU), resource.DecimalSI)
-
-	node.Status.Allocatable = node.Status.Capacity
-
+	// Labels
 	availabilityDomain, err := getInstancePoolAvailabilityDomain(instancePool)
 	if err != nil {
 		return nil, err
 	}
-
 	node.Labels = cloudprovider.JoinStringMaps(node.Labels, ocicommon.BuildGenericLabels(*instancePool.Id, nodeName, shape.Name, availabilityDomain))
+	node.Labels = cloudprovider.JoinStringMaps(node.Labels, attrs.Labels)
+
+	// Taints
+	defaultGpuTaint := apiv1.Taint{Key: "nvidia.com/gpu", Value: "", Effect: "NoSchedule"}
+	if shape.GPU > 0 {
+		node.Spec.Taints = append(node.Spec.Taints, defaultGpuTaint)
+	}
+	for _, taint := range attrs.Taints {
+		// Avoid duplicate taints
+		if taint.Key == defaultGpuTaint.Key && taint.Value == defaultGpuTaint.Value && taint.Effect == defaultGpuTaint.Effect {
+			continue
+		}
+		node.Spec.Taints = append(node.Spec.Taints, taint)
+	}
+
+	// Resources
+	node.Status.Capacity[apiv1.ResourcePods] = *resource.NewQuantity(110, resource.DecimalSI)
+	node.Status.Capacity[apiv1.ResourceCPU] = *resource.NewQuantity(int64(shape.CPU), resource.DecimalSI)
+	node.Status.Capacity[apiv1.ResourceMemory] = *resource.NewQuantity(int64(shape.MemoryInBytes), resource.DecimalSI)
+	node.Status.Capacity[consts.ResourceGPU] = *resource.NewQuantity(int64(shape.GPU), resource.DecimalSI)
+	for resourceName, val := range attrs.Resources {
+		node.Status.Capacity[apiv1.ResourceName(resourceName)] = *val
+	}
+	node.Status.Allocatable = node.Status.Capacity
 
 	node.Status.Conditions = cloudprovider.BuildReadyConditions()
+
+	// TODO: Autoscaling Options are not yet supported.
+	//  attrs.AutoscalingOptions
 	return &node, nil
 }
 
