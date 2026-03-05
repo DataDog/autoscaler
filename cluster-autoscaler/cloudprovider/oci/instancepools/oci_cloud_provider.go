@@ -103,7 +103,6 @@ func (ocp *OciCloudProvider) HasInstance(node *apiv1.Node) (bool, error) {
 		klog.V(4).Infof("HasInstance: node %s is not a member of any of the specified instance-pool(s)", node.Name)
 		return false, nil
 	}
-
 	klog.V(4).Infof("HasInstance: node %s belongs to instance-pool %s", node.Name, instancePool.Id())
 	return true, nil
 }
