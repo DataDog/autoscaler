@@ -19,11 +19,14 @@ package nodegroupset
 import (
 	"testing"
 
+	apiv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	testprovider "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/test"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/framework"
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -384,4 +387,98 @@ func TestRolloutAware_EmptyPhase_AllToBlue(t *testing.T) {
 	m := toMap(scaleUp)
 	assert.Equal(t, 1, len(scaleUp))
 	assert.Equal(t, 15, m["blue"].NewSize)
+}
+
+// ConfigMap loader tests
+
+func TestLoadRolloutIndexFromConfigMap_ValidConfig(t *testing.T) {
+	cm := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rollout-aware-config",
+			Namespace: "kube-system",
+		},
+		Data: map[string]string{
+			"pairs": `[{"blueId":"blue-asg","greenId":"green-asg","phase":"ramping","greenTarget":8}]`,
+		},
+	}
+	client := fake.NewSimpleClientset(cm)
+
+	index, err := LoadRolloutIndexFromConfigMap(client, "kube-system", "rollout-aware-config")
+	assert.NoError(t, err)
+	assert.Len(t, index, 2)
+
+	blue := index["blue-asg"]
+	assert.Equal(t, "green-asg", blue.SiblingID)
+	assert.Equal(t, "blue", blue.Role)
+	assert.Equal(t, "ramping", blue.State.Phase)
+	assert.Equal(t, 8, blue.State.GreenTarget)
+
+	green := index["green-asg"]
+	assert.Equal(t, "blue-asg", green.SiblingID)
+	assert.Equal(t, "green", green.Role)
+	assert.Equal(t, "ramping", green.State.Phase)
+}
+
+func TestLoadRolloutIndexFromConfigMap_MultiplePairs(t *testing.T) {
+	cm := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rollout-aware-config",
+			Namespace: "kube-system",
+		},
+		Data: map[string]string{
+			"pairs": `[
+				{"blueId":"b1","greenId":"g1","phase":"canary","greenTarget":0},
+				{"blueId":"b2","greenId":"g2","phase":"draining","greenTarget":100}
+			]`,
+		},
+	}
+	client := fake.NewSimpleClientset(cm)
+
+	index, err := LoadRolloutIndexFromConfigMap(client, "kube-system", "rollout-aware-config")
+	assert.NoError(t, err)
+	assert.Len(t, index, 4)
+	assert.Equal(t, "canary", index["b1"].State.Phase)
+	assert.Equal(t, "draining", index["g2"].State.Phase)
+}
+
+func TestLoadRolloutIndexFromConfigMap_Missing(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	index, err := LoadRolloutIndexFromConfigMap(client, "kube-system", "rollout-aware-config")
+	assert.NoError(t, err)
+	assert.Nil(t, index)
+}
+
+func TestLoadRolloutIndexFromConfigMap_MissingPairsKey(t *testing.T) {
+	cm := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rollout-aware-config",
+			Namespace: "kube-system",
+		},
+		Data: map[string]string{
+			"other": "data",
+		},
+	}
+	client := fake.NewSimpleClientset(cm)
+
+	index, err := LoadRolloutIndexFromConfigMap(client, "kube-system", "rollout-aware-config")
+	assert.Error(t, err)
+	assert.Nil(t, index)
+}
+
+func TestLoadRolloutIndexFromConfigMap_InvalidJSON(t *testing.T) {
+	cm := &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rollout-aware-config",
+			Namespace: "kube-system",
+		},
+		Data: map[string]string{
+			"pairs": `not valid json`,
+		},
+	}
+	client := fake.NewSimpleClientset(cm)
+
+	index, err := LoadRolloutIndexFromConfigMap(client, "kube-system", "rollout-aware-config")
+	assert.Error(t, err)
+	assert.Nil(t, index)
 }

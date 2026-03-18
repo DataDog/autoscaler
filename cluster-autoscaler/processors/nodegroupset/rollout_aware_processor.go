@@ -17,10 +17,16 @@ limitations under the License.
 package nodegroupset
 
 import (
+	gocontext "context"
+	"encoding/json"
+	"fmt"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/framework"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
+	kube_client "k8s.io/client-go/kubernetes"
 
 	klog "k8s.io/klog/v2"
 )
@@ -241,4 +247,44 @@ func filterOutGroup(infos []ScaleUpInfo, groupID string) []ScaleUpInfo {
 		}
 	}
 	return result
+}
+
+// rolloutConfigMapEntry is the JSON structure for a single rollout pair in the ConfigMap.
+type rolloutConfigMapEntry struct {
+	BlueID      string `json:"blueId"`
+	GreenID     string `json:"greenId"`
+	Phase       string `json:"phase"`
+	GreenTarget int    `json:"greenTarget"`
+}
+
+// LoadRolloutIndexFromConfigMap reads a ConfigMap and builds a GroupRolloutInfo index.
+// Returns (nil, nil) if the ConfigMap doesn't exist (no rollout active).
+// Returns an error if the ConfigMap exists but is malformed.
+func LoadRolloutIndexFromConfigMap(client kube_client.Interface, namespace, name string) (map[string]GroupRolloutInfo, error) {
+	cm, err := client.CoreV1().ConfigMaps(namespace).Get(gocontext.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		// ConfigMap not found is not an error — just means no rollout active
+		klog.V(2).Infof("RolloutAwareProcessor: no %s/%s ConfigMap found: %v", namespace, name, err)
+		return nil, nil
+	}
+
+	pairsJSON, ok := cm.Data["pairs"]
+	if !ok {
+		return nil, fmt.Errorf("ConfigMap %s/%s missing 'pairs' key", namespace, name)
+	}
+
+	var entries []rolloutConfigMapEntry
+	if err := json.Unmarshal([]byte(pairsJSON), &entries); err != nil {
+		return nil, fmt.Errorf("failed to parse rollout config from %s/%s: %w", namespace, name, err)
+	}
+
+	index := make(map[string]GroupRolloutInfo, len(entries)*2)
+	for _, e := range entries {
+		state := RolloutState{Phase: e.Phase, GreenTarget: e.GreenTarget}
+		index[e.BlueID] = GroupRolloutInfo{SiblingID: e.GreenID, Role: "blue", State: state}
+		index[e.GreenID] = GroupRolloutInfo{SiblingID: e.BlueID, Role: "green", State: state}
+		klog.V(2).Infof("RolloutAwareProcessor: loaded pair blue=%s green=%s phase=%s greenTarget=%d",
+			e.BlueID, e.GreenID, e.Phase, e.GreenTarget)
+	}
+	return index, nil
 }
