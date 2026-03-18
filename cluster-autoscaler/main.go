@@ -249,9 +249,10 @@ func buildAutoscaler(context ctx.Context, debuggingSnapshotter debuggingsnapshot
 		nodeInfoComparator = nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels, autoscalingOptions.NodeGroupSetRatios)
 	}
 
-	opts.Processors.NodeGroupSetProcessor = &nodegroupset.BalancingNodeGroupSetProcessor{
+	balancingProcessor := &nodegroupset.BalancingNodeGroupSetProcessor{
 		Comparator: nodeInfoComparator,
 	}
+	opts.Processors.NodeGroupSetProcessor = nodegroupset.NewRolloutAwareProcessor(balancingProcessor, nil)
 
 	// These metrics should be published only once.
 	metrics.UpdateCPULimitsCores(autoscalingOptions.MinCoresTotal, autoscalingOptions.MaxCoresTotal)
