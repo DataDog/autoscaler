@@ -20,6 +20,7 @@ import (
 	"time"
 
 	apiv1 "k8s.io/api/core/v1"
+	v1 "k8s.io/autoscaler/cluster-autoscaler/apis/provisioningrequest/autoscaling.x-k8s.io/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaledown/pdb"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/drainability"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/drainability/rules"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/utils/drain"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	pod_util "k8s.io/autoscaler/cluster-autoscaler/utils/pod"
+	klog "k8s.io/klog/v2"
 )
 
 // GetPodsToMove returns a list of pods that should be moved elsewhere and a
@@ -61,6 +63,13 @@ func GetPodsToMove(nodeInfo *framework.NodeInfo, deleteOptions options.NodeDelet
 				pods = append(pods, pod)
 			}
 		case drainability.BlockDrain:
+			if deleteOptions.ProvisioningRequestVerboseLogging {
+				if prName, ok := pod.Annotations[v1.ProvisioningRequestPodAnnotationKey]; ok {
+					provClass := pod.Annotations[v1.ProvisioningClassPodAnnotationKey]
+					klog.V(2).Infof("[provreq] Virtual pod blocking node drain: pod=%s/%s provreq_name=%s provisioning_class=%s blocking_reason=%s node=%s",
+						pod.Namespace, pod.Name, prName, provClass, status.BlockingReason, nodeInfo.Node().Name)
+				}
+			}
 			return nil, nil, &drain.BlockingPod{
 				Pod:    pod,
 				Reason: status.BlockingReason,

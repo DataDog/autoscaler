@@ -177,6 +177,10 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 	// Case 1: Capacity fits.
 	scheduled, _, err := o.schedulingSimulator.TrySchedulePods(o.context.ClusterSnapshot, unschedulablePods, scheduling.ScheduleAnywhere, true)
 	if err == nil && len(scheduled) == len(unschedulablePods) {
+		if o.context.ProvisioningRequestVerboseLogging {
+			klog.Infof("[provreq] Check-capacity: capacity FOUND for provreq_name=%s provreq_namespace=%s pods_scheduled=%d",
+				provReq.Name, provReq.Namespace, len(scheduled))
+		}
 		commitError := o.context.ClusterSnapshot.Commit()
 		if commitError != nil {
 			o.context.ClusterSnapshot.Revert()
@@ -187,6 +191,10 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 		return nil
 	}
 	// Case 2: Capacity doesn't fit.
+	if o.context.ProvisioningRequestVerboseLogging {
+		klog.Infof("[provreq] Check-capacity: capacity NOT FOUND for provreq_name=%s provreq_namespace=%s pods_requested=%d pods_scheduled=%d",
+			provReq.Name, provReq.Namespace, len(unschedulablePods), len(scheduled))
+	}
 	o.context.ClusterSnapshot.Revert()
 	combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpNoOptionsAvailable})
 	if noRetry, ok := provReq.Spec.Parameters[NoRetryParameterKey]; ok && noRetry == "true" {

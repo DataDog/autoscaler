@@ -182,7 +182,7 @@ func (p *ProvisioningRequestPodsInjector) GetCheckCapacityBatch(maxPrs int) ([]P
 
 // Process pick one ProvisioningRequest, update Accepted condition and inject pods to unscheduled pods list.
 func (p *ProvisioningRequestPodsInjector) Process(
-	_ *context.AutoscalingContext,
+	ctx *context.AutoscalingContext,
 	unschedulablePods []*apiv1.Pod,
 ) ([]*apiv1.Pod, error) {
 	podsFromProvReq, err := p.GetPodsFromNextRequest()
@@ -190,6 +190,9 @@ func (p *ProvisioningRequestPodsInjector) Process(
 		return unschedulablePods, err
 	}
 
+	if ctx != nil && ctx.ProvisioningRequestVerboseLogging && len(podsFromProvReq) > 0 {
+		klog.Infof("[provreq] Injected %d virtual pod(s) from ProvisioningRequest into unschedulable pods list", len(podsFromProvReq))
+	}
 	return append(unschedulablePods, podsFromProvReq...), nil
 }
 

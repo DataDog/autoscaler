@@ -160,6 +160,9 @@ func (p *provReqProcessor) bookCapacity(ctx *context.AutoscalingContext) error {
 			continue
 		}
 		podsToCreate = append(podsToCreate, pods...)
+		if ctx.ProvisioningRequestVerboseLogging {
+			klog.V(2).Infof("[provreq] Booking capacity: %d pod(s) for provreq_name=%s provreq_namespace=%s", len(pods), provReq.Name, provReq.Namespace)
+		}
 	}
 	if len(podsToCreate) == 0 {
 		return nil
@@ -167,6 +170,9 @@ func (p *provReqProcessor) bookCapacity(ctx *context.AutoscalingContext) error {
 	// Scheduling the pods to reserve capacity for provisioning request.
 	if _, _, err = p.injector.TrySchedulePods(ctx.ClusterSnapshot, podsToCreate, scheduling.ScheduleAnywhere, false); err != nil {
 		return err
+	}
+	if ctx.ProvisioningRequestVerboseLogging {
+		klog.Infof("[provreq] Capacity booked: %d total virtual pod(s) scheduled into cluster snapshot", len(podsToCreate))
 	}
 	return nil
 }

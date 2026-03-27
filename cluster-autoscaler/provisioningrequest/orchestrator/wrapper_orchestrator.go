@@ -30,6 +30,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/framework"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/taints"
+	klog "k8s.io/klog/v2"
 )
 
 // WrapperOrchestrator is an orchestrator which wraps Scale Up for ProvisioningRequests and regular pods.
@@ -75,6 +76,10 @@ func (o *WrapperOrchestrator) ScaleUp(
 	}()
 
 	provReqPods, regularPods := splitOut(unschedulablePods)
+	verboseLog := o.autoscalingContext.ProvisioningRequestVerboseLogging
+	if verboseLog {
+		klog.V(2).Infof("[provreq] Scale-up split: %d provreq pod(s), %d regular pod(s)", len(provReqPods), len(regularPods))
+	}
 	if len(provReqPods) == 0 {
 		o.autoscalingContext.ProvisioningRequestScaleUpMode = false
 	} else if len(regularPods) == 0 {
@@ -82,7 +87,13 @@ func (o *WrapperOrchestrator) ScaleUp(
 	}
 
 	if o.autoscalingContext.ProvisioningRequestScaleUpMode {
+		if verboseLog {
+			klog.V(2).Infof("[provreq] Scale-up mode: processing provreq pods this iteration")
+		}
 		return o.provReqOrchestrator.ScaleUp(provReqPods, nodes, daemonSets, nodeInfos, allOrNothing)
+	}
+	if verboseLog {
+		klog.V(2).Infof("[provreq] Scale-up mode: processing regular pods this iteration")
 	}
 	return o.podsOrchestrator.ScaleUp(regularPods, nodes, daemonSets, nodeInfos, allOrNothing)
 }

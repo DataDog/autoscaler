@@ -23,6 +23,7 @@ import (
 
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/autoscaler/cluster-autoscaler/apis/provisioningrequest/autoscaling.x-k8s.io/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaledown/pdb"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/drainability/rules"
@@ -168,6 +169,13 @@ func (r *RemovalSimulator) SimulateNodeRemoval(
 	if err != nil {
 		klog.V(2).Infof("Node %s cannot be removed: %v", nodeName, err)
 		if blockingPod != nil {
+			if r.deleteOptions.ProvisioningRequestVerboseLogging {
+				if prName, ok := blockingPod.Pod.Annotations[v1.ProvisioningRequestPodAnnotationKey]; ok {
+					provClass := blockingPod.Pod.Annotations[v1.ProvisioningClassPodAnnotationKey]
+					klog.V(1).Infof("[provreq] Node %s unremovable: blocked by virtual pod=%s/%s provreq_name=%s provisioning_class=%s blocking_reason=%s",
+						nodeName, blockingPod.Pod.Namespace, blockingPod.Pod.Name, prName, provClass, blockingPod.Reason)
+				}
+			}
 			return nil, &UnremovableNode{Node: nodeInfo.Node(), Reason: BlockedByPod, BlockingPod: blockingPod}
 		}
 		return nil, &UnremovableNode{Node: nodeInfo.Node(), Reason: UnexpectedError}

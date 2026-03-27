@@ -40,6 +40,8 @@ type NodeDeleteOptions struct {
 	// BspDisruptionTimeout is the timeout after which CA will evict
 	// non-pdb-assigned blocking system pods
 	BspDisruptionTimeout time.Duration
+	// ProvisioningRequestVerboseLogging enables verbose lifecycle logging for ProvisioningRequest pods.
+	ProvisioningRequestVerboseLogging bool
 }
 
 // NewNodeDeleteOptions returns new node delete options extracted from autoscaling options.
@@ -50,5 +52,6 @@ func NewNodeDeleteOptions(opts config.AutoscalingOptions) NodeDeleteOptions {
 		SkipNodesWithCustomControllerPods: opts.SkipNodesWithCustomControllerPods,
 		MinReplicaCount:                   opts.MinReplicaCount,
 		BspDisruptionTimeout:              opts.BspDisruptionTimeout,
+		ProvisioningRequestVerboseLogging: opts.ProvisioningRequestVerboseLogging,
 	}
 }

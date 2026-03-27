@@ -303,6 +303,8 @@ type AutoscalingOptions struct {
 	ProvisioningRequestMaxBackoffTime time.Duration
 	// ProvisioningRequestMaxCacheSize is the max size for ProvisioningRequest cache that is stored for retry backoff.
 	ProvisioningRequestMaxBackoffCacheSize int
+	// ProvisioningRequestVerboseLogging enables verbose lifecycle logging for ProvisioningRequest pods.
+	ProvisioningRequestVerboseLogging bool
 	// CheckCapacityBatchProcessing is used to enable/disable batch processing of check capacity provisioning class
 	CheckCapacityBatchProcessing bool
 	// CheckCapacityProvisioningRequestMaxBatchSize is the maximum number of provisioning requests to process in a single batch

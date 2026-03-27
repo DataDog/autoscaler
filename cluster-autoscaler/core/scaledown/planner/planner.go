@@ -22,6 +22,7 @@ import (
 
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/autoscaler/cluster-autoscaler/apis/provisioningrequest/autoscaling.x-k8s.io/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/autoscaler/cluster-autoscaler/core/scaledown"
@@ -268,6 +269,8 @@ func (p *Planner) injectPods(pods []*apiv1.Pod) error {
 func (p *Planner) categorizeNodes(podDestinations map[string]bool, scaleDownCandidates []*apiv1.Node) {
 	unremovableTimeout := p.latestUpdate.Add(p.context.AutoscalingOptions.UnremovableNodeRecheckTimeout)
 	unremovableCount := 0
+	provreqVerboseLogging := p.context.ProvisioningRequestVerboseLogging
+	provreqBlockedCount := 0
 	var removableList []simulator.NodeToBeRemoved
 	atomicScaleDownNodesCount := 0
 	p.unremovableNodes.Update(p.context.ClusterSnapshot, p.latestUpdate)
@@ -303,12 +306,20 @@ func (p *Planner) categorizeNodes(podDestinations map[string]bool, scaleDownCand
 		}
 		if unremovable != nil {
 			unremovableCount += 1
+			if provreqVerboseLogging && unremovable.BlockingPod != nil {
+				if _, ok := unremovable.BlockingPod.Pod.Annotations[v1.ProvisioningRequestPodAnnotationKey]; ok {
+					provreqBlockedCount++
+				}
+			}
 			p.unremovableNodes.AddTimeout(unremovable, unremovableTimeout)
 		}
 	}
 	p.unneededNodes.Update(removableList, p.latestUpdate)
 	if unremovableCount > 0 {
 		klog.V(1).Infof("%v nodes found to be unremovable in simulation, will re-check them at %v", unremovableCount, unremovableTimeout)
+	}
+	if provreqVerboseLogging && provreqBlockedCount > 0 {
+		klog.V(1).Infof("[provreq] %d node(s) unremovable due to provreq virtual pods blocking scale-down", provreqBlockedCount)
 	}
 }
 
