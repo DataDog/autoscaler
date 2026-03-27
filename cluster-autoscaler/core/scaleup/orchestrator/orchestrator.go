@@ -237,11 +237,43 @@ func (o *ScaleUpOrchestrator) ScaleUp(
 		nodeGroups = appendCreatedNodeGroups(nodeGroups, oldId, createNodeGroupResults)
 	}
 
-	scaleUpInfos, aErr := o.balanceScaleUps(now, bestOption.NodeGroup, newNodes, nodeInfos, schedulablePodGroups)
+	scaleUpInfos, aErr := o.balanceScaleUps(now, bestOption.NodeGroup, newNodes, nodeInfos, schedulablePodGroups, tracker)
 	if aErr != nil {
 		return status.UpdateScaleUpError(
 			&status.ScaleUpStatus{CreateNodeGroupResults: createNodeGroupResults, PodsTriggeredScaleUp: bestOption.Pods},
 			aErr)
+	}
+
+	// Cap each balanced group's delta by its quota. Uses ApplyDelta to commit
+	// consumed quota so subsequent groups sharing the same quota see the updated limits.
+	// Note: unclaimed capacity from a capped group is not redistributed to other groups.
+	// A group capped below its balanced delta may leave some pods unschedulable until the
+	// next autoscaler cycle.
+	for i := range scaleUpInfos {
+		sui := &scaleUpInfos[i]
+		delta := sui.NewSize - sui.CurrentSize
+		if delta <= 0 {
+			continue
+		}
+		nodeInfo, found := nodeInfos[sui.Group.Id()]
+		if !found {
+			continue
+		}
+		checkResult, err := tracker.CheckDelta(o.autoscalingCtx, sui.Group, nodeInfo.Node(), delta)
+		if err != nil {
+			klog.Errorf("Failed to check quota for balanced group %s: %v", sui.Group.Id(), err)
+			continue
+		}
+		allowedDelta := checkResult.AllowedDelta
+		if allowedDelta < delta {
+			klog.V(1).Infof("Capping scale-up of %s from %d to %d nodes due to quota", sui.Group.Id(), delta, allowedDelta)
+			sui.NewSize = sui.CurrentSize + allowedDelta
+		}
+		if allowedDelta > 0 {
+			if _, err := tracker.ApplyDelta(o.autoscalingCtx, sui.Group, nodeInfo.Node(), allowedDelta); err != nil {
+				klog.Errorf("Failed to apply quota delta for balanced group %s: %v", sui.Group.Id(), err)
+			}
+		}
 	}
 
 	// Last check before scale-up. Node group capacity (both due to max size limits & current size) is only checked when balancing.
@@ -723,6 +755,7 @@ func (o *ScaleUpOrchestrator) balanceScaleUps(
 	newNodes int,
 	nodeInfos map[string]*framework.NodeInfo,
 	schedulablePodGroups map[string][]estimator.PodEquivalenceGroup,
+	tracker *resourcequotas.Tracker,
 ) ([]nodegroupset.ScaleUpInfo, errors.AutoscalerError) {
 	// Recompute similar node groups in case they need to be updated
 	similarNodeGroups := o.ComputeSimilarNodeGroups(nodeGroup, nodeInfos, schedulablePodGroups, now)
@@ -738,6 +771,21 @@ func (o *ScaleUpOrchestrator) balanceScaleUps(
 		// if no similar node groups are found and the flag is enabled, log about it
 		klog.V(2).Info("No similar node groups found")
 	}
+
+	// Filter out similar node groups that already exceed their quota.
+	var quotaValidGroups []cloudprovider.NodeGroup
+	for _, ng := range similarNodeGroups {
+		nodeInfo, found := nodeInfos[ng.Id()]
+		if !found {
+			continue
+		}
+		if skipReason := o.IsNodeGroupResourceExceeded(tracker, ng, nodeInfo, 1); skipReason != nil {
+			klog.V(2).Infof("Ignoring node group %s when balancing: quota exceeded", ng.Id())
+			continue
+		}
+		quotaValidGroups = append(quotaValidGroups, ng)
+	}
+	similarNodeGroups = quotaValidGroups
 
 	targetNodeGroups := []cloudprovider.NodeGroup{nodeGroup}
 	for _, ng := range similarNodeGroups {
