@@ -297,7 +297,7 @@ func (c *instancePoolCache) findInstanceByDetails(ociInstance ocicommon.OciRef) 
 					ociInstance.InstanceID = *poolMember.Id
 					ociInstance.InstancePoolID = *nextInstancePool.Id
 					ociInstance.CompartmentID = *poolMember.CompartmentId
-					ociInstance.AvailabilityDomain = strings.Split(*poolMember.AvailabilityDomain, ":")[1]
+					ociInstance.AvailabilityDomain = strings.ToLower(strings.Split(*poolMember.AvailabilityDomain, ":")[1])
 					ociInstance.Shape = *poolMember.Shape
 					ociInstance.PrivateIPAddress = *getVnicResp.Vnic.PrivateIp
 					// Public IP is optional

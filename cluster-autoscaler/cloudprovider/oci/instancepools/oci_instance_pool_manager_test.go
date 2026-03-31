@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -477,7 +478,7 @@ func TestGetInstancePoolAvailabilityDomain(t *testing.T) {
 				}},
 				Size: common.Int(2),
 			},
-			result: "US-ASHBURN-1",
+			result: strings.ToLower("US-ASHBURN-1"),
 		},
 		"multi-ad": {
 			np: &core.InstancePool{
@@ -492,7 +493,7 @@ func TestGetInstancePoolAvailabilityDomain(t *testing.T) {
 				}},
 				Size: common.Int(2),
 			},
-			result: "US-ASHBURN-1",
+			result: strings.ToLower("US-ASHBURN-1"),
 		},
 	}
 
@@ -638,7 +639,7 @@ func TestGetInstancePoolTemplateNode(t *testing.T) {
 	}
 
 	// Also check the AD label for good measure.
-	if got := labels[apiv1.LabelTopologyZone]; got != "US-ASHBURN-1" {
+	if got := labels[apiv1.LabelTopologyZone]; got != strings.ToLower("US-ASHBURN-1") {
 		t.Fatalf("expected AD zone label %s to be set to US-ASHBURN-1: %v", apiv1.LabelTopologyZone, nodeTemplate.Labels)
 	}
 

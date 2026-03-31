@@ -707,6 +707,6 @@ func getInstancePoolAvailabilityDomain(ip *core.InstancePool) (string, error) {
 
 	// Get the availability domain which is by default in the format of `Uocm:PHX-AD-1`
 	// and remove the hash prefix.
-	availabilityDomain := strings.Split(*ip.PlacementConfigurations[0].AvailabilityDomain, ":")[1]
+	availabilityDomain := strings.ToLower(strings.Split(*ip.PlacementConfigurations[0].AvailabilityDomain, ":")[1])
 	return availabilityDomain, nil
 }
