@@ -249,9 +249,14 @@ func buildAutoscaler(context ctx.Context, debuggingSnapshotter debuggingsnapshot
 		nodeInfoComparator = nodeInfoComparatorBuilder(autoscalingOptions.BalancingExtraIgnoredLabels, autoscalingOptions.NodeGroupSetRatios)
 	}
 
-	opts.Processors.NodeGroupSetProcessor = &nodegroupset.BalancingNodeGroupSetProcessor{
+	balancingProcessor := &nodegroupset.BalancingNodeGroupSetProcessor{
 		Comparator: nodeInfoComparator,
 	}
+	rolloutIndex, err := nodegroupset.LoadRolloutIndexFromConfigMap(kubeClient, "kube-system", "rollout-aware-config")
+	if err != nil {
+		klog.Errorf("Failed to load rollout config: %v", err)
+	}
+	opts.Processors.NodeGroupSetProcessor = nodegroupset.NewRolloutAwareProcessor(balancingProcessor, rolloutIndex)
 
 	// These metrics should be published only once.
 	metrics.UpdateCPULimitsCores(autoscalingOptions.MinCoresTotal, autoscalingOptions.MaxCoresTotal)

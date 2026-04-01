@@ -1902,6 +1902,166 @@ func simplifyScaleUpStatus(scaleUpStatus *status.ScaleUpStatus) ScaleUpStatusInf
 	}
 }
 
+func TestRolloutAwareScaleUp(t *testing.T) {
+	// Integration test: validates that the RolloutAwareProcessor correctly
+	// distributes scale-ups through the full orchestrator path
+	// (FindSimilarNodeGroups → BalanceScaleUpBetweenGroups).
+
+	testCases := []struct {
+		name              string
+		phase             string
+		greenTarget       int
+		blueCurrent       int
+		greenCurrent      int
+		pendingPods       int
+		expectedBlueSize  int
+		expectedGreenSize int
+	}{
+		{
+			name:              "canary phase sends all to blue",
+			phase:             "canary",
+			blueCurrent:       3,
+			greenCurrent:      1,
+			pendingPods:       4,
+			expectedBlueSize:  7,
+			expectedGreenSize: 1,
+		},
+		{
+			name:              "ramping phase splits by greenTarget",
+			phase:             "ramping",
+			greenTarget:       4,
+			blueCurrent:       3,
+			greenCurrent:      1,
+			pendingPods:       6,
+			expectedBlueSize:  6,
+			expectedGreenSize: 4, // 1 → 4, fills to greenTarget
+		},
+		{
+			name:              "draining phase sends all to green",
+			phase:             "draining",
+			blueCurrent:       3,
+			greenCurrent:      1,
+			pendingPods:       4,
+			expectedBlueSize:  3,
+			expectedGreenSize: 5,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+
+			provider := testprovider.NewTestCloudProviderBuilder().
+				WithOnScaleUp(func(string, int) error { return nil }).Build()
+
+			// Both groups have same CPU/mem so FindSimilarNodeGroups groups them.
+			provider.AddNodeGroup("blue", 1, 100, tc.blueCurrent)
+			provider.AddNodeGroup("green", 1, 100, tc.greenCurrent)
+
+			var nodes []*apiv1.Node
+			var podList []*apiv1.Pod
+
+			// Add nodes to blue group
+			for i := 0; i < tc.blueCurrent; i++ {
+				nodeName := fmt.Sprintf("blue-node-%d", i)
+				node := BuildTestNode(nodeName, 100, 1000)
+				SetNodeReadyState(node, true, now.Add(-2*time.Minute))
+				nodes = append(nodes, node)
+				provider.AddNode("blue", node)
+
+				pod := BuildTestPod(fmt.Sprintf("blue-pod-%d", i), 80, 0)
+				pod.Spec.NodeName = nodeName
+				podList = append(podList, pod)
+			}
+
+			// Add nodes to green group
+			for i := 0; i < tc.greenCurrent; i++ {
+				nodeName := fmt.Sprintf("green-node-%d", i)
+				node := BuildTestNode(nodeName, 100, 1000)
+				SetNodeReadyState(node, true, now.Add(-2*time.Minute))
+				nodes = append(nodes, node)
+				provider.AddNode("green", node)
+
+				pod := BuildTestPod(fmt.Sprintf("green-pod-%d", i), 80, 0)
+				pod.Spec.NodeName = nodeName
+				podList = append(podList, pod)
+			}
+
+			// Pending (unschedulable) pods
+			extraPods := make([]*apiv1.Pod, tc.pendingPods)
+			for i := 0; i < tc.pendingPods; i++ {
+				extraPods[i] = BuildTestPod(fmt.Sprintf("pending-pod-%d", i), 80, 0)
+			}
+
+			podLister := kube_util.NewTestPodLister(podList)
+			listers := kube_util.NewListerRegistry(nil, nil, podLister, nil, nil, nil, nil, nil, nil)
+
+			options := config.AutoscalingOptions{
+				EstimatorName:            estimator.BinpackingEstimatorName,
+				BalanceSimilarNodeGroups: true,
+				MaxCoresTotal:            config.DefaultMaxClusterCores,
+				MaxMemoryTotal:           config.DefaultMaxClusterMemory,
+			}
+
+			ctx, err := NewScaleTestAutoscalingContext(options, &fake.Clientset{}, listers, provider, nil, nil)
+			assert.NoError(t, err)
+			err = ctx.ClusterSnapshot.SetClusterState(nodes, podList, nil)
+			assert.NoError(t, err)
+			nodeInfos, err := nodeinfosprovider.NewDefaultTemplateNodeInfoProvider(nil, false).
+				Process(&ctx, nodes, []*appsv1.DaemonSet{}, taints.TaintConfig{}, now)
+			assert.NoError(t, err)
+
+			clusterState := clusterstate.NewClusterStateRegistry(
+				provider, clusterstate.ClusterStateRegistryConfig{},
+				ctx.LogRecorder, NewBackoff(),
+				nodegroupconfig.NewDefaultNodeGroupConfigProcessor(config.NodeGroupAutoscalingOptions{MaxNodeProvisionTime: 15 * time.Minute}),
+				asyncnodegroups.NewDefaultAsyncNodeGroupStateChecker(),
+			)
+			assert.NoError(t, clusterState.UpdateNodes(nodes, nodeInfos, now))
+
+			// Wire up RolloutAwareProcessor
+			rolloutIndex := map[string]nodegroupset.GroupRolloutInfo{
+				"blue": {
+					SiblingID: "green",
+					Role:      "blue",
+					State:     nodegroupset.RolloutState{Phase: tc.phase, GreenTarget: tc.greenTarget},
+				},
+				"green": {
+					SiblingID: "blue",
+					Role:      "green",
+					State:     nodegroupset.RolloutState{Phase: tc.phase, GreenTarget: tc.greenTarget},
+				},
+			}
+			delegate := nodegroupset.NewDefaultNodeGroupSetProcessor([]string{}, config.NodeGroupDifferenceRatios{})
+			rolloutProcessor := nodegroupset.NewRolloutAwareProcessor(delegate, rolloutIndex)
+
+			processors := processorstest.NewTestProcessors(&ctx)
+			processors.NodeGroupSetProcessor = rolloutProcessor
+
+			suOrchestrator := New()
+			suOrchestrator.Initialize(&ctx, processors, clusterState, newEstimatorBuilder(), taints.TaintConfig{})
+
+			scaleUpStatus, typedErr := suOrchestrator.ScaleUp(extraPods, nodes, []*appsv1.DaemonSet{}, nodeInfos, false)
+			assert.NoError(t, typedErr)
+			assert.True(t, scaleUpStatus.WasSuccessful())
+
+			// Check final target sizes
+			groupMap := make(map[string]cloudprovider.NodeGroup)
+			for _, group := range provider.NodeGroups() {
+				groupMap[group.Id()] = group
+			}
+
+			blueSize, err := groupMap["blue"].TargetSize()
+			assert.NoError(t, err)
+			greenSize, err := groupMap["green"].TargetSize()
+			assert.NoError(t, err)
+
+			assert.Equal(t, tc.expectedBlueSize, blueSize, "blue group target size")
+			assert.Equal(t, tc.expectedGreenSize, greenSize, "green group target size")
+		})
+	}
+}
+
 func newEstimatorBuilder() estimator.EstimatorBuilder {
 	estimatorBuilder, _ := estimator.NewEstimatorBuilder(
 		estimator.BinpackingEstimatorName,
