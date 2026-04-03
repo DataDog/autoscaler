@@ -61,6 +61,9 @@ const (
 	ExpiredReason = "Expired"
 	// ExpiredMsg is added if ProvisioningRequest is expired.
 	ExpiredMsg = "ProvisioningRequest is expired"
+	// SchedulablePodSetsDetailKey is the ProvisioningClassDetails key indicating
+	// which PodSets CA found capacity for.
+	SchedulablePodSetsDetailKey = "schedulablePodSets"
 )
 
 // ShouldCapacityBeBooked returns whether capacity should be booked.

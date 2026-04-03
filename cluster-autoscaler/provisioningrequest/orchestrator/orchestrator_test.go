@@ -73,7 +73,7 @@ func TestScaleUp(t *testing.T) {
 	// Active check capacity requests.
 	newCheckCapacityCpuProvReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "newCheckCapacityCpuProvReq",
+			Name:     "new-check-capacity-cpu-provreq",
 			CPU:      "5m",
 			Memory:   "5",
 			PodCount: int32(100),
@@ -82,7 +82,7 @@ func TestScaleUp(t *testing.T) {
 
 	anotherCheckCapacityCpuProvReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "anotherCheckCapacityCpuProvReq",
+			Name:     "another-check-capacity-cpu-provreq",
 			CPU:      "5m",
 			Memory:   "5",
 			PodCount: int32(100),
@@ -91,7 +91,7 @@ func TestScaleUp(t *testing.T) {
 
 	newCheckCapacityMemProvReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "newCheckCapacityMemProvReq",
+			Name:     "new-check-capacity-mem-provreq",
 			CPU:      "1m",
 			Memory:   "100",
 			PodCount: int32(100),
@@ -99,7 +99,7 @@ func TestScaleUp(t *testing.T) {
 		})
 	impossibleCheckCapacityReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "impossibleCheckCapacityRequest",
+			Name:     "impossible-check-capacity-request",
 			CPU:      "1m",
 			Memory:   "1",
 			PodCount: int32(5001),
@@ -108,7 +108,7 @@ func TestScaleUp(t *testing.T) {
 
 	anotherImpossibleCheckCapacityReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "anotherImpossibleCheckCapacityRequest",
+			Name:     "another-impossible-check-capacity-request",
 			CPU:      "1m",
 			Memory:   "1",
 			PodCount: int32(5001),
@@ -121,7 +121,7 @@ func TestScaleUp(t *testing.T) {
 	// Expected: ~252 pods can fit (101,000 / 400)
 	partialCapacityProvReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "partialCapacityProvReq",
+			Name:     "partial-capacity-provreq",
 			CPU:      "1m",
 			Memory:   "400",
 			PodCount: int32(300),
@@ -133,7 +133,7 @@ func TestScaleUp(t *testing.T) {
 	// Expected: ~252 pods can fit (101,000 / 400)
 	anotherPartialCapacityProvReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "anotherPartialCapacityProvReq",
+			Name:     "another-partial-capacity-provreq",
 			CPU:      "1m",
 			Memory:   "400",
 			PodCount: int32(280),
@@ -143,7 +143,7 @@ func TestScaleUp(t *testing.T) {
 	// Check capacity request that fits completely, even with partialCapacityCheck enabled
 	completeCapacityProvReq := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "completeCapacityProvReq",
+			Name:     "complete-capacity-provreq",
 			CPU:      "5m",
 			Memory:   "5",
 			PodCount: int32(50),
@@ -153,7 +153,7 @@ func TestScaleUp(t *testing.T) {
 	// Check capacity request that has 0 pods that can fit
 	impossibleResourceRequest := provreqwrapper.BuildValidTestProvisioningRequestFromOptions(
 		provreqwrapper.TestProvReqOptions{
-			Name:     "impossibleResourceRequest",
+			Name:     "impossible-resource-request",
 			CPU:      "101m", // More than any single node has (100m max)
 			Memory:   "1001", // More than any single node has (1000 max)
 			PodCount: int32(5),
@@ -450,15 +450,16 @@ func TestScaleUp(t *testing.T) {
 		{
 			name: "partial capacity check enabled, some pods fit",
 			provReqs: []*provreqwrapper.ProvisioningRequest{
-				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue}),
+				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial}),
 			},
 			provReqToScaleUp: partialCapacityProvReq,
-			scaleUpResult:    status.ScaleUpPartialCapacityAvailable,
+			// Single PodSet where not all pods fit → podset not schedulable → NoOptionsAvailable
+			scaleUpResult: status.ScaleUpNoOptionsAvailable,
 		},
 		{
 			name: "partial capacity check enabled, all pods fit",
 			provReqs: []*provreqwrapper.ProvisioningRequest{
-				completeCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue}),
+				completeCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial}),
 			},
 			provReqToScaleUp: completeCapacityProvReq,
 			scaleUpResult:    status.ScaleUpSuccessful,
@@ -466,7 +467,7 @@ func TestScaleUp(t *testing.T) {
 		{
 			name: "partial capacity check disabled, partial capacity available but returns not available",
 			provReqs: []*provreqwrapper.ProvisioningRequest{
-				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckFalse}),
+				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{}),
 			},
 			provReqToScaleUp: partialCapacityProvReq,
 			scaleUpResult:    status.ScaleUpNoOptionsAvailable,
@@ -474,15 +475,17 @@ func TestScaleUp(t *testing.T) {
 		{
 			name: "partial capacity check with noRetry parameter, some pods fit",
 			provReqs: []*provreqwrapper.ProvisioningRequest{
-				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue, "noRetry": "true"}),
+				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial, "noRetry": "true"}),
 			},
 			provReqToScaleUp: partialCapacityProvReq,
-			scaleUpResult:    status.ScaleUpPartialCapacityAvailable,
+			// Single PodSet where not all pods fit → noRetry triggers Failed=true
+			scaleUpResult: status.ScaleUpNoOptionsAvailable,
+			numFailedTrue: 1,
 		},
 		{
 			name: "partial capacity check enabled, zero pods fit due to resource constraints",
 			provReqs: []*provreqwrapper.ProvisioningRequest{
-				impossibleResourceRequest.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue}),
+				impossibleResourceRequest.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial}),
 			},
 			provReqToScaleUp: impossibleResourceRequest,
 			scaleUpResult:    status.ScaleUpNoOptionsAvailable,
@@ -500,33 +503,36 @@ func TestScaleUp(t *testing.T) {
 		{
 			name: "batch processing with partial capacity check, first request gets partial, second gets none",
 			provReqs: []*provreqwrapper.ProvisioningRequest{
-				// First request: 300 pods * 400 bytes = 120,000 bytes (can fit ~252 from 101,000 total)
-				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue}),
-				// Second request: After first consumes most capacity, this can't schedule any pods
-				anotherPartialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue}),
+				// First request: 300 pods, single PodSet, not all fit → not schedulable
+				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial}),
+				// Second request: 280 pods, single PodSet, not all fit → not schedulable
+				anotherPartialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial}),
 			},
 			provReqToScaleUp:    partialCapacityProvReq,
-			scaleUpResult:       status.ScaleUpPartialCapacityAvailable,
+			scaleUpResult:       status.ScaleUpNoOptionsAvailable,
 			batchProcessing:     true,
 			maxBatchSize:        3,
 			batchTimebox:        5 * time.Minute,
-			numProvisionedTrue:  1, // First request gets Provisioned=True (partial capacity)
-			numProvisionedFalse: 1, // Second request gets Provisioned=False (0 pods scheduled)
+			numProvisionedTrue:  0, // Neither single-PodSet request fully fits
+			numProvisionedFalse: 2, // Both get Provisioned=False
 		},
 		{
 			name: "batch processing with mixed partial capacity check settings",
 			provReqs: []*provreqwrapper.ProvisioningRequest{
-				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue}),
-				anotherPartialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckFalse}),
-				completeCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckTrue}),
+				// Single PodSet, not all fit → NoOptionsAvailable, Provisioned=False
+				partialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial}),
+				// No partial check, not all fit → NoOptionsAvailable, Provisioned=False
+				anotherPartialCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{}),
+				// Single PodSet, all 50 pods fit → Successful, Provisioned=True
+				completeCapacityProvReq.CopyWithParameters(map[string]v1.Parameter{checkcapacity.PartialCapacityCheckKey: checkcapacity.PartialCapacityCheckBookPartial}),
 			},
 			provReqToScaleUp:    partialCapacityProvReq,
 			scaleUpResult:       status.ScaleUpSuccessful,
 			batchProcessing:     true,
 			maxBatchSize:        3,
 			batchTimebox:        5 * time.Minute,
-			numProvisionedTrue:  2,
-			numProvisionedFalse: 1,
+			numProvisionedTrue:  1,
+			numProvisionedFalse: 2,
 		},
 	}
 	for _, tc := range testCases {
