@@ -186,6 +186,15 @@ func (r *RemovalSimulator) SimulateNodeRemoval(
 	})
 	if err != nil {
 		klog.V(2).Infof("Node %s is not suitable for removal: %v", nodeName, err)
+		if r.deleteOptions.ProvisioningRequestVerboseLogging {
+			for _, pod := range podsToRemove {
+				if prName, ok := pod.Annotations[v1.ProvisioningRequestPodAnnotationKey]; ok {
+					provClass := pod.Annotations[v1.ProvisioningClassPodAnnotationKey]
+					klog.V(1).Infof("[provreq] Node %s unremovable (NoPlaceToMovePods): virtual pod=%s/%s provreq_name=%s provisioning_class=%s cannot be rescheduled",
+						nodeName, pod.Namespace, pod.Name, prName, provClass)
+				}
+			}
+		}
 		return nil, &UnremovableNode{Node: nodeInfo.Node(), Reason: NoPlaceToMovePods}
 	}
 	klog.V(2).Infof("Node %s may be removed", nodeName)
