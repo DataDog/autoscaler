@@ -94,8 +94,12 @@ type ProvisioningRequestSpec struct {
 	//   Behavior:
 	//   - If all requested capacity is available: CA sets 'Provisioned' condition with Status=True
 	//     and Reason=CapacityIsFound.
-	//   - If partial capacity is available and 'partialCapacityCheck' parameter is set to "true":
-	//     CA sets 'Provisioned' condition with Status=True and Reason=PartialCapacityIsFound.
+	//   - If partial capacity is available (some PodSets fit) and 'partialCapacityCheck' parameter
+	//     is set to "bookPartial": CA sets 'Provisioned' condition with Status=True and
+	//     Reason=PartialCapacityIsFound, and books capacity for the schedulable PodSets.
+	//   - If partial capacity is available and 'partialCapacityCheck' parameter is set to
+	//     "checkOnly": CA sets 'Provisioned' condition with Status=False and
+	//     Reason=PartialCapacityIsFound (capacity is not booked).
 	//   - If capacity is not available (or only partial capacity exists but 'partialCapacityCheck'
 	//     is not enabled): CA sets either 'Failed' condition with Status=True and Reason=CapacityIsNotFound
 	//     (if 'noRetry' parameter is set to "true") or 'Provisioned' condition with Status=False and
@@ -124,9 +128,14 @@ type ProvisioningRequestSpec struct {
 	//     (measured since creation of the CR).
 	//
 	// 'check-capacity.kubernetes.io' supports:
-	//   - 'partialCapacityCheck': Set to "true" to allow CA to report success when only
-	//     some of the requested pods can be scheduled. When enabled and partial capacity is
-	//     found, CA sets 'Provisioned=true' with Reason=PartialCapacityIsFound. Default: "false".
+	//   - 'partialCapacityCheck': Enables per-PodSet capacity evaluation. Supported values:
+	//     "bookPartial" - CA sets 'Provisioned=true' with Reason=PartialCapacityIsFound when
+	//     capacity is found for some (but not all) PodSets, and books capacity for the
+	//     schedulable PodSets.
+	//     "checkOnly" - CA sets 'Provisioned=false' with Reason=PartialCapacityIsFound when
+	//     capacity is found for some PodSets, without booking capacity.
+	//     In both modes, the 'schedulablePodSets' ProvisioningClassDetails key lists which
+	//     PodSets had available capacity. Default: not set (disabled).
 	//   - 'noRetry': Set to "true" to prevent CA from retrying when capacity is not found.
 	//     When enabled, CA sets 'Failed=true' with Reason=CapacityIsNotFound instead of
 	//     'Provisioned=false'. This signals that the request is terminal and should not be
