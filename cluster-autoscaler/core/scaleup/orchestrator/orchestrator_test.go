@@ -1781,6 +1781,21 @@ func TestScaleUpBalanceGroupsRespectsQuota(t *testing.T) {
 			// ng2 gets the 1 quota slot via ApplyDelta; ng3 sees 0 remaining, capped.
 			expectedSizes: map[string]int{"ng1": 4, "ng2": 2, "ng3": 2},
 		},
+		{
+			name:         "pre-filter excludes group already at quota limit",
+			initialSizes: map[string]int{"ng1": 1, "ng2": 1, "ng3": 1},
+			maxSize:      5,
+			quotas: []resourcequotas.Quota{
+				&resourcequotas.FakeQuota{
+					Name:        "quota-ng2",
+					AppliesToFn: matchNodeGroups([]string{"ng2"}),
+					LimitsVal:   map[string]int64{"cpu": 1},
+				},
+			},
+			// ng2 has 1 node (1 core), quota allows 1 core → no room.
+			// Pre-filter excludes ng2 from balancing entirely. Only ng1 and ng3 participate.
+			expectedSizes: map[string]int{"ng1": 4, "ng2": 1, "ng3": 4},
+		},
 	}
 
 	for _, tt := range tests {

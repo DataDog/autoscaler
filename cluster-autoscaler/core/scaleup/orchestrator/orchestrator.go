@@ -276,6 +276,15 @@ func (o *ScaleUpOrchestrator) ScaleUp(
 		}
 	}
 
+	// Filter out groups that were capped to zero additional nodes by quota.
+	filtered := make([]nodegroupset.ScaleUpInfo, 0)
+	for _, sui := range scaleUpInfos {
+		if sui.NewSize != sui.CurrentSize {
+			filtered = append(filtered, sui)
+		}
+	}
+	scaleUpInfos = filtered
+
 	// Last check before scale-up. Node group capacity (both due to max size limits & current size) is only checked when balancing.
 	totalCapacity := 0
 	for _, sui := range scaleUpInfos {
