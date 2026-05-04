@@ -202,6 +202,7 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 		// commit or revert the outer fork depending on the result and mode.
 		podsByPodSet := groupPodsByPodSet(unschedulablePods, provReq)
 		schedulablePodSets := make([]string, 0)
+		schedulablePodCounts := make(map[string]int)
 
 		// PodSets are evaluated in spec order. Earlier PodSets that fit consume
 		// capacity within the simulation, which may prevent later PodSets from
@@ -210,6 +211,7 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 			pods := podsByPodSet[i]
 			if len(pods) == 0 {
 				klog.Warningf("No pods matched podset %d (%s) for ProvReq %s, treating as not schedulable", i, podSetSpec.PodTemplateRef.Name, provReq.Name)
+				schedulablePodCounts[podSetSpec.PodTemplateRef.Name] = 0
 				continue
 			}
 			o.context.ClusterSnapshot.Fork()
@@ -219,6 +221,7 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 				o.context.ClusterSnapshot.Revert()
 				return err
 			}
+			schedulablePodCounts[podSetSpec.PodTemplateRef.Name] = len(scheduled)
 			if len(scheduled) == len(pods) {
 				schedulablePodSets = append(schedulablePodSets, podSetSpec.PodTemplateRef.Name)
 				if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil {
@@ -236,6 +239,12 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 		} else {
 			provReq.SetProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey, v1.Detail(schedulablePodSetsJSON))
 		}
+		schedulablePodCountsJSON, jsonErr := json.Marshal(schedulablePodCounts)
+		if jsonErr != nil {
+			klog.Errorf("failed to marshal schedulablePodCounts for ProvReq %s: %v", provReq.Name, jsonErr)
+		} else {
+			provReq.SetProvisioningClassDetail(conditions.SchedulablePodCountsDetailKey, v1.Detail(schedulablePodCountsJSON))
+		}
 
 		// Case 1: All podsets fit.
 		if len(schedulablePodSets) == len(provReq.Spec.PodSets) {
@@ -250,7 +259,7 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 
 		// Case 2: Some podsets fit.
 		if len(schedulablePodSets) > 0 {
-			msg := fmt.Sprintf("%s. Schedulable podsets: %s", conditions.PartialCapacityIsFoundMsg, strings.Join(schedulablePodSets, ","))
+			msg := conditions.PartialCapacityIsFoundMsg
 			handlePartialCapacityStatusUpdate(provReq, combinedStatus, partialCapacityMode, msg)
 			if partialCapacityMode == PartialCapacityCheckBookPartial {
 				if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil {
@@ -265,8 +274,13 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 
 		// Case 3: No podsets fit.
 		o.context.ClusterSnapshot.Revert()
-		provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey)
 		combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpNoOptionsAvailable})
+		if partialCapacityMode != PartialCapacityCheckCheckOnly {
+			// In bookPartial mode, clean up details since no capacity was booked and
+			// the ProvReq may be re-evaluated; stale details could mislead consumers.
+			provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey)
+			provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodCountsDetailKey)
+		}
 		setCapacityNotFoundCondition(provReq)
 		return nil
 	}
@@ -473,6 +487,9 @@ func setCapacityNotFoundCondition(provReq *provreqwrapper.ProvisioningRequest) {
 // handlePartialCapacityStatusUpdate handles the combineStatusSet update and ProvReq Provisioned status update for the partial capacity case
 func handlePartialCapacityStatusUpdate(provReq *provreqwrapper.ProvisioningRequest, combinedStatus *combinedStatusSet, provReqMode, conditionMsg string) {
 	provisionedStatus := metav1.ConditionFalse
+	// ScaleUpSuccessful is used for both checkOnly and bookPartial modes because
+	// partial capacity was found in both cases. In checkOnly mode capacity is not
+	// actually booked, but the scale-up result still reflects that capacity exists.
 	scaleupStatus := status.ScaleUpSuccessful
 	if provReqMode == PartialCapacityCheckBookPartial {
 		provisionedStatus = metav1.ConditionTrue
