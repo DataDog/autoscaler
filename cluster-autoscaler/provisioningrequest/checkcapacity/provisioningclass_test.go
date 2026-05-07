@@ -336,7 +336,7 @@ func TestResolvePartialCapacityResult(t *testing.T) {
 		wantProvisionedReason  string
 		wantScaleUpResult      status.ScaleUpResult
 		wantSnapshotCommitted  bool
-		wantDetailsDeleted     bool
+		wantDetailsPreserved   bool
 	}{
 		{
 			name:                   "all fit / bookPartial",
@@ -386,7 +386,7 @@ func TestResolvePartialCapacityResult(t *testing.T) {
 			wantProvisionedReason:  conditions.CapacityIsNotFoundReason,
 			wantScaleUpResult:      status.ScaleUpNoOptionsAvailable,
 			wantSnapshotCommitted:  false,
-			wantDetailsDeleted:     true,
+			wantDetailsPreserved:   true,
 		},
 		{
 			name:                   "none fit / checkOnly",
@@ -396,7 +396,7 @@ func TestResolvePartialCapacityResult(t *testing.T) {
 			wantProvisionedReason:  conditions.CapacityIsNotFoundReason,
 			wantScaleUpResult:      status.ScaleUpNoOptionsAvailable,
 			wantSnapshotCommitted:  false,
-			wantDetailsDeleted:     true,
+			wantDetailsPreserved:   true,
 		},
 	}
 
@@ -430,11 +430,11 @@ func TestResolvePartialCapacityResult(t *testing.T) {
 				assert.Equal(t, tc.wantProvisionedStatus, cond.Status)
 			}
 
-			if tc.wantDetailsDeleted {
+			if tc.wantDetailsPreserved {
 				_, hasPodSets := provReq.Status.ProvisioningClassDetails[conditions.SchedulablePodSetsDetailKey]
 				_, hasPodCounts := provReq.Status.ProvisioningClassDetails[conditions.SchedulablePodCountsDetailKey]
-				assert.False(t, hasPodSets, "expected schedulablePodSets detail to be deleted")
-				assert.False(t, hasPodCounts, "expected schedulablePodCounts detail to be deleted")
+				assert.True(t, hasPodSets, "expected schedulablePodSets detail to be preserved")
+				assert.True(t, hasPodCounts, "expected schedulablePodCounts detail to be preserved")
 			}
 
 			if tc.wantSnapshotCommitted {
@@ -543,7 +543,7 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 		wantProvisionedStatus  metav1.ConditionStatus
 		wantScaleUpResult      status.ScaleUpResult
 		wantSchedulablePodSets []string
-		wantDetailAbsent       bool
+		wantDetailPresent      bool
 	}{
 		{
 			name:         "all podsets fit / bookPartial",
@@ -558,6 +558,7 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 			wantProvisionedStatus:  metav1.ConditionTrue,
 			wantScaleUpResult:      status.ScaleUpSuccessful,
 			wantSchedulablePodSets: []string{"workers", "ps"},
+			wantDetailPresent:      true,
 		},
 		{
 			name:         "all podsets fit / checkOnly",
@@ -572,6 +573,7 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 			wantProvisionedStatus:  metav1.ConditionTrue,
 			wantScaleUpResult:      status.ScaleUpSuccessful,
 			wantSchedulablePodSets: []string{"workers", "ps"},
+			wantDetailPresent:      true,
 		},
 		{
 			name:         "some podsets fit / bookPartial",
@@ -586,6 +588,7 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 			wantProvisionedStatus:  metav1.ConditionTrue,
 			wantScaleUpResult:      status.ScaleUpSuccessful,
 			wantSchedulablePodSets: []string{"workers"},
+			wantDetailPresent:      true,
 		},
 		{
 			name:         "some podsets fit / checkOnly",
@@ -600,6 +603,7 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 			wantProvisionedStatus:  metav1.ConditionFalse,
 			wantScaleUpResult:      status.ScaleUpSuccessful,
 			wantSchedulablePodSets: []string{"workers"},
+			wantDetailPresent:      true,
 		},
 		{
 			name:         "none fit / bookPartial",
@@ -608,12 +612,13 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 				{PodTemplateRef: v1.Reference{Name: "workers"}, Count: 1},
 				{PodTemplateRef: v1.Reference{Name: "ps"}, Count: 1},
 			},
-			podCPUs:                []int64{100, 100},
-			partialCapacityMode:    PartialCapacityCheckBookPartial,
-			wantProvisionedReason:  conditions.CapacityIsNotFoundReason,
-			wantScaleUpResult:      status.ScaleUpNoOptionsAvailable,
-			wantSchedulablePodSets: nil,
-			wantDetailAbsent:       true,
+			podCPUs:               []int64{100, 100},
+			partialCapacityMode:   PartialCapacityCheckBookPartial,
+			wantProvisionedReason: conditions.CapacityIsNotFoundReason,
+			wantScaleUpResult:     status.ScaleUpNoOptionsAvailable,
+			// schedulablePodSets is preserved as [] so consumers can see per-PodSet counts.
+			wantSchedulablePodSets: []string{},
+			wantDetailPresent:      true,
 		},
 		{
 			name:         "none fit / checkOnly",
@@ -622,12 +627,13 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 				{PodTemplateRef: v1.Reference{Name: "workers"}, Count: 1},
 				{PodTemplateRef: v1.Reference{Name: "ps"}, Count: 1},
 			},
-			podCPUs:                []int64{100, 100},
-			partialCapacityMode:    PartialCapacityCheckCheckOnly,
-			wantProvisionedReason:  conditions.CapacityIsNotFoundReason,
-			wantScaleUpResult:      status.ScaleUpNoOptionsAvailable,
-			wantSchedulablePodSets: nil,
-			wantDetailAbsent:       true,
+			podCPUs:               []int64{100, 100},
+			partialCapacityMode:   PartialCapacityCheckCheckOnly,
+			wantProvisionedReason: conditions.CapacityIsNotFoundReason,
+			wantScaleUpResult:     status.ScaleUpNoOptionsAvailable,
+			// schedulablePodSets is preserved as [] so consumers can see per-PodSet counts.
+			wantSchedulablePodSets: []string{},
+			wantDetailPresent:      true,
 		},
 	}
 
@@ -673,17 +679,12 @@ func TestCheckPartialCapacityEndToEnd(t *testing.T) {
 				assert.Equal(t, tc.wantProvisionedStatus, cond.Status)
 			}
 
-			if tc.wantSchedulablePodSets != nil {
+			if tc.wantDetailPresent {
 				detail, ok := provReq.Status.ProvisioningClassDetails[conditions.SchedulablePodSetsDetailKey]
-				require.True(t, ok, "expected schedulablePodSets detail to be set")
+				require.True(t, ok, "expected schedulablePodSets detail to be present")
 				var gotPodSets []string
 				require.NoError(t, json.Unmarshal([]byte(detail), &gotPodSets))
 				assert.Equal(t, tc.wantSchedulablePodSets, gotPodSets)
-			}
-
-			if tc.wantDetailAbsent {
-				_, ok := provReq.Status.ProvisioningClassDetails[conditions.SchedulablePodSetsDetailKey]
-				assert.False(t, ok, "expected schedulablePodSets detail to be absent")
 			}
 		})
 	}

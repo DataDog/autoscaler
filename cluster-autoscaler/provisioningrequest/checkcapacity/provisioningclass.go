@@ -230,6 +230,9 @@ func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, p
 
 	// Capacity doesn't fit.
 	o.context.ClusterSnapshot.Revert() // revert outer fork
+	// Clear any stale schedulablePodSets detail. Unlike the partial path
+	// (resolvePartialCapacityResult Case 3), pods are evaluated atomically here
+	// so there is no partial per-PodSet result to preserve.
 	provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey)
 	combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpNoOptionsAvailable})
 	setCapacityNotFoundCondition(provReq)
@@ -325,10 +328,8 @@ func (o *checkCapacityProvClass) resolvePartialCapacityResult(provReq *provreqwr
 	// Case 3: No podsets fit.
 	o.context.ClusterSnapshot.Revert() // revert outer fork
 	combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpNoOptionsAvailable})
-	// Clean up details since no capacity was found; the empty values written by
-	// setSchedulableDetails would otherwise linger and could mislead consumers.
-	provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey)
-	provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodCountsDetailKey)
+	// Preserve schedulablePodCounts and schedulablePodSets (as []) so consumers can see
+	// per-PodSet partial counts even when nothing fully fit.
 	setCapacityNotFoundCondition(provReq)
 	return nil
 }
