@@ -192,144 +192,160 @@ func (o *checkCapacityProvClass) checkCapacityBatch(reqs []provreq.ProvisioningR
 
 // checkCapacity checks if there is capacity, updates combinedStatus and Conditions. If capacity is found, it commits to the clusterSnapshot.
 func (o *checkCapacityProvClass) checkCapacity(unschedulablePods []*apiv1.Pod, provReq *provreqwrapper.ProvisioningRequest, combinedStatus *combinedStatusSet) error {
-	o.context.ClusterSnapshot.Fork()
+	o.context.ClusterSnapshot.Fork() // outer fork
 
-	partialCapacityMode, partialCapacityCheckEnabled := getPartialCapacityCheckMode(provReq)
-
-	if partialCapacityCheckEnabled {
-		// Schedule per podset using nested forks. For each podset, if all its pods fit, commit the
-		// inner fork into the outer fork so subsequent podsets see the consumed capacity. At the end,
-		// commit or revert the outer fork depending on the result and mode.
-		podsByPodSet := groupPodsByPodSet(unschedulablePods, provReq)
-		schedulablePodSets := make([]string, 0)
-		schedulablePodCounts := make(map[string]int)
-
-		// PodSets are evaluated in spec order. Earlier PodSets that fit consume
-		// capacity within the simulation, which may prevent later PodSets from
-		// scheduling. In checkOnly mode the capacity is reverted after evaluation.
-		for i, podSetSpec := range provReq.Spec.PodSets {
-			pods := podsByPodSet[i]
-			if len(pods) == 0 {
-				klog.Warningf("No pods matched podset %d (%s) for ProvReq %s, treating as not schedulable", i, podSetSpec.PodTemplateRef.Name, provReq.Name)
-				schedulablePodCounts[podSetSpec.PodTemplateRef.Name] = 0
-				continue
-			}
-			o.context.ClusterSnapshot.Fork()
-			scheduled, _, err := o.schedulingSimulator.TrySchedulePods(o.context.ClusterSnapshot, pods, scheduling.ScheduleAnywhere, true)
-			if err != nil {
-				o.context.ClusterSnapshot.Revert()
-				o.context.ClusterSnapshot.Revert()
-				return err
-			}
-			schedulablePodCounts[podSetSpec.PodTemplateRef.Name] = len(scheduled)
-			if len(scheduled) == len(pods) {
-				schedulablePodSets = append(schedulablePodSets, podSetSpec.PodTemplateRef.Name)
-				if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil {
-					o.context.ClusterSnapshot.Revert()
-					return commitErr
-				}
-			} else {
-				o.context.ClusterSnapshot.Revert()
-			}
+	if partialCapacityMode, ok := getPartialCapacityCheckMode(provReq); ok {
+		names, counts, err := o.evaluatePartialCapacity(unschedulablePods, provReq)
+		if err != nil {
+			o.context.ClusterSnapshot.Revert() // revert outer fork
+			return err
 		}
-
-		schedulablePodSetsJSON, jsonErr := json.Marshal(schedulablePodSets)
-		if jsonErr != nil {
-			klog.Errorf("failed to marshal schedulablePodSets for ProvReq %s: %v", provReq.Name, jsonErr)
-		} else {
-			provReq.SetProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey, v1.Detail(schedulablePodSetsJSON))
+		if detailErr := setSchedulableDetails(provReq, names, counts); detailErr != nil {
+			o.context.ClusterSnapshot.Revert() // revert outer fork
+			return detailErr
 		}
-		schedulablePodCountsJSON, jsonErr := json.Marshal(schedulablePodCounts)
-		if jsonErr != nil {
-			klog.Errorf("failed to marshal schedulablePodCounts for ProvReq %s: %v", provReq.Name, jsonErr)
-		} else {
-			provReq.SetProvisioningClassDetail(conditions.SchedulablePodCountsDetailKey, v1.Detail(schedulablePodCountsJSON))
-		}
-
-		// Case 1: All podsets fit.
-		if len(schedulablePodSets) == len(provReq.Spec.PodSets) {
-			combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpSuccessful})
-			conditions.AddOrUpdateCondition(provReq, v1.Provisioned, metav1.ConditionTrue, conditions.CapacityIsFoundReason, conditions.CapacityIsFoundMsg, metav1.Now())
-			if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil {
-				o.context.ClusterSnapshot.Revert()
-				return commitErr
-			}
-			return nil
-		}
-
-		// Case 2: Some podsets fit.
-		if len(schedulablePodSets) > 0 {
-			msg := conditions.PartialCapacityIsFoundMsg
-			handlePartialCapacityStatusUpdate(provReq, combinedStatus, partialCapacityMode, msg)
-			if partialCapacityMode == PartialCapacityCheckBookPartial {
-				if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil {
-					o.context.ClusterSnapshot.Revert()
-					return commitErr
-				}
-			} else {
-				o.context.ClusterSnapshot.Revert()
-			}
-			return nil
-		}
-
-		// Case 3: No podsets fit.
-		o.context.ClusterSnapshot.Revert()
-		combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpNoOptionsAvailable})
-		if partialCapacityMode != PartialCapacityCheckCheckOnly {
-			// In bookPartial mode, clean up details since no capacity was booked and
-			// the ProvReq may be re-evaluated; stale details could mislead consumers.
-			provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey)
-			provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodCountsDetailKey)
-		}
-		setCapacityNotFoundCondition(provReq)
-		return nil
+		// resolvePartialCapacityResult commits or reverts the outer fork.
+		return o.resolvePartialCapacityResult(provReq, combinedStatus, partialCapacityMode, names)
 	}
 
 	// Non-partial path: schedule all pods at once and break on first failure.
 	scheduled, _, err := o.schedulingSimulator.TrySchedulePods(o.context.ClusterSnapshot, unschedulablePods, scheduling.ScheduleAnywhere, true)
 	if err == nil && len(scheduled) == len(unschedulablePods) {
-		// Case 1: All capacity fits.
 		allPodSetNames := make([]string, 0, len(provReq.Spec.PodSets))
 		for _, ps := range provReq.Spec.PodSets {
 			allPodSetNames = append(allPodSetNames, ps.PodTemplateRef.Name)
 		}
-		schedulablePodSetsJSON, jsonErr := json.Marshal(allPodSetNames)
-		if jsonErr != nil {
-			klog.Errorf("failed to marshal schedulablePodSets for ProvReq %s: %v", provReq.Name, jsonErr)
-		} else {
-			provReq.SetProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey, v1.Detail(schedulablePodSetsJSON))
+		if detailErr := setSchedulableDetails(provReq, allPodSetNames, nil); detailErr != nil {
+			o.context.ClusterSnapshot.Revert() // revert outer fork
+			return detailErr
 		}
 		combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpSuccessful})
 		conditions.AddOrUpdateCondition(provReq, v1.Provisioned, metav1.ConditionTrue, conditions.CapacityIsFoundReason, conditions.CapacityIsFoundMsg, metav1.Now())
-		if commitError := o.context.ClusterSnapshot.Commit(); commitError != nil {
-			o.context.ClusterSnapshot.Revert()
+		if commitError := o.context.ClusterSnapshot.Commit(); commitError != nil { // commit outer fork
+			o.context.ClusterSnapshot.Revert() // revert outer fork
 			return commitError
 		}
 		return nil
 	}
 
-	// Case 3: Capacity doesn't fit.
-	o.context.ClusterSnapshot.Revert()
-	// Clear the detail from any previous iteration.
+	// Capacity doesn't fit.
+	o.context.ClusterSnapshot.Revert() // revert outer fork
 	provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey)
 	combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpNoOptionsAvailable})
 	setCapacityNotFoundCondition(provReq)
 	return err
 }
 
-const podNameFormatLen = 3
+// evaluatePartialCapacity schedules pods per PodSet using inner snapshot forks.
+// The caller must have already created an outer fork. This method only manages
+// inner forks (one per PodSet); the caller is responsible for the outer fork.
+func (o *checkCapacityProvClass) evaluatePartialCapacity(unschedulablePods []*apiv1.Pod, provReq *provreqwrapper.ProvisioningRequest) ([]string, map[string]int, error) {
+	podsByPodSet := groupPodsByPodSet(unschedulablePods, provReq)
+	schedulablePodSetNames := make([]string, 0, len(provReq.Spec.PodSets))
+	schedulablePodCounts := make(map[string]int, len(provReq.Spec.PodSets))
+
+	// PodSets are evaluated in spec order. Earlier PodSets that fit consume
+	// capacity within the simulation, which may prevent later PodSets from
+	// scheduling. In checkOnly mode the capacity is reverted after evaluation.
+	for i, podSetSpec := range provReq.Spec.PodSets {
+		pods := podsByPodSet[i]
+		if len(pods) == 0 {
+			klog.Warningf("No pods matched podset %d (%s) for ProvReq %s, treating as not schedulable", i, podSetSpec.PodTemplateRef.Name, provReq.Name)
+			schedulablePodCounts[podSetSpec.PodTemplateRef.Name] = 0
+			continue
+		}
+		o.context.ClusterSnapshot.Fork() // inner fork: one per podset
+		scheduled, _, err := o.schedulingSimulator.TrySchedulePods(o.context.ClusterSnapshot, pods, scheduling.ScheduleAnywhere, true)
+		if err != nil {
+			o.context.ClusterSnapshot.Revert() // revert inner fork
+			return nil, nil, err
+		}
+		schedulablePodCounts[podSetSpec.PodTemplateRef.Name] = len(scheduled)
+		if len(scheduled) == len(pods) {
+			schedulablePodSetNames = append(schedulablePodSetNames, podSetSpec.PodTemplateRef.Name)
+			if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil { // commit inner fork
+				return nil, nil, commitErr
+			}
+		} else {
+			o.context.ClusterSnapshot.Revert() // revert inner fork
+		}
+	}
+
+	return schedulablePodSetNames, schedulablePodCounts, nil
+}
+
+// setSchedulableDetails marshals and sets the schedulablePodSets and (optionally) schedulablePodCounts details
+// on the ProvisioningRequest. Returns an error instead of silently continuing, preventing overbooking
+// when downstream code falls back to booking all pods on marshal failure.
+func setSchedulableDetails(provReq *provreqwrapper.ProvisioningRequest, podSetNames []string, podCounts map[string]int) error {
+	schedulablePodSetsJSON, err := json.Marshal(podSetNames)
+	if err != nil {
+		return fmt.Errorf("failed to marshal schedulablePodSets for ProvReq %s: %w", provReq.Name, err)
+	}
+	provReq.SetProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey, v1.Detail(schedulablePodSetsJSON))
+
+	if podCounts != nil {
+		schedulablePodCountsJSON, err := json.Marshal(podCounts)
+		if err != nil {
+			return fmt.Errorf("failed to marshal schedulablePodCounts for ProvReq %s: %w", provReq.Name, err)
+		}
+		provReq.SetProvisioningClassDetail(conditions.SchedulablePodCountsDetailKey, v1.Detail(schedulablePodCountsJSON))
+	}
+	return nil
+}
+
+// resolvePartialCapacityResult commits or reverts the outer snapshot fork based on how many
+// PodSets were schedulable and the partialCapacityMode.
+func (o *checkCapacityProvClass) resolvePartialCapacityResult(provReq *provreqwrapper.ProvisioningRequest, combinedStatus *combinedStatusSet, partialCapacityMode string, schedulablePodSetNames []string) error {
+	// Case 1: All podsets fit.
+	if len(schedulablePodSetNames) == len(provReq.Spec.PodSets) {
+		combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpSuccessful})
+		conditions.AddOrUpdateCondition(provReq, v1.Provisioned, metav1.ConditionTrue, conditions.CapacityIsFoundReason, conditions.CapacityIsFoundMsg, metav1.Now())
+		if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil { // commit outer fork
+			o.context.ClusterSnapshot.Revert() // revert outer fork
+			return commitErr
+		}
+		return nil
+	}
+
+	// Case 2: Some podsets fit.
+	if len(schedulablePodSetNames) > 0 {
+		handlePartialCapacityStatusUpdate(provReq, combinedStatus, partialCapacityMode)
+		if partialCapacityMode == PartialCapacityCheckBookPartial {
+			if commitErr := o.context.ClusterSnapshot.Commit(); commitErr != nil { // commit outer fork
+				o.context.ClusterSnapshot.Revert() // revert outer fork
+				return commitErr
+			}
+		} else {
+			o.context.ClusterSnapshot.Revert() // revert outer fork
+		}
+		return nil
+	}
+
+	// Case 3: No podsets fit.
+	o.context.ClusterSnapshot.Revert() // revert outer fork
+	combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpNoOptionsAvailable})
+	// Clean up details since no capacity was found; the empty values written by
+	// setSchedulableDetails would otherwise linger and could mislead consumers.
+	provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodSetsDetailKey)
+	provReq.DeleteProvisioningClassDetail(conditions.SchedulablePodCountsDetailKey)
+	setCapacityNotFoundCondition(provReq)
+	return nil
+}
+
+const expectedMatchGroups = 3
 
 // groupPodsByPodSet buckets pods by their podset index, extracted from the pod name.
 // Pod names are created in the format {GenerateName}{i}-{j}, where i is the podset index
 // and j is the pod index within the podset. Pods not belonging to provReq are filtered out.
 func groupPodsByPodSet(pods []*apiv1.Pod, provReq *provreqwrapper.ProvisioningRequest) map[int][]*apiv1.Pod {
-	groups := make(map[int][]*apiv1.Pod)
+	groups := make(map[int][]*apiv1.Pod, len(provReq.Spec.PodSets))
 	for _, pod := range pods {
 		if pod.Annotations[v1.ProvisioningRequestPodAnnotationKey] != provReq.Name {
 			continue
 		}
 		matches := podSetIndexPattern.FindStringSubmatch(pod.Name)
-		if len(matches) == podNameFormatLen {
+		if len(matches) == expectedMatchGroups {
 			idx, _ := strconv.Atoi(matches[1]) // safe: regex guarantees digits
 			groups[idx] = append(groups[idx], pod)
 		}
@@ -485,17 +501,17 @@ func setCapacityNotFoundCondition(provReq *provreqwrapper.ProvisioningRequest) {
 }
 
 // handlePartialCapacityStatusUpdate handles the combineStatusSet update and ProvReq Provisioned status update for the partial capacity case
-func handlePartialCapacityStatusUpdate(provReq *provreqwrapper.ProvisioningRequest, combinedStatus *combinedStatusSet, provReqMode, conditionMsg string) {
+func handlePartialCapacityStatusUpdate(provReq *provreqwrapper.ProvisioningRequest, combinedStatus *combinedStatusSet, partialCapacityMode string) {
 	provisionedStatus := metav1.ConditionFalse
 	// ScaleUpSuccessful is used for both checkOnly and bookPartial modes because
 	// partial capacity was found in both cases. In checkOnly mode capacity is not
 	// actually booked, but the scale-up result still reflects that capacity exists.
 	scaleupStatus := status.ScaleUpSuccessful
-	if provReqMode == PartialCapacityCheckBookPartial {
+	if partialCapacityMode == PartialCapacityCheckBookPartial {
 		provisionedStatus = metav1.ConditionTrue
 	}
 	combinedStatus.Add(&status.ScaleUpStatus{Result: scaleupStatus})
-	conditions.AddOrUpdateCondition(provReq, v1.Provisioned, provisionedStatus, conditions.PartialCapacityIsFoundReason, conditionMsg, metav1.Now())
+	conditions.AddOrUpdateCondition(provReq, v1.Provisioned, provisionedStatus, conditions.PartialCapacityIsFoundReason, conditions.PartialCapacityIsFoundMsg, metav1.Now())
 }
 
 func getPartialCapacityCheckMode(provReq *provreqwrapper.ProvisioningRequest) (string, bool) {
