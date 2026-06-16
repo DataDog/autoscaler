@@ -196,22 +196,11 @@ func (o *ScaleUpOrchestrator) ScaleUp(
 		return status.UpdateScaleUpError(&status.ScaleUpStatus{PodsTriggeredScaleUp: bestOption.Pods}, aErr)
 	}
 
-	newNodes, aErr = o.applyLimits(newNodes, tracker, bestOption.NodeGroup, nodeInfos)
-	if aErr != nil {
-		return status.UpdateScaleUpError(
-			&status.ScaleUpStatus{PodsTriggeredScaleUp: bestOption.Pods},
-			aErr)
-	}
-
-	if newNodes < bestOption.NodeCount {
-		klog.V(1).Infof("Only %d nodes can be added to %s due to resource quotas", newNodes, bestOption.NodeGroup.Id())
-		if allOrNothing {
-			// Can't execute a scale-up that will accommodate all pods, so nothing is considered schedulable.
-			klog.V(1).Info("Not attempting scale-up due to all-or-nothing strategy: not all pods would be accommodated")
-			markedEquivalenceGroups := markAllGroupsAsUnschedulable(podEquivalenceGroups, AllOrNothingReason)
-			return buildNoOptionsAvailableStatus(markedEquivalenceGroups, skippedNodeGroups, nodeGroups), nil
-		}
-	}
+	// Resource quotas are enforced during balancing (balanceScaleUps lowers each
+	// group's effective max to its quota headroom) and by the per-group cap loop
+	// below, rather than capping the total to the best option's quota up front.
+	// The post-balance "node group limits" check below handles the all-or-nothing
+	// abort when the full request cannot be satisfied.
 
 	// If necessary, create the node group. This is no longer simulation, an empty node group will be created by cloud provider if supported.
 	createNodeGroupResults := make([]nodegroups.CreateNodeGroupResult, 0)
@@ -324,20 +313,6 @@ func (o *ScaleUpOrchestrator) ScaleUp(
 		PodsTriggeredScaleUp:    bestOption.Pods,
 		PodsAwaitEvaluation:     GetPodsAwaitingEvaluation(podEquivalenceGroups, bestOption.NodeGroup.Id()),
 	}, nil
-}
-
-func (o *ScaleUpOrchestrator) applyLimits(newNodes int, tracker *resourcequotas.Tracker, nodeGroup cloudprovider.NodeGroup, nodeInfos map[string]*framework.NodeInfo) (int, errors.AutoscalerError) {
-	nodeInfo, found := nodeInfos[nodeGroup.Id()]
-	if !found {
-		// This should never happen, as we already should have retrieved nodeInfo for any considered nodegroup.
-		klog.Errorf("No node info for: %s", nodeGroup.Id())
-		return 0, errors.NewAutoscalerError(errors.CloudProviderError, "No node info for best expansion option!")
-	}
-	checkResult, err := tracker.CheckDelta(o.autoscalingCtx, nodeGroup, nodeInfo.Node(), newNodes)
-	if err != nil {
-		return 0, errors.ToAutoscalerError(errors.InternalError, err).AddPrefix("failed to check resource quotas: ")
-	}
-	return checkResult.AllowedDelta, nil
 }
 
 // ScaleUpToNodeGroupMinSize tries to scale up node groups that have less nodes
@@ -808,7 +783,44 @@ func (o *ScaleUpOrchestrator) balanceScaleUps(
 		}
 		klog.V(1).Infof("Splitting scale-up between %v similar node groups: {%v}", len(targetNodeGroups), strings.Join(names, ", "))
 	}
-	return o.processors.NodeGroupSetProcessor.BalanceScaleUpBetweenGroups(o.autoscalingCtx, targetNodeGroups, newNodes)
+	maxAddByGroup := o.headroomByGroup(targetNodeGroups, nodeInfos, tracker)
+	return o.processors.NodeGroupSetProcessor.BalanceScaleUpBetweenGroups(o.autoscalingCtx, targetNodeGroups, newNodes, maxAddByGroup)
+}
+
+// headroomByGroup returns, for each given node group, the maximum number of
+// nodes that may be added to it given its max size and resource quotas. Groups
+// whose headroom cannot be determined are omitted from the result.
+func (o *ScaleUpOrchestrator) headroomByGroup(
+	groups []cloudprovider.NodeGroup,
+	nodeInfos map[string]*framework.NodeInfo,
+	tracker *resourcequotas.Tracker,
+) map[string]int {
+	maxAddByGroup := make(map[string]int, len(groups))
+	for _, ng := range groups {
+		nodeInfo, found := nodeInfos[ng.Id()]
+		if !found {
+			continue
+		}
+		currentSize, err := ng.TargetSize()
+		if err != nil {
+			klog.Warningf("Failed to get target size of node group %s, ignoring its quota when balancing: %v", ng.Id(), err)
+			continue
+		}
+		probe := ng.MaxSize() - currentSize
+		if probe <= 0 {
+			// Group is already at (or above) MaxSize; nothing to add. Leaving it
+			// out of the map yields the same result as a 0 entry, since its
+			// effective max in balancing is then capped at MaxSize <= currentSize.
+			continue
+		}
+		checkResult, err := tracker.CheckDelta(o.autoscalingCtx, ng, nodeInfo.Node(), probe)
+		if err != nil {
+			klog.Warningf("Failed to check quota of node group %s, ignoring its quota when balancing: %v", ng.Id(), err)
+			continue
+		}
+		maxAddByGroup[ng.Id()] = checkResult.AllowedDelta
+	}
+	return maxAddByGroup
 }
 
 // ComputeSimilarNodeGroups finds similar node groups which can schedule the same
