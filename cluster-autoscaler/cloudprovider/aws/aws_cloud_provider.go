@@ -411,7 +411,8 @@ func (ng *AwsNodeGroup) TemplateNodeInfo() (*framework.NodeInfo, error) {
 		return nil, err
 	}
 
-	nodeInfo := framework.NewNodeInfo(node, nil, &framework.PodInfo{Pod: cloudprovider.BuildKubeProxy(ng.asg.Name)})
+	resourceSlices := buildResourceSlicesFromTemplate(node, template.InstanceType)
+	nodeInfo := framework.NewNodeInfo(node, resourceSlices, &framework.PodInfo{Pod: cloudprovider.BuildKubeProxy(ng.asg.Name)})
 	return nodeInfo, nil
 }
 
