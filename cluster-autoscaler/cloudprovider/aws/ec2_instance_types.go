@@ -24,6 +24,12 @@ type InstanceType struct {
 	VCPU         int64
 	MemoryMb     int64
 	GPU          int64
+	// GPUShortName is the EC2 GpuInfo.Gpus[0].Name (e.g. "A10G", "H100"), used as
+	// the key into the static GPU attribute maps when building DRA ResourceSlices.
+	GPUShortName string
+	// GPUMemoryMiB is the per-device GPU memory from EC2 GpuInfo, advertised as the
+	// "memory" capacity on DRA ResourceSlice devices.
+	GPUMemoryMiB int64
 	Architecture string
 }
 
