@@ -71,6 +71,17 @@ func transformInstanceType(rawInstanceType *ec2types.InstanceTypeInfo) *Instance
 	}
 	if rawInstanceType.GpuInfo != nil && len(rawInstanceType.GpuInfo.Gpus) > 0 {
 		instanceType.GPU = int64(getGpuCount(rawInstanceType.GpuInfo))
+		// Capture per-device GPU metadata for building DRA ResourceSlices. EC2 only
+		// exposes the short name (e.g. "A10G", "H100") and per-device memory; richer
+		// attributes (product name, brand, architecture, CUDA compute capability) come
+		// from static maps keyed on GPUShortName in aws_dra.go.
+		gpuDevice := rawInstanceType.GpuInfo.Gpus[0]
+		if gpuDevice.Name != nil {
+			instanceType.GPUShortName = *gpuDevice.Name
+		}
+		if gpuDevice.MemoryInfo != nil && gpuDevice.MemoryInfo.SizeInMiB != nil {
+			instanceType.GPUMemoryMiB = int64(*gpuDevice.MemoryInfo.SizeInMiB)
+		}
 	}
 	if rawInstanceType.ProcessorInfo != nil && len(rawInstanceType.ProcessorInfo.SupportedArchitectures) > 0 {
 		instanceType.Architecture = interpretEc2SupportedArchitecure(string(rawInstanceType.ProcessorInfo.SupportedArchitectures[0]))
