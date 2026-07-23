@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	apiv1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -182,6 +183,62 @@ func TestBuildMIGResourceSlices_A100Structure(t *testing.T) {
 	assert.Len(t, slices[1].Spec.Devices, 14)
 }
 
+// TestBuildMIGResourceSlices_DeviceChunking checks that a physical GPU whose MIG devices
+// exceed resourceapi.ResourceSliceMaxDevices gets split across multiple ResourceSlices instead
+// of producing a single oversized (API-invalid) slice, and that Pool.ResourceSliceCount agrees
+// with the actual number of slices produced.
+func TestBuildMIGResourceSlices_DeviceChunking(t *testing.T) {
+	saved := migProfileTables["DenseGPU"]
+	defer func() {
+		if saved == nil {
+			delete(migProfileTables, "DenseGPU")
+		} else {
+			migProfileTables["DenseGPU"] = saved
+		}
+	}()
+
+	// 1 whole-GPU device + 150 placements of one profile = 151 devices for the single GPU,
+	// comfortably over the 128-device-per-slice API limit.
+	placements := make([]int, 150)
+	for i := range placements {
+		placements[i] = i
+	}
+	migProfileTables["DenseGPU"] = []migVariant{{
+		gpuMemoryMiB: 1000,
+		productName:  "Dense Test GPU",
+		brand:        "Nvidia",
+		architecture: "Test",
+		memorySlices: 200,
+		whole:        engineCounts{memory: "1Gi"},
+		profiles: []migProfile{
+			{name: "1g.1gb", profileID: 0, memorySlices: 1, placements: placements, engines: engineCounts{memory: "1Mi"}},
+		},
+	}}
+
+	node := draNode("node-1", map[string]string{
+		draDriverLabelKey:     "gpu.nvidia.com",
+		draMIGEnabledLabelKey: "true",
+	})
+	it := &InstanceType{InstanceType: "dense.xlarge", GPU: 1, GPUShortName: "DenseGPU", GPUMemoryMiB: 1000}
+
+	slices := buildResourceSlicesFromTemplate(node, it)
+	require.NotEmpty(t, slices)
+
+	// 1 counters slice + ceil(151/128) = 2 devices slices for the single GPU = 3.
+	require.Len(t, slices, 3)
+
+	totalDevices := 0
+	for _, s := range slices[1:] {
+		assert.LessOrEqual(t, len(s.Spec.Devices), resourceapi.ResourceSliceMaxDevices, "no slice should exceed the API device limit")
+		totalDevices += len(s.Spec.Devices)
+	}
+	assert.Equal(t, 151, totalDevices, "no devices should be dropped by chunking")
+
+	for _, s := range slices {
+		assert.Equal(t, int64(len(slices)), s.Spec.Pool.ResourceSliceCount, "every slice in the pool must agree on the total slice count")
+	}
+}
+
 func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
 	node := draNode("node-1", map[string]string{
 		draDriverLabelKey:     "gpu.nvidia.com",
@@ -192,6 +249,22 @@ func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
 
 	slices := buildResourceSlicesFromTemplate(node, it)
 	assert.Nil(t, slices)
+}
+
+// TestBuildMIGResourceSlices_MemoryMismatch checks that a GPU whose EC2-reported per-device
+// memory doesn't closely match any table variant for its short name fails safe (no slices)
+// instead of picking the nearest variant regardless of distance — picking, e.g., the A100
+// table's 40GiB variant for an 80GiB instance would advertise the wrong profiles.
+func TestBuildMIGResourceSlices_MemoryMismatch(t *testing.T) {
+	node := draNode("node-1", map[string]string{
+		draDriverLabelKey:     "gpu.nvidia.com",
+		draMIGEnabledLabelKey: "true",
+	})
+	// migProfileTables' only A100 variant is 40960 MiB; 80000 is far outside tolerance.
+	it := &InstanceType{InstanceType: "p4de.24xlarge", GPU: 1, GPUShortName: "A100", GPUMemoryMiB: 80000}
+
+	slices := buildResourceSlicesFromTemplate(node, it)
+	assert.Nil(t, slices, "GPU memory too far from any known variant should not advertise MIG slices")
 }
 
 func assertStringAttr(t *testing.T, dev resourceapi.Device, key, want string) {

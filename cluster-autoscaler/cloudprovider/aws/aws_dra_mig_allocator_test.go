@@ -110,6 +110,7 @@ func TestMIGCounterConflictDetection(t *testing.T) {
 		InstanceType: "g7e.4xlarge",
 		GPU:          1,
 		GPUShortName: rtxPro6000ShortName,
+		GPUMemoryMiB: 98304,
 	}
 
 	slices := buildMIGResourceSlices(node, instanceType, "gpu.nvidia.com")

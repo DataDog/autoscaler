@@ -143,6 +143,23 @@ func buildResourceSlicesFromTemplate(node *apiv1.Node, instanceType *InstanceTyp
 	// from CA logs (EC2 short names are not always known ahead of time).
 	klog.V(4).Infof("DRA: building ResourceSlices for node group GPU %q (%s, driver %s)", instanceType.GPUShortName, instanceType.InstanceType, driver)
 
+	// GPUShortName/GPUMemoryMiB are populated only via the dynamic EC2 API path
+	// (aws_util.go), never by the static instance-type list (--aws-use-static-instance-list),
+	// so this combination means the operator is running that mode.
+	//
+	// Two options here: warn and keep going with a degraded full-GPU slice (current behavior),
+	// or fail safe and return nil like the "unknown SKU"/no-MIG-table paths do. We warn rather
+	// than suppress because the degraded slice is still useful for the common case: a claim
+	// selecting only on type=gpu (no attribute/memory constraint) is satisfied correctly by it,
+	// and static-instance-list is chosen specifically for private/airgapped clusters where the
+	// EC2 API isn't reachable at all — silently returning nil there would make DRA scale-from-
+	// zero permanently non-functional for every GPU node group with no operator-visible cause
+	// beyond this log line. A claim that does constrain on attributes or memory won't match
+	// during simulation either way (missing vs. wrong), so nothing is lost by not suppressing.
+	if instanceType.GPUShortName == "" && instanceType.GPUMemoryMiB == 0 {
+		klog.Warningf("DRA enabled for node group with GPU instance type %s but GPUShortName/GPUMemoryMiB are unset (likely --aws-use-static-instance-list); fabricated ResourceSlices will be missing attributes and MIG groups will get none", instanceType.InstanceType)
+	}
+
 	// MIG-enabled node groups advertise partitionable devices (see aws_dra_mig.go).
 	if node.Labels[draMIGEnabledLabelKey] == "true" {
 		return buildMIGResourceSlices(node, instanceType, driver)

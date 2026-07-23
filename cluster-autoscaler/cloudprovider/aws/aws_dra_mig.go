@@ -110,7 +110,7 @@ type migProfile struct {
 // migVariant is one memory variant of a GPU model: its whole-GPU budget, identity
 // attributes, and available profiles. Selected by matching EC2 per-device GPU memory.
 type migVariant struct {
-	gpuMemoryMiB          int64 // matches EC2 GpuInfo memory; closest-match selection
+	gpuMemoryMiB          int64 // matches EC2 GpuInfo memory; see selectMIGVariant
 	productName           string
 	brand                 string
 	architecture          string
@@ -185,8 +185,16 @@ var migProfileTables = map[string][]migVariant{
 	}},
 }
 
-// selectMIGVariant picks the variant of a GPU model whose per-device memory best matches
-// EC2's report. Returns false if the model has no MIG table.
+// migVariantMatchToleranceMiB bounds how far a variant's gpuMemoryMiB may diverge from EC2's
+// reported per-device memory and still be treated as the same physical SKU (e.g. rounding
+// differences between EC2's report and the table's transcribed value). It deliberately
+// rejects picking, say, a 40GiB A100 variant for an 80GiB A100 instance: a wrong variant
+// advertises the wrong profiles/placements/capacities and can pass a claim CA cannot satisfy.
+const migVariantMatchToleranceMiB = 1024
+
+// selectMIGVariant picks the variant of a GPU model whose per-device memory matches EC2's
+// report within migVariantMatchToleranceMiB. Returns false if the model has no MIG table, or
+// no variant is close enough to trust.
 func selectMIGVariant(shortName string, gpuMemoryMiB int64) (migVariant, bool) {
 	variants, ok := migProfileTables[shortName]
 	if !ok || len(variants) == 0 {
@@ -198,6 +206,9 @@ func selectMIGVariant(shortName string, gpuMemoryMiB int64) (migVariant, bool) {
 		if delta := absInt64(v.gpuMemoryMiB - gpuMemoryMiB); delta < bestDelta {
 			best, bestDelta = v, delta
 		}
+	}
+	if bestDelta > migVariantMatchToleranceMiB {
+		return migVariant{}, false
 	}
 	return best, true
 }
@@ -212,6 +223,13 @@ func absInt64(x int64) int64 {
 // buildMIGResourceSlices builds the counters slice plus one devices slice per GPU for a
 // MIG-enabled node group, matching the real driver's shape. Returns nil if the SKU has no
 // MIG table (so the node group fails safe rather than advertising a bogus inventory).
+//
+// A single physical GPU's devices are split across multiple ResourceSlices if they exceed
+// resourceapi.ResourceSliceMaxDevices (128) — the API rejects a slice over that limit. No known
+// NVIDIA MIG GPU today has anywhere near 128 (profile x placement) devices on one physical GPU
+// (H100, the densest table here, has 18), so this is defensive rather than reachable with
+// today's hardware; it's here so a future denser MIG geometry fails a k8s API validation error
+// at slice-creation time on the real node rather than silently producing an invalid template.
 func buildMIGResourceSlices(node *apiv1.Node, instanceType *InstanceType, driver string) []*resourceapi.ResourceSlice {
 	v, ok := selectMIGVariant(instanceType.GPUShortName, instanceType.GPUMemoryMiB)
 	if !ok {
@@ -221,8 +239,23 @@ func buildMIGResourceSlices(node *apiv1.Node, instanceType *InstanceType, driver
 
 	nodeName := node.Name
 	gpuCount := int(instanceType.GPU)
-	totalSlices := int64(1 + gpuCount) // 1 counters slice + 1 devices slice per GPU
-	slices := make([]*resourceapi.ResourceSlice, 0, gpuCount+1)
+
+	perGPUDevices := make([][]resourceapi.Device, gpuCount)
+	for g := 0; g < gpuCount; g++ {
+		devices := []resourceapi.Device{wholeGPUDevice(g, v)}
+		for _, p := range v.profiles {
+			for _, start := range p.placements {
+				devices = append(devices, migDevice(g, v, p, start))
+			}
+		}
+		perGPUDevices[g] = devices
+	}
+
+	totalSlices := int64(1) // counters slice
+	for _, devices := range perGPUDevices {
+		totalSlices += int64(deviceChunkCount(len(devices)))
+	}
+	slices := make([]*resourceapi.ResourceSlice, 0, totalSlices)
 
 	counters := &resourceapi.ResourceSlice{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-counters", nodeName, driver)},
@@ -233,20 +266,34 @@ func buildMIGResourceSlices(node *apiv1.Node, instanceType *InstanceType, driver
 	}
 	slices = append(slices, counters)
 
-	for g := 0; g < gpuCount; g++ {
-		devices := &resourceapi.ResourceSlice{
-			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-devices-%d", nodeName, driver, g)},
-			Spec:       newSliceSpec(driver, nodeName, totalSlices),
+	for g, devices := range perGPUDevices {
+		for chunkIndex, chunk := range chunkDevices(devices) {
+			spec := newSliceSpec(driver, nodeName, totalSlices)
+			spec.Devices = chunk
+			slices = append(slices, &resourceapi.ResourceSlice{
+				ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s-devices-%d-%d", nodeName, driver, g, chunkIndex)},
+				Spec:       spec,
+			})
 		}
-		devices.Spec.Devices = append(devices.Spec.Devices, wholeGPUDevice(g, v))
-		for _, p := range v.profiles {
-			for _, start := range p.placements {
-				devices.Spec.Devices = append(devices.Spec.Devices, migDevice(g, v, p, start))
-			}
-		}
-		slices = append(slices, devices)
 	}
 	return slices
+}
+
+// deviceChunkCount returns how many resourceapi.ResourceSliceMaxDevices-sized ResourceSlices n
+// devices need.
+func deviceChunkCount(n int) int {
+	return (n + resourceapi.ResourceSliceMaxDevices - 1) / resourceapi.ResourceSliceMaxDevices
+}
+
+// chunkDevices splits devices into resourceapi.ResourceSliceMaxDevices-sized slices.
+func chunkDevices(devices []resourceapi.Device) [][]resourceapi.Device {
+	var chunks [][]resourceapi.Device
+	for len(devices) > 0 {
+		n := min(len(devices), resourceapi.ResourceSliceMaxDevices)
+		chunks = append(chunks, devices[:n])
+		devices = devices[n:]
+	}
+	return chunks
 }
 
 func newSliceSpec(driver, nodeName string, totalSliceCount int64) resourceapi.ResourceSliceSpec {
