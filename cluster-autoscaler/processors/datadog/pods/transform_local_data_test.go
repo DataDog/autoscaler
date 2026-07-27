@@ -36,6 +36,7 @@ import (
 var (
 	testRemoteClass        = "remote-data"
 	testLocalClass         = "local-data"
+	testLocalBlockClass    = "local-data-block"
 	testNamespace          = "foons"
 	testEmptyResources     = corev1.ResourceList{}
 	testDefaultLdResources = corev1.ResourceList{
@@ -92,6 +93,32 @@ func TestTransformLocalDataProcess(t *testing.T) {
 				buildPVC("pvc-1", testRemoteClass),
 				buildPVC("pvc-2", testLocalClass),
 				buildPVC("pvc-3", testRemoteClass),
+			},
+			[]*corev1.Pod{buildPod("pod1", testDefaultLdResources, testDefaultLdResources, "pvc-1", "pvc-3")},
+		},
+
+		{
+			"local-data-block volumes are removed, and custom resources added with default storage",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+			[]*corev1.PersistentVolumeClaim{buildPVC("pvc-1", testLocalBlockClass)},
+			[]*corev1.Pod{buildPod("pod1", testDefaultLdResources, testDefaultLdResources)},
+		},
+
+		{
+			"local-data-block volumes are removed, and custom resources added with local storage capacity",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+			[]*corev1.PersistentVolumeClaim{buildPVCWithStorage("pvc-1", testLocalBlockClass, localStorage)},
+			[]*corev1.Pod{buildPod("pod1", testLdResources, testLdResources)},
+		},
+
+		{
+			"mixed local-data, local-data-block and remote volumes don't cause confusion",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1", "pvc-2", "pvc-3", "pvc-4")},
+			[]*corev1.PersistentVolumeClaim{
+				buildPVC("pvc-1", testRemoteClass),
+				buildPVC("pvc-2", testLocalClass),
+				buildPVC("pvc-3", testRemoteClass),
+				buildPVC("pvc-4", testLocalBlockClass),
 			},
 			[]*corev1.Pod{buildPod("pod1", testDefaultLdResources, testDefaultLdResources, "pvc-1", "pvc-3")},
 		},
