@@ -77,13 +77,45 @@ func (b *BalancingNodeGroupSetProcessor) FindSimilarNodeGroups(autoscalingCtx *c
 // of all NodeGroups it will be capped to total capacity. In particular if all
 // group already have MaxSize, empty list will be returned.
 func (b *BalancingNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(autoscalingCtx *ca_context.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int) ([]ScaleUpInfo, errors.AutoscalerError) {
+	return b.balance(autoscalingCtx, groups, newNodes, nil)
+}
+
+// BalanceScaleUpBetweenGroupsWithQuota is BalanceScaleUpBetweenGroups, but consults reserver
+// before assigning each node to a group, so that a quota pool shared by several groups is
+// drawn down correctly across them as the fill progresses, rather than each group checking the
+// same pool independently.
+//
+// The result is max-min fair for laminar quota structures: independent per-group quotas, or a
+// single pool shared by every group passed in. When quota pools only partially overlap between
+// groups (e.g. one pool covering {a,b} and another covering {b,c}), this is only a heuristic: it
+// never violates a quota and is never worse than balancing without quota awareness, but it is
+// not guaranteed to be optimal. It can be strictly dominated by a feasible allocation that avoids
+// spending two pools on the same node, and it can sacrifice total throughput relative to an
+// allocation that draws down a shared pool less evenly. Computing the optimal split for
+// arbitrary overlapping quotas is a linear program and is out of scope here.
+func (b *BalancingNodeGroupSetProcessor) BalanceScaleUpBetweenGroupsWithQuota(autoscalingCtx *ca_context.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int, reserver NodeQuotaReserver) ([]ScaleUpInfo, errors.AutoscalerError) {
+	return b.balance(autoscalingCtx, groups, newNodes, reserver)
+}
+
+// balanceEntry is the loop's scratch representation of a ScaleUpInfo being filled. frozen
+// records whether this entry has been removed from consideration (at MaxSize, or refused by
+// quota); it travels with the entry through the swaps below, so no side map keyed by group id
+// is needed.
+type balanceEntry struct {
+	ScaleUpInfo
+	frozen bool
+}
+
+// balance implements the fill loop shared by BalanceScaleUpBetweenGroups and
+// BalanceScaleUpBetweenGroupsWithQuota. reserver is nil for the former.
+func (b *BalancingNodeGroupSetProcessor) balance(autoscalingCtx *ca_context.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int, reserver NodeQuotaReserver) ([]ScaleUpInfo, errors.AutoscalerError) {
 	if len(groups) == 0 {
 		return []ScaleUpInfo{}, errors.NewAutoscalerError(
 			errors.InternalError, "Can't balance scale up between 0 groups")
 	}
 
 	// get all data from cloudprovider, build data structure
-	scaleUpInfos := make([]ScaleUpInfo, 0)
+	scaleUpInfos := make([]balanceEntry, 0)
 	totalCapacity := 0
 	for _, ng := range groups {
 		currentSize, err := ng.TargetSize()
@@ -101,12 +133,12 @@ func (b *BalancingNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(autoscaling
 			// we still have capacity to expand
 			totalCapacity += (maxSize - currentSize)
 		}
-		scaleUpInfos = append(scaleUpInfos, ScaleUpInfo{
+		scaleUpInfos = append(scaleUpInfos, balanceEntry{ScaleUpInfo: ScaleUpInfo{
 			Group:       ng,
 			CurrentSize: currentSize,
 			NewSize:     currentSize,
 			MaxSize:     maxSize,
-		})
+		}})
 	}
 	if totalCapacity < newNodes {
 		klog.V(2).Infof("Requested scale-up (%v) exceeds node group set capacity, capping to %v", newNodes, totalCapacity)
@@ -114,47 +146,64 @@ func (b *BalancingNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(autoscaling
 	}
 
 	// The actual balancing algorithm.
-	// Sort the node groups by current size and just loop over nodes adding
-	// to smallest group. If a group hits max size remove it from the list
-	// (by moving it to start of the list and increasing startIndex).
+	// Sort the node groups by (current size, id) and just loop over nodes adding
+	// to the smallest group. If a group hits max size, or - when reserver is set -
+	// its quota is refused, freeze it and remove it from the list (by moving it to
+	// the start of the list and increasing startIndex).
 	//
-	// In each iteration we either allocate one node, or 'remove' a maxed out
-	// node group, so this will terminate in O(#nodes + #node groups) steps.
-	// We already know that newNodes <= total capacity, so we don't have to
-	// worry about accidentally removing all node groups while we still
-	// have nodes to allocate.
+	// In each iteration we either allocate one node, or freeze one node group, so
+	// this terminates in O(#nodes + #node groups) steps: every iteration either
+	// decrements newNodes or increments startIndex. This is also why a quota
+	// refusal must always freeze the group - returning false from the reserver
+	// without freezing would spin forever re-trying the same group.
 	//
-	// Loop invariants:
-	// 1. i < startIndex -> scaleUpInfos[i].CurrentSize == scaleUpInfos[i].MaxSize
-	// 2. i >= startIndex -> scaleUpInfos[i].CurrentSize < scaleUpInfos[i].MaxSize
-	// 3. startIndex <= currentIndex < len(scaleUpInfos)
-	// 4. currentIndex <= i < j -> scaleUpInfos[i].CurrentSize <= scaleUpInfos[j].CurrentSize
-	// 5. startIndex <= i < j < currentIndex -> scaleUpInfos[i].CurrentSize == scaleUpInfos[j].CurrentSize
-	// 6. startIndex <= i < currentIndex <= j -> scaleUpInfos[i].CurrentSize <= scaleUpInfos[j].CurrentSize + 1
+	// Loop invariants (hold at the top of each iteration):
+	// 1. i < startIndex -> scaleUpInfos[i] is frozen (at MaxSize, or refused by quota)
+	// 2. i >= startIndex -> scaleUpInfos[i] is not frozen, i.e. scaleUpInfos[i].NewSize < scaleUpInfos[i].MaxSize
+	// 3. startIndex <= currentIndex < len(scaleUpInfos), UNLESS newNodes has been
+	//    fully allocated or every group has been frozen, in which case
+	//    currentIndex == len(scaleUpInfos) right after the final freeze is expected,
+	//    and the loop guard below stops before it is dereferenced.
+	// 4. currentIndex <= i < j -> scaleUpInfos[i].NewSize <= scaleUpInfos[j].NewSize
+	// 5. startIndex <= i < j < currentIndex -> scaleUpInfos[i].NewSize == scaleUpInfos[j].NewSize
+	// 6. startIndex <= i < currentIndex <= j -> scaleUpInfos[i].NewSize <= scaleUpInfos[j].NewSize + 1
 	sort.Slice(scaleUpInfos, func(i, j int) bool {
-		return scaleUpInfos[i].CurrentSize < scaleUpInfos[j].CurrentSize
+		if scaleUpInfos[i].CurrentSize != scaleUpInfos[j].CurrentSize {
+			return scaleUpInfos[i].CurrentSize < scaleUpInfos[j].CurrentSize
+		}
+		return scaleUpInfos[i].Group.Id() < scaleUpInfos[j].Group.Id()
 	})
 	startIndex := 0
 	currentIndex := 0
-	for newNodes > 0 {
+	// Quota freezing breaks the old precondition that newNodes <= total capacity
+	// implies currentIndex always stays in bounds: a group can be refused well
+	// before it reaches MaxSize. The startIndex bound below is required to avoid
+	// indexing past the end of scaleUpInfos once every group has been frozen.
+	for newNodes > 0 && startIndex < len(scaleUpInfos) {
 		currentInfo := &scaleUpInfos[currentIndex]
 
-		if currentInfo.NewSize < currentInfo.MaxSize {
+		if currentInfo.NewSize < currentInfo.MaxSize && (reserver == nil || reserver.ReserveNode(currentInfo.Group.Id())) {
 			// Add a node to group on currentIndex
 			currentInfo.NewSize++
 			newNodes--
 		} else {
-			// Group on currentIndex is full. Remove it from the array.
-			// Removing is done by swapping the group with the first
-			// group still in array and moving the start of the array.
-			// Every group between startIndex and currentIndex has the
+			// Group on currentIndex is frozen - either full, or its quota was just
+			// refused. Remove it from the array. Removing is done by swapping the
+			// group with the first group still in array and moving the start of
+			// the array. Every group between startIndex and currentIndex has the
 			// same size, so we can swap without breaking ordering.
+			currentInfo.frozen = true
 			scaleUpInfos[startIndex], scaleUpInfos[currentIndex] = scaleUpInfos[currentIndex], scaleUpInfos[startIndex]
 			startIndex++
 		}
 
 		// Update currentIndex.
-		// If we removed a group in this loop currentIndex may be equal to startIndex-1,
+		// currentInfo is a pointer to the slot at currentIndex, not to a specific
+		// group: when the branch above just froze and swapped, the read below
+		// intentionally observes whatever group the swap moved INTO that slot
+		// (i.e. the group that used to sit at startIndex), because that's the
+		// still-active group we want to keep comparing and filling next.
+		// If we froze a group in this loop currentIndex may be equal to startIndex-1,
 		// in which case both branches of below if will make currentIndex == startIndex.
 		if currentIndex < len(scaleUpInfos)-1 && currentInfo.NewSize > scaleUpInfos[currentIndex+1].NewSize {
 			// Next group has exactly one less node, than current one.
@@ -173,7 +222,7 @@ func (b *BalancingNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(autoscaling
 	result := make([]ScaleUpInfo, 0)
 	for _, info := range scaleUpInfos {
 		if info.NewSize != info.CurrentSize {
-			result = append(result, info)
+			result = append(result, info.ScaleUpInfo)
 		}
 	}
 
@@ -182,3 +231,7 @@ func (b *BalancingNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(autoscaling
 
 // CleanUp performs final clean up of processor state.
 func (b *BalancingNodeGroupSetProcessor) CleanUp() {}
+
+// Compile-time assertion that BalancingNodeGroupSetProcessor stays quota-aware, so a future
+// refactor cannot silently demote production to the legacy, non-redistributing orchestrator path.
+var _ QuotaAwareNodeGroupSetProcessor = &BalancingNodeGroupSetProcessor{}

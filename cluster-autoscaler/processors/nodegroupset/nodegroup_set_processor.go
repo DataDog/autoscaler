@@ -52,6 +52,27 @@ type NodeGroupSetProcessor interface {
 	CleanUp()
 }
 
+// NodeQuotaReserver is consulted by balancing before each node is assigned to a
+// group, and reserves quota for it. Implementations hold live quota state, so a
+// quota pool shared by several groups is drawn down correctly across them.
+type NodeQuotaReserver interface {
+	// ReserveNode reserves quota for one more node in the group and reports
+	// whether it was granted. false means the group's quota is exhausted.
+	ReserveNode(groupID string) bool
+}
+
+// QuotaAwareNodeGroupSetProcessor is an optional extension of
+// NodeGroupSetProcessor. A processor that implements it is given a
+// NodeQuotaReserver and is expected to respect resource quotas while
+// distributing the scale-up. Processors that do not implement it keep working:
+// the orchestrator falls back to enforcing quota after balancing, which cannot
+// redistribute unclaimed capacity between groups.
+type QuotaAwareNodeGroupSetProcessor interface {
+	NodeGroupSetProcessor
+	BalanceScaleUpBetweenGroupsWithQuota(autoscalingCtx *ca_context.AutoscalingContext,
+		groups []cloudprovider.NodeGroup, newNodes int, reserver NodeQuotaReserver) ([]ScaleUpInfo, errors.AutoscalerError)
+}
+
 // NoOpNodeGroupSetProcessor returns no similar node groups and doesn't do any balancing.
 type NoOpNodeGroupSetProcessor struct {
 }
