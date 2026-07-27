@@ -69,6 +69,11 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
+var localDataStorageClasses = map[string]struct{}{
+	"local-data":       {},
+	"local-data-block": {},
+}
+
 type transformLocalData struct {
 	pvcLister   v1lister.PersistentVolumeClaimLister
 	stopChannel chan struct{}
@@ -124,7 +129,7 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 				volumes = append(volumes, vol)
 				continue
 			}
-			if *pvc.Spec.StorageClassName != "local-data" {
+			if _, ok := localDataStorageClasses[*pvc.Spec.StorageClassName]; !ok {
 				volumes = append(volumes, vol)
 				continue
 			}
