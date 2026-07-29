@@ -19,9 +19,17 @@ package checkcapacity
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/autoscaler/cluster-autoscaler/apis/provisioningrequest/autoscaling.x-k8s.io/v1"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/provreq"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/status"
+	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/conditions"
+	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/provreqclient"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 )
 
@@ -126,4 +134,31 @@ func generateStatuses(n int, result status.ScaleUpResult) []*status.ScaleUpStatu
 		statuses[i] = &status.ScaleUpStatus{Result: result, ScaleUpError: scaleUpErr}
 	}
 	return statuses
+}
+
+func TestCheckCapacityBatchMarksMaterializationErrorsFailed(t *testing.T) {
+	pr := provreqclient.ProvisioningRequestWrapperForTesting("test-ns", "test-pr")
+	combinedStatus := NewCombinedStatusSet()
+	checkCapacityClass := &checkCapacityProvClass{}
+
+	updates := checkCapacityClass.checkCapacityBatch(
+		[]provreq.ProvisioningRequestWithPods{
+			{
+				PrWrapper: pr,
+				Err:       fmt.Errorf("ResourceClaimTemplate test-ns/missing was not found"),
+			},
+		},
+		combinedStatus,
+		time.Now(),
+	)
+
+	require.Len(t, updates, 1)
+	failed := apimeta.FindStatusCondition(pr.Status.Conditions, v1.Failed)
+	require.NotNil(t, failed)
+	assert.Equal(t, metav1.ConditionTrue, failed.Status)
+	assert.Equal(t, conditions.FailedToCreatePodsReason, failed.Reason)
+	assert.Contains(t, failed.Message, "ResourceClaimTemplate")
+	exported, err := combinedStatus.Export()
+	require.Error(t, err)
+	assert.Equal(t, status.ScaleUpError, exported.Result)
 }

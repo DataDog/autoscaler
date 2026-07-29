@@ -31,6 +31,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/besteffortatomic"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/checkcapacity"
 	provreqorchestrator "k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/orchestrator"
+	provreqpods "k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/provreqclient"
 	kube_util "k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
 	"k8s.io/klog/v2"
@@ -66,6 +67,8 @@ func (b *AutoscalerBuilder) buildProvisioningRequest(
 	provReqLister := prFactory.Autoscaling().V1().ProvisioningRequests().Lister()
 
 	podTemplLister := b.informerFactory.Core().V1().PodTemplates().Lister()
+	resourceClaimTemplateLister := b.informerFactory.Resource().V1().ResourceClaimTemplates().Lister()
+	simulationWorkloadBuilder := provreqpods.NewSimulationWorkloadBuilder(resourceClaimTemplateLister)
 
 	client := provreqclient.NewProvisioningRequestClient(prClient, provReqLister, podTemplLister)
 
@@ -79,7 +82,7 @@ func (b *AutoscalerBuilder) buildProvisioningRequest(
 	}
 	klog.V(2).Info("Successful initial Provisioning Request sync")
 
-	injector := provreq.NewProvisioningRequestPodsInjector(client, opts.ProvisioningRequestInitialBackoffTime, opts.ProvisioningRequestMaxBackoffTime, opts.ProvisioningRequestMaxBackoffCacheSize, opts.CheckCapacityBatchProcessing, opts.CheckCapacityProcessorInstance)
+	injector := provreq.NewProvisioningRequestPodsInjector(client, opts.ProvisioningRequestInitialBackoffTime, opts.ProvisioningRequestMaxBackoffTime, opts.ProvisioningRequestMaxBackoffCacheSize, opts.CheckCapacityBatchProcessing, opts.CheckCapacityProcessorInstance, simulationWorkloadBuilder)
 	podListProcessor.AddProcessor(injector)
 
 	var provisioningRequestPodsInjector *provreq.ProvisioningRequestPodsInjector
@@ -89,13 +92,13 @@ func (b *AutoscalerBuilder) buildProvisioningRequest(
 	}
 
 	provreqOrchestrator := provreqorchestrator.New(client, []provreqorchestrator.ProvisioningClass{
-		checkcapacity.New(client, provisioningRequestPodsInjector),
+		checkcapacity.New(client, provisioningRequestPodsInjector, simulationWorkloadBuilder),
 		besteffortatomic.New(client),
 	})
 
 	scaleUpOrchestrator := provreqorchestrator.NewWrapperOrchestrator(provreqOrchestrator)
 	opts.ScaleUpOrchestrator = scaleUpOrchestrator
-	provreqProcesor := provreq.NewProvReqProcessor(client, opts.CheckCapacityProcessorInstance)
+	provreqProcesor := provreq.NewProvReqProcessor(client, opts.CheckCapacityProcessorInstance, simulationWorkloadBuilder)
 
 	podListProcessor.AddProcessor(provreqProcesor)
 

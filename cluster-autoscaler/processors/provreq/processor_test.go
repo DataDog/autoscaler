@@ -154,7 +154,7 @@ func TestRefresh(t *testing.T) {
 		additionalPr.CreationTimestamp = metav1.NewTime(weekAgo)
 		additionalPr.Spec.ProvisioningClassName = v1.ProvisioningClassCheckCapacity
 
-		processor := provReqProcessor{func() time.Time { return now }, 1, provreqclient.NewFakeProvisioningRequestClient(context.Background(), t, pr, additionalPr), nil, ""}
+		processor := provReqProcessor{func() time.Time { return now }, 1, provreqclient.NewFakeProvisioningRequestClient(context.Background(), t, pr, additionalPr), nil, "", nil}
 		processor.refresh([]*provreqwrapper.ProvisioningRequest{pr, additionalPr})
 
 		assert.ElementsMatch(t, test.wantConditions, pr.Status.Conditions)
@@ -214,7 +214,7 @@ func TestDeleteOldProvReqs(t *testing.T) {
 
 	client := provreqclient.NewFakeProvisioningRequestClient(context.Background(), t, pr, additionalPr, oldFailedPr, oldExpiredPr)
 
-	processor := provReqProcessor{func() time.Time { return now }, 1, client, nil, ""}
+	processor := provReqProcessor{func() time.Time { return now }, 1, client, nil, "", nil}
 	processor.refresh([]*provreqwrapper.ProvisioningRequest{pr, additionalPr, oldFailedPr, oldExpiredPr})
 
 	_, err := client.ProvisioningRequestNoCache(oldFailedPr.Namespace, oldFailedPr.Name)
@@ -233,7 +233,7 @@ type fakeInjector struct {
 
 func (f *fakeInjector) TrySchedulePods(clusterSnapshot clustersnapshot.ClusterSnapshot, pods []*apiv1.Pod, breakOnFailure bool, opts clustersnapshot.SchedulingOptions) ([]scheduling.Status, int, error) {
 	f.pods = pods
-	return nil, 0, nil
+	return make([]scheduling.Status, len(pods)), 0, nil
 }
 
 func TestBookCapacity(t *testing.T) {

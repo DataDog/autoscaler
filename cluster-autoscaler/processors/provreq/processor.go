@@ -54,11 +54,12 @@ type provReqProcessor struct {
 	client                         *provreqclient.ProvisioningRequestClient
 	injector                       injector
 	checkCapacityProcessorInstance string
+	simulationWorkloadBuilder      *provreq_pods.SimulationWorkloadBuilder
 }
 
 // NewProvReqProcessor return ProvisioningRequestProcessor.
-func NewProvReqProcessor(client *provreqclient.ProvisioningRequestClient, checkCapacityProcessorInstance string) *provReqProcessor {
-	return &provReqProcessor{now: time.Now, maxUpdated: defaultMaxUpdated, client: client, injector: scheduling.NewHintingSimulator(), checkCapacityProcessorInstance: checkCapacityProcessorInstance}
+func NewProvReqProcessor(client *provreqclient.ProvisioningRequestClient, checkCapacityProcessorInstance string, simulationWorkloadBuilder *provreq_pods.SimulationWorkloadBuilder) *provReqProcessor {
+	return &provReqProcessor{now: time.Now, maxUpdated: defaultMaxUpdated, client: client, injector: scheduling.NewHintingSimulator(), checkCapacityProcessorInstance: checkCapacityProcessorInstance, simulationWorkloadBuilder: simulationWorkloadBuilder}
 }
 
 // Refresh implements loop.Observer interface and will be run at the start
@@ -147,15 +148,17 @@ func (p *provReqProcessor) bookCapacity(autoscalingCtx *ca_context.AutoscalingCo
 		if !conditions.ShouldCapacityBeBooked(provReq, p.checkCapacityProcessorInstance) {
 			continue
 		}
+		if provisioningrequest.SupportedCheckCapacityClass(provReq.ProvisioningRequest, p.checkCapacityProcessorInstance) {
+			p.bookCheckCapacityProvisioningRequest(autoscalingCtx, provReq)
+			continue
+		}
+
 		pods, err := provreq_pods.PodsForProvisioningRequest(provReq)
 		if err != nil {
 			// ClusterAutoscaler was able to create pods before, so we shouldn't have error here.
 			// If there is an error, mark PR as invalid, because we won't be able to book capacity
 			// for it anyway.
-			conditions.AddOrUpdateCondition(provReq, v1.Failed, metav1.ConditionTrue, conditions.FailedToBookCapacityReason, fmt.Sprintf("Couldn't create pods, err: %v", err), metav1.Now())
-			if _, err := p.client.UpdateProvisioningRequest(provReq.ProvisioningRequest); err != nil {
-				klog.Errorf("failed to add Accepted condition to ProvReq %s/%s, err: %v", provReq.Namespace, provReq.Name, err)
-			}
+			p.markFailedToBookCapacity(provReq, fmt.Sprintf("Couldn't create pods, err: %v", err))
 			continue
 		}
 		podsToCreate = append(podsToCreate, pods...)
@@ -168,6 +171,41 @@ func (p *provReqProcessor) bookCapacity(autoscalingCtx *ca_context.AutoscalingCo
 		return err
 	}
 	return nil
+}
+
+func (p *provReqProcessor) bookCheckCapacityProvisioningRequest(autoscalingCtx *ca_context.AutoscalingContext, provReq *provreqwrapper.ProvisioningRequest) {
+	workload, err := p.simulationWorkloadBuilder.ForProvisioningRequest(provReq)
+	if err != nil {
+		p.markFailedToBookCapacity(provReq, fmt.Sprintf("Couldn't create simulation workload: %v", err))
+		return
+	}
+
+	autoscalingCtx.ClusterSnapshot.Fork()
+	if len(workload.Claims) > 0 {
+		if err := autoscalingCtx.ClusterSnapshot.DraSnapshot().AddClaims(workload.Claims); err != nil {
+			autoscalingCtx.ClusterSnapshot.Revert()
+			p.markFailedToBookCapacity(provReq, fmt.Sprintf("Couldn't add simulated ResourceClaims: %v", err))
+			return
+		}
+	}
+
+	scheduled, _, err := p.injector.TrySchedulePods(autoscalingCtx.ClusterSnapshot, workload.Pods, false, clustersnapshot.SchedulingOptions{})
+	if err != nil || len(scheduled) != len(workload.Pods) {
+		autoscalingCtx.ClusterSnapshot.Revert()
+		p.markFailedToBookCapacity(provReq, fmt.Sprintf("Couldn't schedule complete simulation workload: scheduled %d of %d pods, err: %v", len(scheduled), len(workload.Pods), err))
+		return
+	}
+	if err := autoscalingCtx.ClusterSnapshot.Commit(); err != nil {
+		autoscalingCtx.ClusterSnapshot.Revert()
+		p.markFailedToBookCapacity(provReq, fmt.Sprintf("Couldn't commit booked simulation workload: %v", err))
+	}
+}
+
+func (p *provReqProcessor) markFailedToBookCapacity(provReq *provreqwrapper.ProvisioningRequest, message string) {
+	conditions.AddOrUpdateCondition(provReq, v1.Failed, metav1.ConditionTrue, conditions.FailedToBookCapacityReason, message, metav1.Now())
+	if _, err := p.client.UpdateProvisioningRequest(provReq.ProvisioningRequest); err != nil {
+		klog.Errorf("failed to add Failed condition to ProvReq %s/%s, err: %v", provReq.Namespace, provReq.Name, err)
+	}
 }
 
 // DeleteOldProvReqs delete ProvReq that have terminal state (Provisioned/Failed == True) more than a week.
