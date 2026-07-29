@@ -29,6 +29,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	. "k8s.io/autoscaler/cluster-autoscaler/core/test"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/conditions"
+	provreqpods "k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/provreqclient"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/provreqwrapper"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
@@ -233,7 +234,11 @@ type fakeInjector struct {
 
 func (f *fakeInjector) TrySchedulePods(clusterSnapshot clustersnapshot.ClusterSnapshot, pods []*apiv1.Pod, breakOnFailure bool, opts clustersnapshot.SchedulingOptions) ([]scheduling.Status, int, error) {
 	f.pods = pods
-	return make([]scheduling.Status, len(pods)), 0, nil
+	statuses := make([]scheduling.Status, 0, len(pods))
+	for _, pod := range pods {
+		statuses = append(statuses, scheduling.Status{Pod: pod, NodeName: "node"})
+	}
+	return statuses, 0, nil
 }
 
 func TestBookCapacity(t *testing.T) {
@@ -288,10 +293,11 @@ func TestBookCapacity(t *testing.T) {
 			}
 
 			processor := &provReqProcessor{
-				now:        func() time.Time { return time.Now() },
-				client:     provreqclient.NewFakeProvisioningRequestClient(context.Background(), t, test.provReq),
-				maxUpdated: 20,
-				injector:   injector,
+				now:                       func() time.Time { return time.Now() },
+				client:                    provreqclient.NewFakeProvisioningRequestClient(context.Background(), t, test.provReq),
+				maxUpdated:                20,
+				injector:                  injector,
+				simulationWorkloadBuilder: provreqpods.NewSimulationWorkloadBuilder(nil),
 			}
 			autoscalingCtx, _ := NewScaleTestAutoscalingContext(config.AutoscalingOptions{}, nil, nil, nil, nil, nil, nil)
 			processor.bookCapacity(&autoscalingCtx)

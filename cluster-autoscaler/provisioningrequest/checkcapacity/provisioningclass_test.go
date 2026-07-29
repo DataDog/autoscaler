@@ -148,7 +148,7 @@ func TestCheckCapacityBatchMarksMaterializationErrorsFailed(t *testing.T) {
 				Err:       fmt.Errorf("ResourceClaimTemplate test-ns/missing was not found"),
 			},
 		},
-		combinedStatus,
+		&combinedStatus,
 		time.Now(),
 	)
 
