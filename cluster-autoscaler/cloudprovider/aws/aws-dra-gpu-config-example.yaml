@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-aws-dra-gpu-config
+  namespace: kube-system
+data:
+  # Phase 1 (full-GPU): one entry per EC2 GpuInfo short name, mirrors the attributes the
+  # real NVIDIA DRA driver publishes via NVML at runtime (productName/brand/architecture/
+  # cudaComputeCapability). An instance type whose short name is absent still gets a
+  # ResourceSlice with type=gpu and memory capacity, just without the richer attributes.
+  # memoryMiB is optional and overrides EC2's reported per-device memory when the driver's
+  # actual published capacity differs (e.g. reserved memory) — see RTX PRO Server 6000 below,
+  # where EC2 reports 98304MiB but the driver's verified capacity is 95Gi/97280MiB.
+  full-gpu-attributes.yaml: |
+    A10G:
+      productName: "NVIDIA A10G"
+      brand: "Nvidia"
+      architecture: "Ampere"
+      cudaComputeCapability: "8.6.0"
+    H100:
+      productName: "NVIDIA H100 80GB HBM3"
+      brand: "Nvidia"
+      architecture: "Hopper"
+      cudaComputeCapability: "9.0.0"
+    RTX PRO Server 6000:
+      productName: "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+      brand: "Nvidia"
+      architecture: "Blackwell"
+      cudaComputeCapability: "12.0.0"
+      memoryMiB: 97280
+
+  # Phase 2 (MIG): one entry per EC2 GpuInfo short name -> list of memory variants of that
+  # model. Each variant lists the whole-GPU engine/memory budget and the plain MIG profiles
+  # (name/profileID/memorySlices/placements/engines) the driver publishes for it. Values
+  # below are transcribed from real driver-published ResourceSlices (`kubectl get
+  # resourceslice -o json`) for RTX PRO Server 6000; the A100 entry is an UNVERIFIED
+  # placeholder pending a real capture.
+  mig-profile-tables.yaml: |
+    RTX PRO Server 6000:
+      - gpuMemoryMiB: 98304
+        productName: "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+        brand: "Nvidia"
+        architecture: "Blackwell"
+        cudaComputeCapability: "12.0.0"
+        memorySlices: 12
+        whole: {multiprocessors: 188, copyEngines: 4, decoders: 4, encoders: 4, jpegEngines: 4, ofaEngines: 1, memory: "95Gi"}
+        profiles:
+          - name: "1g.24gb"
+            profileID: 14
+            memorySlices: 3
+            placements: [0, 3, 6, 9]
+            engines: {multiprocessors: 46, copyEngines: 1, decoders: 1, encoders: 1, jpegEngines: 1, ofaEngines: 0, memory: "24192Mi"}
+          - name: "2g.48gb"
+            profileID: 5
+            memorySlices: 6
+            placements: [0, 6]
+            engines: {multiprocessors: 94, copyEngines: 2, decoders: 2, encoders: 2, jpegEngines: 2, ofaEngines: 0, memory: "48512Mi"}
+          - name: "4g.96gb"
+            profileID: 0
+            memorySlices: 12
+            placements: [0]
+            engines: {multiprocessors: 188, copyEngines: 4, decoders: 4, encoders: 4, jpegEngines: 4, ofaEngines: 1, memory: "95Gi"}
+    H100:
+      - gpuMemoryMiB: 81152
+        productName: "NVIDIA H100 80GB HBM3"
+        brand: "Nvidia"
+        architecture: "Hopper"
+        cudaComputeCapability: "9.0.0"
+        memorySlices: 8
+        whole: {multiprocessors: 132, copyEngines: 8, decoders: 7, encoders: 0, jpegEngines: 7, ofaEngines: 1, memory: "81152Mi"}
+        profiles:
+          - name: "1g.10gb"
+            profileID: 19
+            memorySlices: 1
+            placements: [0, 1, 2, 3, 4, 5, 6]
+            engines: {multiprocessors: 16, copyEngines: 1, decoders: 1, encoders: 0, jpegEngines: 1, ofaEngines: 0, memory: "9984Mi"}
+          - name: "1g.20gb"
+            profileID: 15
+            memorySlices: 2
+            placements: [0, 2, 4, 6]
+            engines: {multiprocessors: 26, copyEngines: 1, decoders: 1, encoders: 0, jpegEngines: 1, ofaEngines: 0, memory: "20096Mi"}
+          - name: "2g.20gb"
+            profileID: 14
+            memorySlices: 2
+            placements: [0, 2, 4]
+            engines: {multiprocessors: 32, copyEngines: 2, decoders: 2, encoders: 0, jpegEngines: 2, ofaEngines: 0, memory: "20096Mi"}
+          - name: "3g.40gb"
+            profileID: 9
+            memorySlices: 4
+            placements: [0, 4]
+            engines: {multiprocessors: 60, copyEngines: 3, decoders: 3, encoders: 0, jpegEngines: 3, ofaEngines: 0, memory: "40448Mi"}
+          - name: "4g.40gb"
+            profileID: 5
+            memorySlices: 4
+            placements: [0]
+            engines: {multiprocessors: 64, copyEngines: 4, decoders: 4, encoders: 0, jpegEngines: 4, ofaEngines: 0, memory: "40448Mi"}
+          - name: "7g.80gb"
+            profileID: 0
+            memorySlices: 8
+            placements: [0]
+            engines: {multiprocessors: 132, copyEngines: 8, decoders: 7, encoders: 0, jpegEngines: 7, ofaEngines: 1, memory: "81152Mi"}
+    A100:
+      - gpuMemoryMiB: 40960
+        productName: "NVIDIA A100-SXM4-40GB"
+        brand: "Nvidia"
+        architecture: "Ampere"
+        cudaComputeCapability: "8.0.0"
+        memorySlices: 8
+        whole: {multiprocessors: 108, copyEngines: 7, decoders: 5, encoders: 0, jpegEngines: 1, ofaEngines: 1, memory: "40Gi"}
+        profiles:
+          - name: "1g.5gb"
+            profileID: 19
+            memorySlices: 1
+            placements: [0, 1, 2, 3, 4, 5, 6]
+            engines: {multiprocessors: 14, copyEngines: 1, memory: "5Gi"}
+          - name: "2g.10gb"
+            profileID: 14
+            memorySlices: 2
+            placements: [0, 2, 4]
+            engines: {multiprocessors: 28, copyEngines: 2, decoders: 1, memory: "10Gi"}
+          - name: "3g.20gb"
+            profileID: 9
+            memorySlices: 4
+            placements: [0, 4]
+            engines: {multiprocessors: 42, copyEngines: 3, decoders: 2, memory: "20Gi"}
+          - name: "7g.40gb"
+            profileID: 0
+            memorySlices: 8
+            placements: [0]
+            engines: {multiprocessors: 98, copyEngines: 7, decoders: 5, jpegEngines: 1, ofaEngines: 1, memory: "40Gi"}
