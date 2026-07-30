@@ -1486,7 +1486,7 @@ func (p *constNodeGroupSetProcessor) FindSimilarNodeGroups(_ *ca_context.Autosca
 	return p.similarNodeGroups, nil
 }
 
-func (p *constNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(_ *ca_context.AutoscalingContext, _ []cloudprovider.NodeGroup, _ int, _ nodegroupset.NodeQuotaReserver) ([]nodegroupset.ScaleUpInfo, errors.AutoscalerError) {
+func (p *constNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(_ *ca_context.AutoscalingContext, _ []cloudprovider.NodeGroup, _ int, _ func(groupID string) bool) ([]nodegroupset.ScaleUpInfo, errors.AutoscalerError) {
 	return nil, nil
 }
 
@@ -1759,10 +1759,9 @@ func TestScaleUpBalanceGroupsRespectsQuota(t *testing.T) {
 					LimitsVal:   map[string]int64{"cpu": 2},
 				},
 			},
-			// ng2 has 1 node (1 core), quota allows 2 cores → room for 1 more.
-			// Quota is checked per-node as the fill progresses, so once ng2 is
-			// refused a 2nd node, its unclaimed share is redistributed instead of
-			// dropped: ng1 picks up the residual node. ng1: 1→4, ng2: 1→2, ng3: 1→3.
+			// ng2 has 1 node (1 core), quota allows 2 cores → room for 1 more. Once
+			// ng2 is refused a 2nd node, ng1 picks up the residual node.
+			// ng1: 1→4, ng2: 1→2, ng3: 1→3.
 			expectedSizes: map[string]int{"ng1": 4, "ng2": 2, "ng3": 3},
 		},
 		{
@@ -1793,11 +1792,9 @@ func TestScaleUpBalanceGroupsRespectsQuota(t *testing.T) {
 					LimitsVal:   map[string]int64{"nodes": 4},
 				},
 			},
-			// Shared quota on ng2+ng3 (3 existing, limit 4, room for 1). ng1 uncapped.
-			// ng2 (size 1) is smaller than ng3 (size 2), so balance sorts ng2 first
-			// and it claims the 1 quota slot; ng3 is then refused and frozen. The
-			// interleaved reservation doesn't drop the rest of the request: ng1
-			// absorbs all of it. ng1: 1→6, ng2: 1→2, ng3: 2→2 (unchanged, frozen).
+			// Shared quota on ng2+ng3 (room for 1); ng1 uncapped. ng2 sorts first and
+			// claims the slot; ng3 is refused and frozen, and ng1 absorbs the rest.
+			// ng1: 1→6, ng2: 1→2, ng3: unchanged.
 			expectedSizes: map[string]int{"ng1": 6, "ng2": 2, "ng3": 2},
 		},
 		{
@@ -1817,13 +1814,8 @@ func TestScaleUpBalanceGroupsRespectsQuota(t *testing.T) {
 			expectedSizes: map[string]int{"ng1": 4, "ng2": 1, "ng3": 4},
 		},
 		{
-			// The headline case: a quota shared by every similar group, with a
-			// request far exceeding the shared headroom. Probing each group's quota
-			// independently would over-count the pool (each group sees all 6 free
-			// slots), and capping after the split would let the first group drain
-			// the whole pool for an unbalanced (7,1,1). Reserving node-by-node draws
-			// the shared pool down across the groups as the fill progresses, so the
-			// 6 available slots are split evenly and every group grows.
+			// The 6 free nodes in the pool should split evenly across all three
+			// groups (3,3,3), not be claimed entirely by whichever group fills first.
 			name:         "shared quota across all groups, request far exceeds headroom",
 			initialSizes: map[string]int{"ng1": 1, "ng2": 1, "ng3": 1},
 			maxSize:      10,
@@ -1838,10 +1830,9 @@ func TestScaleUpBalanceGroupsRespectsQuota(t *testing.T) {
 			expectedSizes: map[string]int{"ng1": 3, "ng2": 3, "ng3": 3},
 		},
 		{
-			// The underscale defect: shared quota covers only ng2 and ng3, ng1 is
-			// unconstrained. The shared pool has 1 slot free; ng2 claims it and
-			// ng3 is refused. Previously the refused delta was simply dropped
-			// (5 of 6 nodes placed); now ng1 absorbs the residual so all 6 land.
+			// Shared quota covers only ng2 and ng3, ng1 is unconstrained. The pool
+			// has 1 slot free; ng2 claims it and ng3 is refused, but ng1 absorbs
+			// the residual so all 6 requested nodes land.
 			name:         "underscale: shared quota on a subset, unconstrained group absorbs the residual",
 			initialSizes: map[string]int{"ng1": 1, "ng2": 1, "ng3": 1},
 			maxSize:      10,
@@ -1939,91 +1930,6 @@ func TestScaleUpBalanceGroupsRespectsQuota(t *testing.T) {
 				size, err := group.TargetSize()
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedSizes[group.Id()], size, "unexpected size for %s", group.Id())
-			}
-		})
-	}
-}
-
-// TestEnforceGrants exercises enforceGrants directly: it is the mandatory
-// backstop applied to whatever a NodeGroupSetProcessor returns, so a buggy or
-// hostile implementation can never cause the orchestrator to scale a group up
-// beyond what its NodeQuotaReserver actually granted. This matters precisely
-// because NodeGroupSetProcessor is a public interface: any out-of-tree
-// implementation can ignore the reserver entirely, and enforceGrants is the
-// only thing standing between that and an unenforced quota.
-func TestEnforceGrants(t *testing.T) {
-	provider := testprovider.NewTestCloudProviderBuilder().Build()
-	provider.AddNodeGroup("ng1", 1, 100, 1)
-	provider.AddNodeGroup("ng2", 1, 100, 1)
-	provider.AddNodeGroup("ng3", 1, 100, 1)
-	ng1 := provider.GetNodeGroup("ng1")
-	ng2 := provider.GetNodeGroup("ng2")
-	ng3 := provider.GetNodeGroup("ng3")
-
-	// inputGroups is the set of groups actually offered to the balancer.
-	// ng3 is deliberately excluded, so it can stand in for a group the
-	// processor was never given but reports anyway.
-	inputGroups := []cloudprovider.NodeGroup{ng1, ng2}
-
-	tests := []struct {
-		name    string
-		infos   []nodegroupset.ScaleUpInfo
-		granted map[string]int
-		want    []nodegroupset.ScaleUpInfo
-	}{
-		{
-			name:    "well-behaved processor passes through unchanged",
-			infos:   []nodegroupset.ScaleUpInfo{{Group: ng1, CurrentSize: 1, NewSize: 3, MaxSize: 100}},
-			granted: map[string]int{"ng1": 2},
-			want:    []nodegroupset.ScaleUpInfo{{Group: ng1, CurrentSize: 1, NewSize: 3, MaxSize: 100}},
-		},
-		{
-			name:    "a single entry reporting more than was granted is capped",
-			infos:   []nodegroupset.ScaleUpInfo{{Group: ng1, CurrentSize: 1, NewSize: 5, MaxSize: 100}},
-			granted: map[string]int{"ng1": 2},
-			want:    []nodegroupset.ScaleUpInfo{{Group: ng1, CurrentSize: 1, NewSize: 3, MaxSize: 100}},
-		},
-		{
-			name: "duplicate entries for the same group are capped in aggregate, not independently",
-			infos: []nodegroupset.ScaleUpInfo{
-				{Group: ng1, CurrentSize: 1, NewSize: 2, MaxSize: 100},
-				{Group: ng1, CurrentSize: 1, NewSize: 2, MaxSize: 100},
-			},
-			granted: map[string]int{"ng1": 1},
-			want: []nodegroupset.ScaleUpInfo{
-				{Group: ng1, CurrentSize: 1, NewSize: 2, MaxSize: 100},
-			},
-		},
-		{
-			name:    "a group that was never granted anything is rejected entirely",
-			infos:   []nodegroupset.ScaleUpInfo{{Group: ng2, CurrentSize: 1, NewSize: 2, MaxSize: 100}},
-			granted: map[string]int{"ng1": 5},
-			want:    nil,
-		},
-		{
-			name:    "a non-positive delta is dropped",
-			infos:   []nodegroupset.ScaleUpInfo{{Group: ng1, CurrentSize: 2, NewSize: 2, MaxSize: 100}},
-			granted: map[string]int{"ng1": 5},
-			want:    nil,
-		},
-		{
-			name:    "a group not part of the input set is rejected even if granted is spoofed",
-			infos:   []nodegroupset.ScaleUpInfo{{Group: ng3, CurrentSize: 1, NewSize: 3, MaxSize: 100}},
-			granted: map[string]int{"ng3": 5},
-			want:    nil,
-		},
-	}
-
-	o := &ScaleUpOrchestrator{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reserver := newTrackerQuotaReserver(nil, nil, inputGroups, nil)
-			reserver.granted = tt.granted
-			got := o.enforceGrants(tt.infos, reserver, inputGroups)
-			if tt.want == nil {
-				assert.Empty(t, got)
-			} else {
-				assert.Equal(t, tt.want, got)
 			}
 		})
 	}

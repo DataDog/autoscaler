@@ -273,11 +273,9 @@ func pool(remaining int, groups ...string) *quotaPool {
 	return &quotaPool{groups: g, remaining: remaining}
 }
 
-// fakeReserver is a NodeQuotaReserver test double backed by quotaPools.
-// ReserveNode only grants a node to a group if every pool covering that group
-// still has budget, and decrements all of them together - so a group covered
-// by more than one pool draws down each of them per node, the same way
-// several independent resourcequotas.Quota objects would each see the node.
+// fakeReserver is a reserver test double backed by quotaPools. ReserveNode
+// grants a node only if every pool covering the group has budget, and
+// decrements them all together, mirroring how several real quotas would.
 type fakeReserver struct {
 	pools []*quotaPool
 }
@@ -479,7 +477,7 @@ func TestBalanceScaleUpBetweenGroupsWithQuota(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			groups := buildGroupsForQuotaTest(tt.groups)
-			result, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, groups, tt.newNodes, tt.reserver)
+			result, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, groups, tt.newNodes, tt.reserver.ReserveNode)
 			assert.NoError(t, err)
 
 			got := make(map[string]int, len(tt.groups))
@@ -494,15 +492,9 @@ func TestBalanceScaleUpBetweenGroupsWithQuota(t *testing.T) {
 	}
 }
 
-// TestBalanceScaleUpBetweenGroupsWithQuotaNoPanicOnImmediateRefusal is a
-// narrow regression test for the crash this feature fixed: previously the
-// fill loop assumed a group could only be removed from consideration by
-// hitting MaxSize, which - together with the precondition that newNodes never
-// exceeds total remaining MaxSize capacity - guaranteed currentIndex stayed in
-// bounds. Quota refusal breaks that assumption: a single group can be
-// refused on the very first node, long before MaxSize, so the loop must stop
-// based on startIndex reaching len(scaleUpInfos) rather than assuming there's
-// always another node's worth of capacity to look at.
+// TestBalanceScaleUpBetweenGroupsWithQuotaNoPanicOnImmediateRefusal guards the
+// crash fixed by the startIndex bound: a group refused on its very first node,
+// long before MaxSize, used to leave currentIndex out of bounds.
 func TestBalanceScaleUpBetweenGroupsWithQuotaNoPanicOnImmediateRefusal(t *testing.T) {
 	processor := NewDefaultNodeGroupSetProcessor([]string{}, config.NodeGroupDifferenceRatios{}).(*BalancingNodeGroupSetProcessor)
 	autoscalingCtx := &ca_context.AutoscalingContext{}
@@ -510,7 +502,7 @@ func TestBalanceScaleUpBetweenGroupsWithQuotaNoPanicOnImmediateRefusal(t *testin
 	reserver := newFakeReserver(pool(0, "a"))
 
 	assert.NotPanics(t, func() {
-		result, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, groups, 1, reserver)
+		result, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, groups, 1, reserver.ReserveNode)
 		assert.NoError(t, err)
 		assert.Empty(t, result)
 	})
