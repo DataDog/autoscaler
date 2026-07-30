@@ -135,6 +135,10 @@ func (o *ScaleUpOrchestrator) ScaleUp(
 	// Initialise binpacking limiter.
 	o.processors.BinpackingLimiter.InitBinpacking(o.autoscalingCtx, nodeGroups)
 
+	// tracker holds live, mutable quota state for this ScaleUp call only; it
+	// must not be reused across calls or retained beyond this function, since
+	// the reservations made through it (see trackerQuotaReserver) are only
+	// valid for the scale-up decision being made right now.
 	tracker, err := o.quotasTrackerFactory.NewQuotasTracker(o.autoscalingCtx, nodes)
 	if err != nil {
 		markedEquivalenceGroups := markAllGroupsAsUnschedulable(podEquivalenceGroups, ScaleUpExecutionErrorReason)
@@ -200,20 +204,6 @@ func (o *ScaleUpOrchestrator) ScaleUp(
 		PodsTriggeredScaleUp:    plan.bestOption.Pods,
 		PodsAwaitEvaluation:     GetPodsAwaitingEvaluation(podEquivalenceGroups, plan.bestOption.NodeGroup.Id()),
 	}, nil
-}
-
-func (o *ScaleUpOrchestrator) applyLimits(newNodes int, tracker *resourcequotas.Tracker, nodeGroup cloudprovider.NodeGroup, nodeInfos map[string]*framework.NodeInfo) (int, errors.AutoscalerError) {
-	nodeInfo, found := nodeInfos[nodeGroup.Id()]
-	if !found {
-		// This should never happen, as we already should have retrieved nodeInfo for any considered nodegroup.
-		klog.Errorf("No node info for: %s", nodeGroup.Id())
-		return 0, errors.NewAutoscalerError(errors.CloudProviderError, "No node info for best expansion option!")
-	}
-	checkResult, err := tracker.CheckDelta(o.autoscalingCtx, nodeGroup, nodeInfo.Node(), newNodes)
-	if err != nil {
-		return 0, errors.ToAutoscalerError(errors.InternalError, err).AddPrefix("failed to check resource quotas: ")
-	}
-	return checkResult.AllowedDelta, nil
 }
 
 // ScaleUpToNodeGroupMinSize tries to scale up node groups that have less nodes
@@ -699,59 +689,187 @@ func (o *ScaleUpOrchestrator) balanceScaleUps(
 		}
 		klog.V(1).Infof("Splitting scale-up between %v similar node groups: {%v}", len(targetNodeGroups), strings.Join(names, ", "))
 	}
-	scaleUpInfos, aErr := o.processors.NodeGroupSetProcessor.BalanceScaleUpBetweenGroups(o.autoscalingCtx, targetNodeGroups, newNodes)
+	// Quota is checked and reserved one node at a time as the balancer fills
+	// groups, so a quota pool shared by several groups is drawn down correctly
+	// across them, and capacity a group can't use is naturally picked up by
+	// another group still being filled. enforceGrants is a mandatory backstop
+	// against a NodeGroupSetProcessor that doesn't respect what it was granted -
+	// NodeGroupSetProcessor is a public interface any implementation can
+	// satisfy, and a buggy or malicious one could otherwise ignore the reserver
+	// entirely.
+	reserver := newTrackerQuotaReserver(o.autoscalingCtx, tracker, targetNodeGroups, nodeInfos)
+	scaleUpInfos, aErr := o.processors.NodeGroupSetProcessor.BalanceScaleUpBetweenGroups(o.autoscalingCtx, targetNodeGroups, newNodes, reserver)
 	if aErr != nil {
 		return nil, aErr
 	}
-	return o.capScaleUpsByQuota(scaleUpInfos, nodeInfos, tracker), nil
+	reserver.logSummary()
+	return o.enforceGrants(scaleUpInfos, reserver, targetNodeGroups), nil
 }
 
-// capScaleUpsByQuota caps each group's scale-up delta by its available quota and filters
-// out groups capped to zero. Uses ConsumeQuota to commit consumed quota so subsequent groups
-// sharing the same quota see the updated limits.
-// Note: unclaimed capacity from a capped group is not redistributed to other groups;
-// a group capped below its balanced delta may leave some pods unschedulable until the
-// next autoscaler cycle.
-func (o *ScaleUpOrchestrator) capScaleUpsByQuota(
-	scaleUpInfos []nodegroupset.ScaleUpInfo,
-	nodeInfos map[string]*framework.NodeInfo,
+// trackerQuotaReserver implements nodegroupset.NodeQuotaReserver against a
+// resourcequotas.Tracker, so the balancer can draw down quota one node at a
+// time as it fills groups.
+type trackerQuotaReserver struct {
+	autoscalingCtx *ca_context.AutoscalingContext
+	tracker        *resourcequotas.Tracker
+	groups         map[string]cloudprovider.NodeGroup
+	nodeInfos      map[string]*framework.NodeInfo
+
+	// exempt marks groups that hit an error (missing node info, or a tracker
+	// error) partway through the fill. We fail open for the rest of the fill
+	// rather than either wedging it (returning false forever without ever
+	// freeing up capacity elsewhere) or failing the whole scale-up closed over
+	// what is expected to be a narrow, defensive error path.
+	exempt map[string]bool
+	// granted is the number of nodes ReserveNode has approved per group,
+	// including exempted ones. enforceGrants uses this to cap the balancer's
+	// reported deltas to what was actually granted here.
+	granted map[string]int
+
+	// exceededQuotaIDs and frozenGroups exist only to produce one aggregated
+	// observability line after the fill completes, instead of a log line per
+	// refused node.
+	exceededQuotaIDs map[string]bool
+	frozenGroups     map[string]bool
+}
+
+func newTrackerQuotaReserver(
+	autoscalingCtx *ca_context.AutoscalingContext,
 	tracker *resourcequotas.Tracker,
+	groups []cloudprovider.NodeGroup,
+	nodeInfos map[string]*framework.NodeInfo,
+) *trackerQuotaReserver {
+	groupsByID := make(map[string]cloudprovider.NodeGroup, len(groups))
+	for _, ng := range groups {
+		groupsByID[ng.Id()] = ng
+	}
+	return &trackerQuotaReserver{
+		autoscalingCtx:   autoscalingCtx,
+		tracker:          tracker,
+		groups:           groupsByID,
+		nodeInfos:        nodeInfos,
+		exempt:           map[string]bool{},
+		granted:          map[string]int{},
+		exceededQuotaIDs: map[string]bool{},
+		frozenGroups:     map[string]bool{},
+	}
+}
+
+// ReserveNode implements nodegroupset.NodeQuotaReserver.
+func (r *trackerQuotaReserver) ReserveNode(groupID string) bool {
+	if r.exempt[groupID] {
+		r.granted[groupID]++
+		return true
+	}
+
+	group, found := r.groups[groupID]
+	if !found {
+		// The balancer asked about a group it wasn't given; shouldn't happen,
+		// but fail open rather than freezing a group we know nothing about.
+		klog.Errorf("Quota-aware balancing: unknown node group %s; treating as exempt from quota for this scale-up", groupID)
+		r.exempt[groupID] = true
+		r.granted[groupID]++
+		return true
+	}
+
+	nodeInfo, found := r.nodeInfos[groupID]
+	if !found {
+		klog.Errorf("Quota-aware balancing: no node info for %s; treating as exempt from quota for this scale-up", groupID)
+		r.exempt[groupID] = true
+		r.granted[groupID]++
+		return true
+	}
+
+	result, err := r.tracker.ConsumeQuota(r.autoscalingCtx, group, nodeInfo.Node(), 1)
+	if err != nil {
+		klog.Errorf("Quota-aware balancing: failed to check quota for %s: %v; treating as exempt from quota for this scale-up", groupID, err)
+		r.exempt[groupID] = true
+		r.granted[groupID]++
+		return true
+	}
+
+	if result.AllowedDelta < 1 {
+		for _, eq := range result.ExceededQuotas {
+			r.exceededQuotaIDs[eq.ID] = true
+		}
+		r.frozenGroups[groupID] = true
+		return false
+	}
+
+	r.granted[groupID]++
+	return true
+}
+
+// logSummary logs one aggregated line about groups frozen by quota or
+// exempted due to errors during the fill, if there were any.
+func (r *trackerQuotaReserver) logSummary() {
+	if len(r.frozenGroups) == 0 && len(r.exempt) == 0 {
+		return
+	}
+	frozen := make([]string, 0, len(r.frozenGroups))
+	for id := range r.frozenGroups {
+		frozen = append(frozen, id)
+	}
+	exceeded := make([]string, 0, len(r.exceededQuotaIDs))
+	for id := range r.exceededQuotaIDs {
+		exceeded = append(exceeded, id)
+	}
+	exempted := make([]string, 0, len(r.exempt))
+	for id := range r.exempt {
+		exempted = append(exempted, id)
+	}
+	klog.V(1).Infof(
+		"Quota-aware balancing: node groups frozen by quota: %v (exceeded quotas: %v); node groups exempted from quota due to errors: %v",
+		frozen, exceeded, exempted,
+	)
+}
+
+// enforceGrants is a mandatory backstop against a NodeGroupSetProcessor that
+// doesn't fully respect the reserver's answers. It caps each group's total
+// reported delta across scaleUpInfos - which may list the same group more
+// than once - to what ReserveNode actually granted for that group, drops any
+// group with a non-positive delta, and rejects groups that were not part of
+// the input set. A well-behaved processor's output passes through unchanged.
+func (o *ScaleUpOrchestrator) enforceGrants(
+	scaleUpInfos []nodegroupset.ScaleUpInfo,
+	reserver *trackerQuotaReserver,
+	inputGroups []cloudprovider.NodeGroup,
 ) []nodegroupset.ScaleUpInfo {
-	for i := range scaleUpInfos {
-		sui := &scaleUpInfos[i]
+	validIDs := make(map[string]bool, len(inputGroups))
+	for _, ng := range inputGroups {
+		validIDs[ng.Id()] = true
+	}
+
+	remaining := make(map[string]int, len(reserver.granted))
+	for id, n := range reserver.granted {
+		remaining[id] = n
+	}
+
+	result := make([]nodegroupset.ScaleUpInfo, 0, len(scaleUpInfos))
+	for _, sui := range scaleUpInfos {
 		delta := sui.NewSize - sui.CurrentSize
 		if delta <= 0 {
 			continue
 		}
-		nodeInfo, found := nodeInfos[sui.Group.Id()]
-		if !found {
+		id := sui.Group.Id()
+		if !validIDs[id] {
+			klog.Errorf("Quota-aware balancing processor reported an increase for %s which was not part of the input node group set; dropping it", id)
 			continue
 		}
-		checkResult, err := tracker.CheckQuota(o.autoscalingCtx, sui.Group, nodeInfo.Node(), delta)
-		if err != nil {
-			klog.Errorf("Failed to check quota for balanced group %s: %v", sui.Group.Id(), err)
+		left := remaining[id]
+		if left <= 0 {
+			klog.Errorf("Quota-aware balancing processor reported an increase for %s beyond what was granted; dropping it", id)
 			continue
 		}
-		allowedDelta := checkResult.AllowedDelta
-		if allowedDelta < delta {
-			klog.V(1).Infof("Capping scale-up of %s from %d to %d nodes due to quota", sui.Group.Id(), delta, allowedDelta)
-			sui.NewSize = sui.CurrentSize + allowedDelta
+		if delta > left {
+			klog.Errorf("Quota-aware balancing processor reported a %d node increase for %s but only %d were granted; capping", delta, id, left)
+			delta = left
 		}
-		if allowedDelta > 0 {
-			if _, err := tracker.ConsumeQuota(o.autoscalingCtx, sui.Group, nodeInfo.Node(), allowedDelta); err != nil {
-				klog.Errorf("Failed to apply quota delta for balanced group %s: %v", sui.Group.Id(), err)
-			}
-		}
+		remaining[id] -= delta
+		sui.NewSize = sui.CurrentSize + delta
+		result = append(result, sui)
 	}
-
-	// Filter out groups that were capped to zero additional nodes by quota.
-	filtered := make([]nodegroupset.ScaleUpInfo, 0, len(scaleUpInfos))
-	for _, sui := range scaleUpInfos {
-		if sui.NewSize != sui.CurrentSize {
-			filtered = append(filtered, sui)
-		}
-	}
-	return filtered
+	return result
 }
 
 // ComputeSimilarNodeGroups finds similar node groups which can schedule the same
@@ -1102,25 +1220,10 @@ func (o *ScaleUpOrchestrator) prepareScaleUp(args scaleUpCtx) (scaleUpPlan, *sta
 		return scaleUpPlan{}, st, err
 	}
 
-	newNodes, aErr = o.applyLimits(newNodes, args.tracker, bestOption.NodeGroup, args.nodeInfos)
-	if aErr != nil {
-		markedEquivalenceGroups := markAllGroupsAsUnschedulable(args.podEquivalenceGroups, ScaleUpExecutionErrorReason)
-		st, err := status.UpdateScaleUpError(
-			&status.ScaleUpStatus{
-				PodsTriggeredScaleUp:    bestOption.Pods,
-				PodsRemainUnschedulable: o.GetRemainingPods(markedEquivalenceGroups, args.nodeGroups, args.skippedNodeGroups, args.nodeInfos),
-			},
-			aErr,
-		)
-		return scaleUpPlan{}, st, err
-	}
-
-	if newNodes < bestOption.NodeCount {
-		klog.V(1).Infof("Only %d nodes can be added to %s due to resource quotas", newNodes, bestOption.NodeGroup.Id())
-		if args.allOrNothing {
-			return scaleUpPlan{}, o.abortAllOrNothing(args), nil
-		}
-	}
+	// Resource quotas are enforced inside balanceScaleUps: the quota-aware
+	// balancer consults them node-by-node as it fills groups. The single check
+	// after balancing below (comparing granted totalCapacity against newNodes)
+	// is what catches under-scaling here.
 
 	// If necessary, create the node group. This is no longer simulation, an empty node group will be created by cloud provider if supported.
 	createNodeGroupResults := make([]nodegroups.CreateNodeGroupResult, 0)

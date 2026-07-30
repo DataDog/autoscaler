@@ -116,13 +116,13 @@ func TestBalanceSingleGroup(t *testing.T) {
 	provider.AddNodeGroup("ng1", 1, 10, 1)
 
 	// just one node
-	scaleUpInfo, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 1)
+	scaleUpInfo, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 1, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(scaleUpInfo))
 	assert.Equal(t, 2, scaleUpInfo[0].NewSize)
 
 	// multiple nodes
-	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 4)
+	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 4, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(scaleUpInfo))
 	assert.Equal(t, 5, scaleUpInfo[0].NewSize)
@@ -139,19 +139,19 @@ func TestBalanceUnderMaxSize(t *testing.T) {
 	provider.AddNodeGroup("ng4", 1, 10, 5)
 
 	// add a single node
-	scaleUpInfo, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 1)
+	scaleUpInfo, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 1, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(scaleUpInfo))
 	assert.Equal(t, 2, scaleUpInfo[0].NewSize)
 
 	// add multiple nodes to single group
-	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 2)
+	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 2, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(scaleUpInfo))
 	assert.Equal(t, 3, scaleUpInfo[0].NewSize)
 
 	// add nodes to groups of different sizes, divisible
-	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 4)
+	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 4, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(scaleUpInfo))
 	assert.Equal(t, 4, scaleUpInfo[0].NewSize)
@@ -161,7 +161,7 @@ func TestBalanceUnderMaxSize(t *testing.T) {
 
 	// add nodes to groups of different sizes, non-divisible
 	// we expect new sizes to be 4 and 5, doesn't matter which group gets how many
-	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 5)
+	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 5, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(scaleUpInfo))
 	assert.Equal(t, 9, scaleUpInfo[0].NewSize+scaleUpInfo[1].NewSize)
@@ -170,7 +170,7 @@ func TestBalanceUnderMaxSize(t *testing.T) {
 	assert.True(t, scaleUpInfo[0].Group.Id() == "ng2" || scaleUpInfo[1].Group.Id() == "ng2")
 
 	// add nodes to all groups, divisible
-	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 10)
+	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, provider.NodeGroups(), 10, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 4, len(scaleUpInfo))
 	for _, info := range scaleUpInfo {
@@ -210,33 +210,33 @@ func TestBalanceHittingMaxSize(t *testing.T) {
 	}
 
 	// Just one maxed out group
-	scaleUpInfo, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng1"), 1)
+	scaleUpInfo, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng1"), 1, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(scaleUpInfo))
 
 	// Smallest group already maxed out, add one node
-	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng1", "ng2"), 1)
+	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng1", "ng2"), 1, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(scaleUpInfo))
 	assert.Equal(t, "ng2", scaleUpInfo[0].Group.Id())
 	assert.Equal(t, 2, scaleUpInfo[0].NewSize)
 
 	// Smallest group already maxed out, too many nodes (should cap to max capacity)
-	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng1", "ng2"), 5)
+	scaleUpInfo, err = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng1", "ng2"), 5, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(scaleUpInfo))
 	assert.Equal(t, "ng2", scaleUpInfo[0].Group.Id())
 	assert.Equal(t, 3, scaleUpInfo[0].NewSize)
 
 	// First group maxes out before proceeding to next one
-	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng3"), 4)
+	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng3"), 4, nil)
 	assert.Equal(t, 2, len(scaleUpInfo))
 	scaleUpMap := toMap(scaleUpInfo)
 	assert.Equal(t, 3, scaleUpMap["ng2"].NewSize)
 	assert.Equal(t, 5, scaleUpMap["ng3"].NewSize)
 
 	// Last group maxes out before previous one
-	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng3", "ng4"), 9)
+	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng3", "ng4"), 9, nil)
 	assert.Equal(t, 3, len(scaleUpInfo))
 	scaleUpMap = toMap(scaleUpInfo)
 	assert.Equal(t, 3, scaleUpMap["ng2"].NewSize)
@@ -244,7 +244,7 @@ func TestBalanceHittingMaxSize(t *testing.T) {
 	assert.Equal(t, 7, scaleUpMap["ng4"].NewSize)
 
 	// Use all capacity, cap to max
-	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng3", "ng4"), 900)
+	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng3", "ng4"), 900, nil)
 	assert.Equal(t, 3, len(scaleUpInfo))
 	scaleUpMap = toMap(scaleUpInfo)
 	assert.Equal(t, 3, scaleUpMap["ng2"].NewSize)
@@ -252,8 +252,266 @@ func TestBalanceHittingMaxSize(t *testing.T) {
 	assert.Equal(t, 7, scaleUpMap["ng4"].NewSize)
 
 	// One node group exceeds max.
-	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng5"), 1)
+	scaleUpInfo, _ = processor.BalanceScaleUpBetweenGroups(autoscalingCtx, getGroups("ng2", "ng5"), 1, nil)
 	assert.Equal(t, 1, len(scaleUpInfo))
 	scaleUpMap = toMap(scaleUpInfo)
 	assert.Equal(t, 2, scaleUpMap["ng2"].NewSize)
+}
+
+// quotaPool models a resource quota shared by a set of node groups, holding a
+// remaining node budget. A group can be covered by more than one pool.
+type quotaPool struct {
+	groups    map[string]bool
+	remaining int
+}
+
+func pool(remaining int, groups ...string) *quotaPool {
+	g := make(map[string]bool, len(groups))
+	for _, id := range groups {
+		g[id] = true
+	}
+	return &quotaPool{groups: g, remaining: remaining}
+}
+
+// fakeReserver is a NodeQuotaReserver test double backed by quotaPools.
+// ReserveNode only grants a node to a group if every pool covering that group
+// still has budget, and decrements all of them together - so a group covered
+// by more than one pool draws down each of them per node, the same way
+// several independent resourcequotas.Quota objects would each see the node.
+type fakeReserver struct {
+	pools []*quotaPool
+}
+
+func newFakeReserver(pools ...*quotaPool) *fakeReserver {
+	return &fakeReserver{pools: pools}
+}
+
+func (f *fakeReserver) covering(groupID string) []*quotaPool {
+	var covering []*quotaPool
+	for _, p := range f.pools {
+		if p.groups[groupID] {
+			covering = append(covering, p)
+		}
+	}
+	return covering
+}
+
+func (f *fakeReserver) ReserveNode(groupID string) bool {
+	covering := f.covering(groupID)
+	for _, p := range covering {
+		if p.remaining <= 0 {
+			return false
+		}
+	}
+	for _, p := range covering {
+		p.remaining--
+	}
+	return true
+}
+
+// groupSpec describes a node group to build for the quota-aware balancing
+// tests below: id, (min, max, initial size).
+type groupSpec struct {
+	id             string
+	min, max, size int
+}
+
+// buildGroupsForQuotaTest builds a test cloud provider with one node group per
+// spec, in the given order, and returns them as a []cloudprovider.NodeGroup
+// suitable for passing straight to BalanceScaleUpBetweenGroups.
+func buildGroupsForQuotaTest(specs []groupSpec) []cloudprovider.NodeGroup {
+	provider := testprovider.NewTestCloudProviderBuilder().Build()
+	for _, s := range specs {
+		provider.AddNodeGroup(s.id, s.min, s.max, s.size)
+	}
+	groups := make([]cloudprovider.NodeGroup, 0, len(specs))
+	for _, s := range specs {
+		groups = append(groups, provider.GetNodeGroup(s.id))
+	}
+	return groups
+}
+
+func TestBalanceScaleUpBetweenGroupsWithQuota(t *testing.T) {
+	processor := NewDefaultNodeGroupSetProcessor([]string{}, config.NodeGroupDifferenceRatios{}).(*BalancingNodeGroupSetProcessor)
+	autoscalingCtx := &ca_context.AutoscalingContext{}
+
+	tests := []struct {
+		name     string
+		groups   []groupSpec
+		reserver *fakeReserver
+		newNodes int
+		// want maps every group id in groups to its expected final size.
+		want map[string]int
+	}{
+		{
+			name: "independent per-group quotas",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+				{id: "b", min: 1, max: 100, size: 1},
+				{id: "c", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(
+				pool(5, "a"),
+				pool(1, "b"),
+				pool(1, "c"),
+			),
+			newNodes: 100,
+			want:     map[string]int{"a": 6, "b": 2, "c": 2},
+		},
+		{
+			name: "fully shared pool splits evenly",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+				{id: "b", min: 1, max: 100, size: 1},
+				{id: "c", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(pool(6, "a", "b", "c")),
+			newNodes: 24,
+			want:     map[string]int{"a": 3, "b": 3, "c": 3},
+		},
+		{
+			name: "intersecting quotas: shared group sorts first, greedy picks it and loses both pools",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+				{id: "b", min: 1, max: 100, size: 1},
+				{id: "c", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(
+				pool(1, "a", "b"),
+				pool(1, "a", "c"),
+			),
+			newNodes: 2,
+			// A feasible allocation exists that places both requested nodes
+			// (0, 1, 1), but the greedy fill doesn't search for it: it fills the
+			// smallest-by-id group first, "a" spends both pools' single unit of
+			// budget on itself, and "b"/"c" are then refused. Total placed: 1.
+			// This never violates a quota and is documented as a known
+			// heuristic limitation, not a bug.
+			want: map[string]int{"a": 2, "b": 1, "c": 1},
+		},
+		{
+			name: "intersecting quotas: shared group sorts last, greedy happens to find the better split",
+			groups: []groupSpec{
+				{id: "b", min: 1, max: 100, size: 1},
+				{id: "c", min: 1, max: 100, size: 1},
+				{id: "shared", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(
+				pool(1, "shared", "b"),
+				pool(1, "shared", "c"),
+			),
+			newNodes: 2,
+			// Same quota topology as above, but "b" and "c" now sort before
+			// "shared" (tie-broken by id), so they each claim their pool's unit
+			// before "shared" is ever tried. Total placed: 2, the feasible
+			// optimum - reached by iteration order, not by the algorithm
+			// searching for it.
+			want: map[string]int{"b": 2, "c": 2, "shared": 1},
+		},
+		{
+			name: "overlapping quotas sacrifice throughput for an even split",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+				{id: "b", min: 1, max: 100, size: 1},
+				{id: "c", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(
+				pool(2, "a", "b"),
+				pool(2, "b", "c"),
+			),
+			newNodes: 4,
+			// Feasible allocations exist that place 4 nodes total (e.g. a+2,
+			// c+2, b+0), but the greedy fill grows a, b and c together; b sits
+			// in both pools, so growing it drains both at once. Total placed
+			// tops out at 3 (a+1, b+1, c+1) even though 4 were requested and 4
+			// are feasible - the documented throughput tradeoff.
+			want: map[string]int{"a": 2, "b": 2, "c": 2},
+		},
+		{
+			name: "quota budget above MaxSize: MaxSize is the binding constraint",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 3, size: 1},
+			},
+			reserver: newFakeReserver(pool(100, "a")),
+			newNodes: 5,
+			want:     map[string]int{"a": 3},
+		},
+		{
+			name: "zero-budget group is excluded, others absorb the rest",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+				{id: "b", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(pool(0, "a")),
+			newNodes: 4,
+			want:     map[string]int{"a": 1, "b": 5},
+		},
+		{
+			name: "group with no covering pool is unconstrained up to MaxSize",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+				{id: "b", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(pool(1, "a")),
+			newNodes: 5,
+			want:     map[string]int{"a": 2, "b": 5},
+		},
+		{
+			name: "single group refused on the very first node: no panic, empty result",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(pool(0, "a")),
+			newNodes: 3,
+			want:     map[string]int{"a": 1},
+		},
+		{
+			name: "single group refused partway through the fill",
+			groups: []groupSpec{
+				{id: "a", min: 1, max: 100, size: 1},
+			},
+			reserver: newFakeReserver(pool(2, "a")),
+			newNodes: 5,
+			want:     map[string]int{"a": 3},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groups := buildGroupsForQuotaTest(tt.groups)
+			result, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, groups, tt.newNodes, tt.reserver)
+			assert.NoError(t, err)
+
+			got := make(map[string]int, len(tt.groups))
+			for _, s := range tt.groups {
+				got[s.id] = s.size
+			}
+			for _, sui := range result {
+				got[sui.Group.Id()] = sui.NewSize
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestBalanceScaleUpBetweenGroupsWithQuotaNoPanicOnImmediateRefusal is a
+// narrow regression test for the crash this feature fixed: previously the
+// fill loop assumed a group could only be removed from consideration by
+// hitting MaxSize, which - together with the precondition that newNodes never
+// exceeds total remaining MaxSize capacity - guaranteed currentIndex stayed in
+// bounds. Quota refusal breaks that assumption: a single group can be
+// refused on the very first node, long before MaxSize, so the loop must stop
+// based on startIndex reaching len(scaleUpInfos) rather than assuming there's
+// always another node's worth of capacity to look at.
+func TestBalanceScaleUpBetweenGroupsWithQuotaNoPanicOnImmediateRefusal(t *testing.T) {
+	processor := NewDefaultNodeGroupSetProcessor([]string{}, config.NodeGroupDifferenceRatios{}).(*BalancingNodeGroupSetProcessor)
+	autoscalingCtx := &ca_context.AutoscalingContext{}
+	groups := buildGroupsForQuotaTest([]groupSpec{{id: "a", min: 1, max: 100, size: 1}})
+	reserver := newFakeReserver(pool(0, "a"))
+
+	assert.NotPanics(t, func() {
+		result, err := processor.BalanceScaleUpBetweenGroups(autoscalingCtx, groups, 1, reserver)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
 }

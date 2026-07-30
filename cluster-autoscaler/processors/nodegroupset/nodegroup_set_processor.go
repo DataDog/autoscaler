@@ -48,8 +48,19 @@ type NodeGroupSetProcessor interface {
 	FindSimilarNodeGroups(autoscalingCtx *ca_context.AutoscalingContext, nodeGroup cloudprovider.NodeGroup,
 		nodeInfosForGroups map[string]*framework.NodeInfo) ([]cloudprovider.NodeGroup, errors.AutoscalerError)
 
-	BalanceScaleUpBetweenGroups(autoscalingCtx *ca_context.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int) ([]ScaleUpInfo, errors.AutoscalerError)
+	BalanceScaleUpBetweenGroups(autoscalingCtx *ca_context.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int, reserver NodeQuotaReserver) ([]ScaleUpInfo, errors.AutoscalerError)
 	CleanUp()
+}
+
+// NodeQuotaReserver is consulted by balancing before each node is assigned to a
+// group, and reserves quota for it. Implementations hold live quota state, so a
+// quota pool shared by several groups is drawn down correctly across them as the
+// fill progresses, rather than each group checking the same pool independently.
+// A nil NodeQuotaReserver imposes no constraint beyond MaxSize.
+type NodeQuotaReserver interface {
+	// ReserveNode reserves quota for one more node in the group and reports
+	// whether it was granted. false means the group's quota is exhausted.
+	ReserveNode(groupID string) bool
 }
 
 // NoOpNodeGroupSetProcessor returns no similar node groups and doesn't do any balancing.
@@ -63,7 +74,7 @@ func (n *NoOpNodeGroupSetProcessor) FindSimilarNodeGroups(autoscalingCtx *ca_con
 }
 
 // BalanceScaleUpBetweenGroups splits a scale-up between provided NodeGroups.
-func (n *NoOpNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(autoscalingCtx *ca_context.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int) ([]ScaleUpInfo, errors.AutoscalerError) {
+func (n *NoOpNodeGroupSetProcessor) BalanceScaleUpBetweenGroups(autoscalingCtx *ca_context.AutoscalingContext, groups []cloudprovider.NodeGroup, newNodes int, reserver NodeQuotaReserver) ([]ScaleUpInfo, errors.AutoscalerError) {
 	return []ScaleUpInfo{}, nil
 }
 
