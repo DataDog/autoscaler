@@ -23,13 +23,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/autoscaler/cluster-autoscaler/apis/provisioningrequest/autoscaling.x-k8s.io/v1"
+	"k8s.io/autoscaler/cluster-autoscaler/config"
+	coretest "k8s.io/autoscaler/cluster-autoscaler/core/test"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/provreq"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/status"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/conditions"
+	provreqpods "k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/provreqclient"
+	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
+	"k8s.io/autoscaler/cluster-autoscaler/simulator/scheduling"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 )
 
@@ -161,4 +167,45 @@ func TestCheckCapacityBatchMarksMaterializationErrorsFailed(t *testing.T) {
 	exported, err := combinedStatus.Export()
 	require.Error(t, err)
 	assert.Equal(t, status.ScaleUpError, exported.Result)
+}
+
+func TestCheckCapacityBatchDoesNotReportInternalSchedulingErrorsAsNoCapacity(t *testing.T) {
+	pr := provreqclient.ProvisioningRequestWrapperForTesting("test-ns", "test-pr")
+	pr.Spec.Parameters = map[string]v1.Parameter{NoRetryParameterKey: "true"}
+	autoscalingCtx, err := coretest.NewScaleTestAutoscalingContext(config.AutoscalingOptions{}, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	autoscalingCtx.ClusterSnapshot = &internalErrorSnapshot{ClusterSnapshot: autoscalingCtx.ClusterSnapshot}
+
+	checkCapacityClass := &checkCapacityProvClass{
+		autoscalingCtx:      &autoscalingCtx,
+		schedulingSimulator: scheduling.NewHintingSimulator(),
+	}
+	combinedStatus := NewCombinedStatusSet()
+	updates := checkCapacityClass.checkCapacityBatch(
+		[]provreq.ProvisioningRequestWithPods{
+			{
+				PrWrapper: pr,
+				Workload: &provreqpods.SimulationWorkload{
+					Pods: []*corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "virtual-pod", Namespace: "test-ns"}}},
+				},
+			},
+		},
+		&combinedStatus,
+		time.Now(),
+	)
+
+	require.Len(t, updates, 1)
+	assert.Nil(t, apimeta.FindStatusCondition(pr.Status.Conditions, v1.Failed))
+	assert.Nil(t, apimeta.FindStatusCondition(pr.Status.Conditions, v1.Provisioned))
+	exported, err := combinedStatus.Export()
+	require.ErrorContains(t, err, "scheduling failed")
+	assert.Equal(t, status.ScaleUpError, exported.Result)
+}
+
+type internalErrorSnapshot struct {
+	clustersnapshot.ClusterSnapshot
+}
+
+func (s *internalErrorSnapshot) SchedulePodOnAnyNodeMatching(pod *corev1.Pod, _ clustersnapshot.SchedulingOptions) (string, clustersnapshot.SchedulingError) {
+	return "", clustersnapshot.NewSchedulingInternalError(pod, "scheduling failed")
 }

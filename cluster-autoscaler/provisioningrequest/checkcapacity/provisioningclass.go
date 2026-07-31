@@ -172,6 +172,7 @@ func (o *checkCapacityProvClass) checkCapacityBatch(reqs []provreq.ProvisioningR
 			addInternalError(combinedStatus, err)
 			klog.Errorf("error checking capacity %v", err)
 		} else if err := o.checkCapacity(req.Workload, req.PrWrapper, combinedStatus); err != nil {
+			addInternalError(combinedStatus, err)
 			klog.Errorf("error checking capacity %v", err)
 		}
 
@@ -195,18 +196,21 @@ func (o *checkCapacityProvClass) checkCapacity(workload *provreqpods.SimulationW
 			o.autoscalingCtx.ClusterSnapshot.Revert()
 			simulationErr := fmt.Errorf("could not add simulated ResourceClaims for ProvisioningRequest %s/%s: %w", provReq.Namespace, provReq.Name, err)
 			conditions.AddOrUpdateCondition(provReq, v1.Failed, metav1.ConditionTrue, conditions.FailedToCreatePodsReason, simulationErr.Error(), metav1.Now())
-			addInternalError(combinedStatus, simulationErr)
 			return simulationErr
 		}
 	}
 
 	// Case 1: Capacity fits.
 	scheduled, _, err := o.schedulingSimulator.TrySchedulePods(o.autoscalingCtx.ClusterSnapshot, workload.Pods, true, clustersnapshot.SchedulingOptions{})
-	if err == nil && len(scheduled) == len(workload.Pods) {
+	if err != nil {
+		o.autoscalingCtx.ClusterSnapshot.Revert()
+		return fmt.Errorf("could not schedule simulation workload for ProvisioningRequest %s/%s: %w", provReq.Namespace, provReq.Name, err)
+	}
+	if len(scheduled) == len(workload.Pods) {
 		commitError := o.autoscalingCtx.ClusterSnapshot.Commit()
 		if commitError != nil {
 			o.autoscalingCtx.ClusterSnapshot.Revert()
-			return commitError
+			return fmt.Errorf("could not commit simulation workload for ProvisioningRequest %s/%s: %w", provReq.Namespace, provReq.Name, commitError)
 		}
 		combinedStatus.Add(&status.ScaleUpStatus{Result: status.ScaleUpSuccessful})
 		conditions.AddOrUpdateCondition(provReq, v1.Provisioned, metav1.ConditionTrue, conditions.CapacityIsFoundReason, conditions.CapacityIsFoundMsg, metav1.Now())
@@ -225,7 +229,7 @@ func (o *checkCapacityProvClass) checkCapacity(workload *provreqpods.SimulationW
 		}
 		conditions.AddOrUpdateCondition(provReq, v1.Provisioned, metav1.ConditionFalse, conditions.CapacityIsNotFoundReason, "Capacity is not found, CA will try to find it later.", metav1.Now())
 	}
-	return err
+	return nil
 }
 
 func addInternalError(combinedStatus *combinedStatusSet, err error) {
