@@ -17,6 +17,7 @@ limitations under the License.
 package checkcapacity
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -24,10 +25,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/autoscaler/cluster-autoscaler/apis/provisioningrequest/autoscaling.x-k8s.io/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
+	ca_context "k8s.io/autoscaler/cluster-autoscaler/context"
 	coretest "k8s.io/autoscaler/cluster-autoscaler/core/test"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/provreq"
 	"k8s.io/autoscaler/cluster-autoscaler/processors/status"
@@ -37,6 +40,9 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/scheduling"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
+	resourcelisters "k8s.io/client-go/listers/resource/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/ptr"
 )
 
 func TestCombinedStatusSet(t *testing.T) {
@@ -140,6 +146,62 @@ func generateStatuses(n int, result status.ScaleUpResult) []*status.ScaleUpStatu
 		statuses[i] = &status.ScaleUpStatus{Result: result, ScaleUpError: scaleUpErr}
 	}
 	return statuses
+}
+
+func TestGetProvisioningRequestsAndPodsNonBatchIgnoresUnrelatedRCTPod(t *testing.T) {
+	const (
+		namespace    = "test-ns"
+		templateName = "gpu-template"
+	)
+	pr := provreqclient.ProvisioningRequestWrapperForTesting(namespace, "test-pr")
+	pr.Spec.ProvisioningClassName = v1.ProvisioningClassCheckCapacity
+	pr.PodTemplates[0].Template.Spec.ResourceClaims = []corev1.PodResourceClaim{
+		{Name: "gpu", ResourceClaimTemplateName: ptr.To(templateName)},
+	}
+	virtualPods, err := provreqpods.PodsForProvisioningRequest(pr)
+	require.NoError(t, err)
+
+	realClaimName := "real-pod-gpu-controller-suffix"
+	realPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "real-pod", Namespace: namespace},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "container", Image: "image"}},
+			ResourceClaims: []corev1.PodResourceClaim{
+				{Name: "gpu", ResourceClaimTemplateName: ptr.To(templateName)},
+			},
+		},
+		Status: corev1.PodStatus{
+			ResourceClaimStatuses: []corev1.PodResourceClaimStatus{
+				{Name: "gpu", ResourceClaimName: ptr.To(realClaimName)},
+			},
+		},
+	}
+	realPodBefore := realPod.DeepCopy()
+
+	template := &resourcev1.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{Name: templateName, Namespace: namespace}}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(template))
+	checkCapacityClass := &checkCapacityProvClass{
+		autoscalingCtx: &ca_context.AutoscalingContext{},
+		client:         provreqclient.NewFakeProvisioningRequestClient(context.Background(), t, pr),
+		simulationWorkloadBuilder: provreqpods.NewSimulationWorkloadBuilder(
+			resourcelisters.NewResourceClaimTemplateLister(indexer),
+		),
+	}
+
+	requests, err := checkCapacityClass.getProvisioningRequestsAndPods(append(virtualPods, realPod))
+	require.NoError(t, err)
+	require.Len(t, requests, 1)
+	assert.Equal(t, pr.Name, requests[0].PrWrapper.Name)
+	require.NoError(t, requests[0].Err)
+	require.NotNil(t, requests[0].Workload)
+	require.Len(t, requests[0].Workload.Pods, len(virtualPods))
+	require.Len(t, requests[0].Workload.Claims, len(virtualPods))
+	for _, pod := range requests[0].Workload.Pods {
+		assert.Equal(t, pr.Name, pod.Annotations[v1.ProvisioningRequestPodAnnotationKey])
+		assert.NotEqual(t, realPod.Name, pod.Name)
+	}
+	assert.Equal(t, realPodBefore, realPod, "the unrelated real Pod was mutated")
 }
 
 func TestCheckCapacityBatchMarksMaterializationErrorsFailed(t *testing.T) {

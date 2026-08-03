@@ -30,12 +30,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/autoscaler/cluster-autoscaler/apis/provisioningrequest/autoscaling.x-k8s.io/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
+	ca_context "k8s.io/autoscaler/cluster-autoscaler/context"
 	coretest "k8s.io/autoscaler/cluster-autoscaler/core/test"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/conditions"
 	provreqpods "k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/pods"
 	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/provreqclient"
+	"k8s.io/autoscaler/cluster-autoscaler/provisioningrequest/provreqwrapper"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/clustersnapshot"
 	"k8s.io/autoscaler/cluster-autoscaler/simulator/scheduling"
+	testutils "k8s.io/autoscaler/cluster-autoscaler/utils/test"
+	resourcelisters "k8s.io/client-go/listers/resource/v1"
 )
 
 func TestBookCapacityAddsMaterializedClaimsToSnapshot(t *testing.T) {
@@ -150,6 +154,79 @@ func TestBookCapacitySchedulingErrorRevertsWithoutFailingRequest(t *testing.T) {
 	assert.True(t, apimeta.IsStatusConditionTrue(updatedPr.Status.Conditions, v1.Provisioned))
 }
 
+func TestBookPodsSchedulingErrorRevertsBeforeCheckCapacityBooking(t *testing.T) {
+	ordinaryPr := ordinaryBookingProvisioningRequest("ordinary-pr")
+	checkCapacityPr := checkCapacityProvisioningRequestWithTemplateClaim("gpu-template")
+	checkCapacityPr.Spec.PodSets[0].Count = 1
+	injector := &transactionalBookingInjector{}
+	template := &resourcev1.ResourceClaimTemplate{ObjectMeta: metav1.ObjectMeta{Name: "gpu-template", Namespace: "ns"}}
+	processor, autoscalingCtx := newTransactionalBookingProcessor(t, ordinaryPr, templateLister(t, template), injector)
+	processor.checkCapacityProcessorInstance = ""
+	node := testutils.BuildTestNode("node", 10000, 10000)
+	require.NoError(t, autoscalingCtx.ClusterSnapshot.SetClusterState([]*corev1.Node{node}, nil, nil, nil))
+
+	injector.schedule = func(snapshot clustersnapshot.ClusterSnapshot, pods []*corev1.Pod) ([]scheduling.Status, int, error) {
+		switch injector.calls {
+		case 1:
+			require.Len(t, pods, 1)
+			assert.Equal(t, ordinaryPr.Name, pods[0].Annotations[v1.ProvisioningRequestPodAnnotationKey])
+			require.NoError(t, snapshot.SchedulePod(pods[0], node.Name))
+			return allPodsScheduled(pods), 0, errors.New("ordinary booking failed")
+		case 2:
+			nodeInfos, err := snapshot.ListNodeInfos()
+			require.NoError(t, err)
+			require.Len(t, nodeInfos, 1)
+			assert.Empty(t, nodeInfos[0].Pods(), "failed ordinary booking leaked into the next request")
+			claims, err := snapshot.DraSnapshot().ResourceClaims().List()
+			require.NoError(t, err)
+			require.Len(t, claims, 1, "check-capacity claims must be added after rollback")
+			require.NoError(t, snapshot.SchedulePod(pods[0], node.Name))
+			return allPodsScheduled(pods), 0, nil
+		default:
+			t.Fatalf("unexpected scheduling call %d", injector.calls)
+			return nil, 0, nil
+		}
+	}
+
+	err := processor.bookCapacity(autoscalingCtx)
+	require.ErrorContains(t, err, "ordinary booking failed")
+	nodeInfos, err := autoscalingCtx.ClusterSnapshot.ListNodeInfos()
+	require.NoError(t, err)
+	require.Len(t, nodeInfos, 1)
+	assert.Empty(t, nodeInfos[0].Pods(), "failed ordinary booking was not rolled back")
+
+	require.NoError(t, processor.bookCheckCapacityProvisioningRequest(autoscalingCtx, checkCapacityPr))
+	assert.Equal(t, 2, injector.calls)
+	claims, err := autoscalingCtx.ClusterSnapshot.DraSnapshot().ResourceClaims().List()
+	require.NoError(t, err)
+	assert.Len(t, claims, 1)
+	nodeInfos, err = autoscalingCtx.ClusterSnapshot.ListNodeInfos()
+	require.NoError(t, err)
+	require.Len(t, nodeInfos, 1)
+	require.Len(t, nodeInfos[0].Pods(), 1)
+	assert.Equal(t, checkCapacityPr.Name, nodeInfos[0].Pods()[0].Pod.Annotations[v1.ProvisioningRequestPodAnnotationKey])
+}
+
+func TestBookPodsCommitsSuccessfulScheduling(t *testing.T) {
+	pr := ordinaryBookingProvisioningRequest("ordinary-pr")
+	injector := &transactionalBookingInjector{}
+	processor, autoscalingCtx := newTransactionalBookingProcessor(t, pr, templateLister(t), injector)
+	processor.checkCapacityProcessorInstance = ""
+	node := testutils.BuildTestNode("node", 10000, 10000)
+	require.NoError(t, autoscalingCtx.ClusterSnapshot.SetClusterState([]*corev1.Node{node}, nil, nil, nil))
+	injector.schedule = func(snapshot clustersnapshot.ClusterSnapshot, pods []*corev1.Pod) ([]scheduling.Status, int, error) {
+		require.NoError(t, snapshot.SchedulePod(pods[0], node.Name))
+		return allPodsScheduled(pods), 0, nil
+	}
+
+	require.NoError(t, processor.bookCapacity(autoscalingCtx))
+	nodeInfos, err := autoscalingCtx.ClusterSnapshot.ListNodeInfos()
+	require.NoError(t, err)
+	require.Len(t, nodeInfos, 1)
+	require.Len(t, nodeInfos[0].Pods(), 1)
+	assert.Equal(t, pr.Name, nodeInfos[0].Pods()[0].Pod.Annotations[v1.ProvisioningRequestPodAnnotationKey])
+}
+
 func TestBookCapacityMarksSnapshotClaimCollisionFailed(t *testing.T) {
 	template := &resourcev1.ResourceClaimTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "gpu-template", Namespace: "ns"},
@@ -201,4 +278,47 @@ type failingBookingInjector struct{}
 
 func (failingBookingInjector) TrySchedulePods(_ clustersnapshot.ClusterSnapshot, _ []*corev1.Pod, _ bool, _ clustersnapshot.SchedulingOptions) ([]scheduling.Status, int, error) {
 	return nil, 0, errors.New("scheduling failed")
+}
+
+type transactionalBookingInjector struct {
+	calls    int
+	schedule func(clustersnapshot.ClusterSnapshot, []*corev1.Pod) ([]scheduling.Status, int, error)
+}
+
+func (i *transactionalBookingInjector) TrySchedulePods(snapshot clustersnapshot.ClusterSnapshot, pods []*corev1.Pod, _ bool, _ clustersnapshot.SchedulingOptions) ([]scheduling.Status, int, error) {
+	i.calls++
+	if i.schedule != nil {
+		return i.schedule(snapshot, pods)
+	}
+	return allPodsScheduled(pods), 0, nil
+}
+
+func allPodsScheduled(pods []*corev1.Pod) []scheduling.Status {
+	statuses := make([]scheduling.Status, 0, len(pods))
+	for _, pod := range pods {
+		statuses = append(statuses, scheduling.Status{Pod: pod, NodeName: "node"})
+	}
+	return statuses
+}
+
+func ordinaryBookingProvisioningRequest(name string) *provreqwrapper.ProvisioningRequest {
+	pr := provreqclient.ProvisioningRequestWrapperForTesting("ns", name)
+	pr.Spec.ProvisioningClassName = v1.ProvisioningClassBestEffortAtomicScaleUp
+	conditions.AddOrUpdateCondition(pr, v1.Provisioned, metav1.ConditionTrue, conditions.CapacityIsFoundReason, conditions.CapacityIsFoundMsg, metav1.Now())
+	return pr
+}
+
+func newTransactionalBookingProcessor(t *testing.T, pr *provreqwrapper.ProvisioningRequest, templateLister resourcelisters.ResourceClaimTemplateLister, injector *transactionalBookingInjector) (*provReqProcessor, *ca_context.AutoscalingContext) {
+	t.Helper()
+	client := provreqclient.NewFakeProvisioningRequestClient(context.Background(), t, pr)
+	autoscalingCtx, err := coretest.NewScaleTestAutoscalingContext(config.AutoscalingOptions{}, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	return &provReqProcessor{
+		now:                            time.Now,
+		maxUpdated:                     20,
+		client:                         client,
+		injector:                       injector,
+		checkCapacityProcessorInstance: "checkcap-instance",
+		simulationWorkloadBuilder:      provreqpods.NewSimulationWorkloadBuilder(templateLister),
+	}, &autoscalingCtx
 }

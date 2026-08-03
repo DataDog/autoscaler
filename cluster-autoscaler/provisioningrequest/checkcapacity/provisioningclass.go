@@ -142,7 +142,11 @@ func (o *checkCapacityProvClass) getProvisioningRequestsAndPods(unschedulablePod
 		if len(prs) == 0 {
 			return nil, nil
 		}
-		workload, err := o.simulationWorkloadBuilder.ForPods(unschedulablePods)
+		builder := o.simulationWorkloadBuilder
+		if builder == nil {
+			builder = provreqpods.NewSimulationWorkloadBuilder(nil)
+		}
+		workload, err := builder.ForProvisioningRequest(prs[0])
 		return []provreq.ProvisioningRequestWithPods{{PrWrapper: prs[0], Workload: workload, Err: err}}, nil
 	}
 

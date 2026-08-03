@@ -147,11 +147,23 @@ func (p *provReqProcessor) bookCapacity(autoscalingCtx *ca_context.AutoscalingCo
 	}
 	podsToCreate := []*apiv1.Pod{}
 	var bookingErrors []error
+	flushPods := func() {
+		if len(podsToCreate) == 0 {
+			return
+		}
+		if err := p.bookPods(autoscalingCtx, podsToCreate); err != nil {
+			bookingErrors = append(bookingErrors, err)
+		}
+		podsToCreate = nil
+	}
 	for _, provReq := range provReqs {
 		if !conditions.ShouldCapacityBeBooked(provReq, p.checkCapacityProcessorInstance) {
 			continue
 		}
 		if provisioningrequest.SupportedCheckCapacityClass(provReq.ProvisioningRequest, p.checkCapacityProcessorInstance) {
+			// Preserve the lister order across provisioning classes while still
+			// keeping each check-capacity request in its own DRA transaction.
+			flushPods()
 			if err := p.bookCheckCapacityProvisioningRequest(autoscalingCtx, provReq); err != nil {
 				bookingErrors = append(bookingErrors, err)
 			}
@@ -168,17 +180,29 @@ func (p *provReqProcessor) bookCapacity(autoscalingCtx *ca_context.AutoscalingCo
 		}
 		podsToCreate = append(podsToCreate, pods...)
 	}
-	if len(podsToCreate) > 0 {
-		// Scheduling the pods to reserve capacity for provisioning request.
-		if _, _, err = p.injector.TrySchedulePods(autoscalingCtx.ClusterSnapshot, podsToCreate, false, clustersnapshot.SchedulingOptions{}); err != nil {
-			bookingErrors = append(bookingErrors, err)
-		}
-	}
+	flushPods()
 	return errors.Join(bookingErrors...)
 }
 
+func (p *provReqProcessor) bookPods(autoscalingCtx *ca_context.AutoscalingContext, pods []*apiv1.Pod) error {
+	autoscalingCtx.ClusterSnapshot.Fork()
+	if _, _, err := p.injector.TrySchedulePods(autoscalingCtx.ClusterSnapshot, pods, false, clustersnapshot.SchedulingOptions{}); err != nil {
+		autoscalingCtx.ClusterSnapshot.Revert()
+		return err
+	}
+	if err := autoscalingCtx.ClusterSnapshot.Commit(); err != nil {
+		autoscalingCtx.ClusterSnapshot.Revert()
+		return fmt.Errorf("couldn't commit booked capacity: %w", err)
+	}
+	return nil
+}
+
 func (p *provReqProcessor) bookCheckCapacityProvisioningRequest(autoscalingCtx *ca_context.AutoscalingContext, provReq *provreqwrapper.ProvisioningRequest) error {
-	workload, err := p.simulationWorkloadBuilder.ForProvisioningRequest(provReq)
+	builder := p.simulationWorkloadBuilder
+	if builder == nil {
+		builder = provreq_pods.NewSimulationWorkloadBuilder(nil)
+	}
+	workload, err := builder.ForProvisioningRequest(provReq)
 	if err != nil {
 		p.markFailedToBookCapacity(provReq, fmt.Sprintf("Couldn't create simulation workload: %v", err))
 		return nil
