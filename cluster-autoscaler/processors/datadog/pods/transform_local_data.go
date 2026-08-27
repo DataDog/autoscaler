@@ -61,11 +61,17 @@ import (
 
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/fields"
 	client "k8s.io/client-go/kubernetes"
 	v1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	klog "k8s.io/klog/v2"
+)
+
+const (
+	storageClassNameLocal   = "local-data"
+	storageClassNameTopoLVM = "ephemeral-local-data"
 )
 
 type transformLocalData struct {
@@ -92,36 +98,66 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 	}
 
 	for _, po := range pods {
+		if len(po.Spec.Containers) == 0 {
+			continue
+		}
+
 		var volumes []apiv1.Volume
 		for _, vol := range po.Spec.Volumes {
-			if vol.PersistentVolumeClaim == nil {
-				volumes = append(volumes, vol)
-				continue
-			}
-			pvc, err := p.pvcLister.PersistentVolumeClaims(po.Namespace).Get(vol.PersistentVolumeClaim.ClaimName)
-			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					klog.Warningf("failed to fetch pvc for %s/%s: %v", po.GetNamespace(), po.GetName(), err)
+			var pvcSpec *apiv1.PersistentVolumeClaimSpec
+			if vol.PersistentVolumeClaim != nil {
+				pvc, err := p.pvcLister.PersistentVolumeClaims(po.Namespace).Get(vol.PersistentVolumeClaim.ClaimName)
+				if err != nil {
+					if !apierrors.IsNotFound(err) {
+						klog.Warningf("failed to fetch pvc for %s/%s: %v", po.GetNamespace(), po.GetName(), err)
+					}
+					volumes = append(volumes, vol)
+					continue
 				}
-				volumes = append(volumes, vol)
-				continue
-			}
-			if *pvc.Spec.StorageClassName != "local-data" {
+				pvcSpec = &pvc.Spec
+			} else if vol.Ephemeral != nil && vol.Ephemeral.VolumeClaimTemplate != nil {
+				pvcSpec = &vol.Ephemeral.VolumeClaimTemplate.Spec
+			} else {
 				volumes = append(volumes, vol)
 				continue
 			}
 
-			if len(po.Spec.Containers[0].Resources.Requests) == 0 {
-				po.Spec.Containers[0].Resources.Requests = apiv1.ResourceList{}
-			}
-			if len(po.Spec.Containers[0].Resources.Limits) == 0 {
-				po.Spec.Containers[0].Resources.Limits = apiv1.ResourceList{}
-			}
-			if len(pvc.Spec.Resources.Requests) == 0 {
-				pvc.Spec.Resources.Requests = apiv1.ResourceList{}
+			if pvcSpec.StorageClassName == nil {
+				volumes = append(volumes, vol)
+				continue
 			}
 
-			if storage, ok := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]; ok {
+			storageClassName := *pvcSpec.StorageClassName
+			if storageClassName == storageClassNameTopoLVM {
+				// Persistent TopoLVM claims are intentionally unsupported. Their data
+				// would pin them to a specific node and cannot be satisfied by scale-up.
+				if vol.Ephemeral == nil {
+					volumes = append(volumes, vol)
+					continue
+				}
+
+				storage, ok := pvcSpec.Resources.Requests[apiv1.ResourceStorage]
+				if !ok {
+					klog.Warningf("ignoring ephemeral TopoLVM volume on pod %s/%s because it has no storage request", po.GetNamespace(), po.GetName())
+					volumes = append(volumes, vol)
+					continue
+				}
+
+				ensureContainerResources(&po.Spec.Containers[0])
+				addResource(po.Spec.Containers[0].Resources.Requests, common.DatadogEphemeralLocalDataResource, storage)
+				addResource(po.Spec.Containers[0].Resources.Limits, common.DatadogEphemeralLocalDataResource, storage)
+				continue
+			}
+
+			// The existing local-data behavior applies only to persistent claims.
+			if storageClassName != storageClassNameLocal || vol.PersistentVolumeClaim == nil {
+				volumes = append(volumes, vol)
+				continue
+			}
+
+			ensureContainerResources(&po.Spec.Containers[0])
+
+			if storage, ok := pvcSpec.Resources.Requests[apiv1.ResourceStorage]; ok {
 				po.Spec.Containers[0].Resources.Requests[common.DatadogLocalStorageResource] = storage.DeepCopy()
 				po.Spec.Containers[0].Resources.Limits[common.DatadogLocalStorageResource] = storage.DeepCopy()
 			} else {
@@ -136,6 +172,21 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 	}
 
 	return pods, nil
+}
+
+func ensureContainerResources(container *apiv1.Container) {
+	if container.Resources.Requests == nil {
+		container.Resources.Requests = apiv1.ResourceList{}
+	}
+	if container.Resources.Limits == nil {
+		container.Resources.Limits = apiv1.ResourceList{}
+	}
+}
+
+func addResource(resources apiv1.ResourceList, name apiv1.ResourceName, quantity resource.Quantity) {
+	current := resources[name]
+	current.Add(quantity)
+	resources[name] = current
 }
 
 // NewPersistentVolumeClaimLister builds a persistentvolumeclaim lister.

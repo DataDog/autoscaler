@@ -65,6 +65,24 @@ func TestNodeHasLocalData(t *testing.T) {
 			true,
 		},
 		{
+			"topolvm provisioner label means local storage",
+			&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{DatadogLocalStorageProvisionerLabel: DatadogStorageProvisionerTopoLVM},
+				},
+			},
+			true,
+		},
+		{
+			"unknown provisioner label means no supported local storage",
+			&corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{DatadogLocalStorageProvisionerLabel: "unknown"},
+				},
+			},
+			false,
+		},
+		{
 			"nil node doesn't crash, means no local storage",
 			nil,
 			false,
@@ -201,4 +219,42 @@ func TestSetNodeLocalDataResourceWithFaultyLocalStorageCapacity(t *testing.T) {
 	assert.Equal(t, *resource.NewQuantity(1, resource.DecimalSI), niValue)
 
 	assert.Equal(t, len(ni.Pods()), 2)
+}
+
+func TestSetNodeLocalDataResourceForTopoLVM(t *testing.T) {
+	localStorageQuantity := resource.MustParse("100Gi")
+	ni := schedulerframework.NewNodeInfo(&corev1.Node{}, nil)
+	ni.SetNode(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				DatadogLocalStorageProvisionerLabel: DatadogStorageProvisionerTopoLVM,
+				DatadogLocalStorageCapacityLabel:    localStorageQuantity.String(),
+			},
+		},
+	})
+
+	SetNodeLocalDataResource(ni)
+
+	assert.Equal(t, localStorageQuantity, ni.Node().Status.Capacity[DatadogEphemeralLocalDataResource])
+	assert.Equal(t, localStorageQuantity, ni.Node().Status.Allocatable[DatadogEphemeralLocalDataResource])
+	_, hasLegacyExists := ni.Node().Status.Allocatable[DatadogLocalDataExistsResource]
+	_, hasLegacyCapacity := ni.Node().Status.Allocatable[DatadogLocalStorageResource]
+	assert.False(t, hasLegacyExists)
+	assert.False(t, hasLegacyCapacity)
+}
+
+func TestSetNodeLocalDataResourceForTopoLVMWithoutCapacity(t *testing.T) {
+	ni := schedulerframework.NewNodeInfo(&corev1.Node{}, nil)
+	ni.SetNode(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				DatadogLocalStorageProvisionerLabel: DatadogStorageProvisionerTopoLVM,
+			},
+		},
+	})
+
+	SetNodeLocalDataResource(ni)
+
+	_, hasCapacity := ni.Node().Status.Allocatable[DatadogEphemeralLocalDataResource]
+	assert.False(t, hasCapacity)
 }
