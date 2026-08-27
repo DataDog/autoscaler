@@ -37,6 +37,7 @@ var (
 	testRemoteClass        = "remote-data"
 	testLocalClass         = "local-data"
 	testLocalBlockClass    = "local-data-block"
+	testTopoLVMClass       = "ephemeral-local-data"
 	testNamespace          = "foons"
 	testEmptyResources     = corev1.ResourceList{}
 	testDefaultLdResources = corev1.ResourceList{
@@ -48,6 +49,14 @@ var (
 	testLdResources      = corev1.ResourceList{
 		common.DatadogLocalDataExistsResource: common.DatadogLocalDataQuantity.DeepCopy(),
 		common.DatadogLocalStorageResource:    localStorageCapacity.DeepCopy(),
+	}
+	testTopoLVMResources = corev1.ResourceList{
+		common.DatadogEphemeralLocalDataResource: localStorageCapacity.DeepCopy(),
+	}
+	testMixedResources = corev1.ResourceList{
+		common.DatadogLocalDataExistsResource:    common.DatadogLocalDataQuantity.DeepCopy(),
+		common.DatadogLocalStorageResource:       localStorageCapacity.DeepCopy(),
+		common.DatadogEphemeralLocalDataResource: localStorageCapacity.DeepCopy(),
 	}
 )
 
@@ -136,6 +145,41 @@ func TestTransformLocalDataProcess(t *testing.T) {
 			[]*corev1.PersistentVolumeClaim{},
 			[]*corev1.Pod{},
 		},
+		{
+			"topolvm generic ephemeral volume is replaced by its storage request",
+			[]*corev1.Pod{addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1"), "scratch", testTopoLVMClass, localStorage)},
+			[]*corev1.PersistentVolumeClaim{buildPVC("pvc-1", testRemoteClass)},
+			[]*corev1.Pod{buildPod("pod1", testTopoLVMResources, testTopoLVMResources, "pvc-1")},
+		},
+		{
+			"multiple topolvm generic ephemeral volumes are summed",
+			[]*corev1.Pod{
+				addEphemeralVolume(
+					addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "scratch-1", testTopoLVMClass, "100Gi"),
+					"scratch-2", testTopoLVMClass, "50Gi",
+				),
+			},
+			[]*corev1.PersistentVolumeClaim{},
+			[]*corev1.Pod{buildPod("pod1", resourceList(common.DatadogEphemeralLocalDataResource, "150Gi"), resourceList(common.DatadogEphemeralLocalDataResource, "150Gi"))},
+		},
+		{
+			"topolvm ephemeral and local-data persistent volumes remain distinct",
+			[]*corev1.Pod{addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1"), "scratch", testTopoLVMClass, localStorage)},
+			[]*corev1.PersistentVolumeClaim{buildPVCWithStorage("pvc-1", testLocalClass, localStorage)},
+			[]*corev1.Pod{buildPod("pod1", testMixedResources, testMixedResources)},
+		},
+		{
+			"persistent topolvm volume is not transformed",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+			[]*corev1.PersistentVolumeClaim{buildPVCWithStorage("pvc-1", testTopoLVMClass, localStorage)},
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+		},
+		{
+			"ephemeral topolvm volume without a storage request is not transformed",
+			[]*corev1.Pod{addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "scratch", testTopoLVMClass, "")},
+			[]*corev1.PersistentVolumeClaim{},
+			[]*corev1.Pod{addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "scratch", testTopoLVMClass, "")},
+		},
 	}
 
 	for _, tt := range tests {
@@ -200,8 +244,8 @@ func buildPod(name string, requests, limits corev1.ResourceList, claimNames ...s
 			Containers: []corev1.Container{
 				{
 					Resources: corev1.ResourceRequirements{
-						Requests: requests,
-						Limits:   limits,
+						Requests: requests.DeepCopy(),
+						Limits:   limits.DeepCopy(),
 					},
 				},
 			},
@@ -221,6 +265,34 @@ func buildPod(name string, requests, limits corev1.ResourceList, claimNames ...s
 	}
 
 	return pod
+}
+
+func addEphemeralVolume(pod *corev1.Pod, name, storageClassName, storageQuantity string) *corev1.Pod {
+	requests := corev1.ResourceList{}
+	if storageQuantity != "" {
+		requests[corev1.ResourceStorage] = resource.MustParse(storageQuantity)
+	}
+
+	pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+		Name: name,
+		VolumeSource: corev1.VolumeSource{
+			Ephemeral: &corev1.EphemeralVolumeSource{
+				VolumeClaimTemplate: &corev1.PersistentVolumeClaimTemplate{
+					Spec: corev1.PersistentVolumeClaimSpec{
+						StorageClassName: &storageClassName,
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: requests,
+						},
+					},
+				},
+			},
+		},
+	})
+	return pod
+}
+
+func resourceList(name corev1.ResourceName, quantity string) corev1.ResourceList {
+	return corev1.ResourceList{name: resource.MustParse(quantity)}
 }
 
 func buildPVC(name string, storageClassName string) *corev1.PersistentVolumeClaim {
