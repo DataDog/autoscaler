@@ -69,6 +69,18 @@ func TestTransformDataNodesProcess(t *testing.T) {
 			buildTestNode("e", NodeReadyGraceDelay/2, true, "", nil),
 			buildTestNode("e", NodeReadyGraceDelay/2, true, "", common.DatadogLocalDataQuantity),
 		},
+
+		{
+			"TopoLVM resource is added to fresh TopoLVM nodes",
+			buildTestTopoLVMNode("f", NodeReadyGraceDelay/2, localStorageValue, nil),
+			buildTestTopoLVMNode("f", NodeReadyGraceDelay/2, localStorageValue, &localStorageQuantity),
+		},
+
+		{
+			"TopoLVM resource is not added to old TopoLVM nodes",
+			buildTestTopoLVMNode("g", 2*NodeReadyGraceDelay, localStorageValue, nil),
+			buildTestTopoLVMNode("g", 2*NodeReadyGraceDelay, localStorageValue, nil),
+		},
 	}
 
 	for _, tt := range tests {
@@ -129,6 +141,18 @@ func buildTestNode(name string, age time.Duration, localDataLabel bool, localSto
 
 		node.Status.Capacity[common.DatadogLocalStorageResource] = localDataQuantity.DeepCopy()
 		node.Status.Allocatable[common.DatadogLocalStorageResource] = localDataQuantity.DeepCopy()
+	}
+
+	return node
+}
+
+func buildTestTopoLVMNode(name string, age time.Duration, localStorageCapacityLabel string, localDataQuantity *resource.Quantity) *corev1.Node {
+	node := buildTestNode(name, age, false, localStorageCapacityLabel, nil)
+	node.Labels[common.DatadogLocalStorageProvisionerLabel] = common.DatadogStorageProvisionerTopoLVM
+
+	if localDataQuantity != nil {
+		node.Status.Capacity[common.DatadogEphemeralLocalDataResource] = localDataQuantity.DeepCopy()
+		node.Status.Allocatable[common.DatadogEphemeralLocalDataResource] = localDataQuantity.DeepCopy()
 	}
 
 	return node

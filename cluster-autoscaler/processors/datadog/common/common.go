@@ -28,6 +28,11 @@ const (
 	// DatadogLocalStorageCapacityLabel is storing the amount of local storage a new node will have
 	// e.g. nodegroups.datadoghq.com/local-storage-capacity=100Gi
 	DatadogLocalStorageCapacityLabel = "nodegroups.datadoghq.com/local-storage-capacity"
+	// DatadogLocalStorageProvisionerLabel identifies the software managing a node's local storage.
+	DatadogLocalStorageProvisionerLabel = "nodegroups.datadoghq.com/local-storage-provisioner"
+
+	// DatadogStorageProvisionerTopoLVM is the supported value of DatadogLocalStorageProvisionerLabel.
+	DatadogStorageProvisionerTopoLVM = "topolvm"
 
 	// DatadogLocalDataExistsResource is a virtual resource placed on new or future
 	// nodes offering local storage, and currently injected as requests on
@@ -40,6 +45,10 @@ const (
 	// Pending pods having a PVC for local-storage volumes.
 	// This is similar to DatadogLocalDataExistsResource, but this resource will have the actual amount of storage available on a node
 	DatadogLocalStorageResource apiv1.ResourceName = "node.datadoghq.com/local-storage"
+
+	// DatadogEphemeralLocalDataResource represents capacity available to generic
+	// ephemeral volumes backed by the ephemeral-local-data StorageClass.
+	DatadogEphemeralLocalDataResource apiv1.ResourceName = "storageclass/ephemeral-local-data"
 )
 
 var (
@@ -48,13 +57,14 @@ var (
 	DatadogLocalDataQuantity = resource.NewQuantity(1, resource.DecimalSI)
 )
 
-// NodeHasLocalData returns true if the node holds a local-storage:true label
+// NodeHasLocalData returns true for legacy local-data nodes and TopoLVM nodes.
 func NodeHasLocalData(node *apiv1.Node) bool {
 	if node == nil {
 		return false
 	}
-	value, ok := node.GetLabels()[DatadogLocalStorageLabel]
-	return ok && value == "true"
+	labels := node.GetLabels()
+	return labels[DatadogLocalStorageLabel] == "true" ||
+		labels[DatadogLocalStorageProvisionerLabel] == DatadogStorageProvisionerTopoLVM
 }
 
 // ReducedNodeInfo is a reduced NodeInfo interface mean to requires just what's
@@ -80,13 +90,26 @@ func SetNodeLocalDataResource(nodeInfo ReducedNodeInfo) {
 		node.Status.Capacity = apiv1.ResourceList{}
 	}
 
-	// Set the local-data resource to 1 unit
+	capacity := node.Labels[DatadogLocalStorageCapacityLabel]
+	capacityResource, err := resource.ParseQuantity(capacity)
+
+	if node.Labels[DatadogLocalStorageProvisionerLabel] == DatadogStorageProvisionerTopoLVM {
+		if err != nil {
+			klog.Warningf("failed to parse TopoLVM storage capacity information (%s) for node (%s): %v", capacity, node.Name, err)
+			return
+		}
+
+		node.Status.Capacity[DatadogEphemeralLocalDataResource] = capacityResource.DeepCopy()
+		node.Status.Allocatable[DatadogEphemeralLocalDataResource] = capacityResource.DeepCopy()
+		nodeInfo.SetNode(node)
+		return
+	}
+
+	// Legacy local-data nodes expose both a one-pod existence resource and a
+	// byte-sized capacity resource.
 	node.Status.Capacity[DatadogLocalDataExistsResource] = DatadogLocalDataQuantity.DeepCopy()
 	node.Status.Allocatable[DatadogLocalDataExistsResource] = DatadogLocalDataQuantity.DeepCopy()
 
-	// Set the local-storage resource to the value of the local-storage-capacity label
-	capacity := node.Labels[DatadogLocalStorageCapacityLabel]
-	capacityResource, err := resource.ParseQuantity(capacity)
 	if err != nil {
 		klog.Warningf("failed to parse local storage capacity information (%s) for node (%s): %v", capacity, node.Name, err)
 		// fallback to default if something went wrong with the label value

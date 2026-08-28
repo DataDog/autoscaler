@@ -135,6 +135,7 @@ func (gce *GceCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.N
 	return mig, nil
 }
 
+// HasInstance returns whether the given node exists in a managed instance group.
 func (gce *GceCloudProvider) HasInstance(node *apiv1.Node) (bool, error) {
 	ref, err := GceRefFromProviderId(node.Spec.ProviderID)
 	if err != nil {
