@@ -120,6 +120,12 @@ func (gce *GceCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 
 // NodeGroupForNode returns the node group for the given node.
 func (gce *GceCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.NodeGroup, error) {
+	if len(node.Spec.ProviderID) == 0 {
+		// Synthetic nodes (upcoming/template nodes injected into the cluster snapshot) and nodes
+		// whose providerID hasn't been set yet don't belong to any MIG we can resolve.
+		klog.V(6).Infof("Skipping the search for node group for node %q: it has no spec.ProviderID", node.Name)
+		return nil, nil
+	}
 	ref, err := GceRefFromProviderId(node.Spec.ProviderID)
 	if err != nil {
 		klog.Errorf("Error extracting node.Spec.ProviderID for node %v: %v", node.Name, err)
