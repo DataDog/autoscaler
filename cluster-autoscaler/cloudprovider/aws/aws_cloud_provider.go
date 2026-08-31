@@ -420,7 +420,8 @@ func (ng *AwsNodeGroup) TemplateNodeInfo() (*framework.NodeInfo, error) {
 		return nil, err
 	}
 
-	nodeInfo := framework.NewNodeInfo(node, nil, framework.NewPodInfo(cloudprovider.BuildKubeProxy(ng.asg.Name), nil))
+	resourceSlices := buildResourceSlicesFromTemplate(node, template.InstanceType)
+	nodeInfo := framework.NewNodeInfo(node, resourceSlices, framework.NewPodInfo(cloudprovider.BuildKubeProxy(ng.asg.Name), nil))
 	return nodeInfo, nil
 }
 
@@ -477,6 +478,8 @@ func BuildAWS(opts *coreoptions.AutoscalerOptions, do cloudprovider.NodeGroupDis
 	if err != nil {
 		klog.Fatalf("Failed to create AWS Manager: %v", err)
 	}
+
+	initDraGPUDataSource(opts) // see aws_dra_config.go; sets up the ConfigMap-backed GPU/MIG data source used by aws_dra.go/aws_dra_mig.go
 
 	provider, err := BuildAwsCloudProvider(manager, rl)
 	if err != nil {
