@@ -17,10 +17,9 @@ limitations under the License.
 package resourcequotas
 
 import (
-	"fmt"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
+	"k8s.io/klog/v2"
 )
 
 // NodeFilter customizes what nodes should be included in usage calculations.
@@ -77,7 +76,7 @@ func (u *usageCalculator) calculateUsages(autoscalingCtx *context.AutoscalingCon
 
 		ng, err := autoscalingCtx.CloudProvider.NodeGroupForNode(node)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get node group for node %q: %w", node.Name, err)
+			klog.Errorf("failed to get node group for node %q, falling back to node capacity: %v", node.Name, err)
 		}
 		delta, err := u.nodeCache.totalNodeResources(autoscalingCtx, node, ng)
 		if err != nil {
