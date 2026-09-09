@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	coreoptions "k8s.io/autoscaler/cluster-autoscaler/core/options"
@@ -871,4 +872,49 @@ func TestDeleteNodesWithPlaceholderAndStaleCache(t *testing.T) {
 	// This ensures only 2 instances are terminated which are mocked in this unit test
 	a.AssertNumberOfCalls(t, "TerminateInstanceInAutoScalingGroup", 2)
 
+}
+
+// TestGetNodeGpuConfig_DraOptsOutOfClassicReadinessCheck checks a DRA-plugin-managed node
+// gets DraDriverName set and ExtendedResourceName cleared, so it opts out of the classic
+// device-plugin readiness check.
+func TestGetNodeGpuConfig_DraOptsOutOfClassicReadinessCheck(t *testing.T) {
+	provider := &awsCloudProvider{}
+
+	t.Run("managed-by-gpu-dra-plugin label set", func(t *testing.T) {
+		node := &apiv1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "node-1",
+				Labels: map[string]string{
+					GPULabel:                 "nvidia-tesla-t4",
+					draPluginManagedLabelKey: "true",
+				},
+			},
+		}
+		cfg := provider.GetNodeGpuConfig(node)
+		assert.NotNil(t, cfg)
+		assert.Equal(t, nvidiaDRADriverName, cfg.DraDriverName)
+		assert.True(t, cfg.ExposedViaDra())
+		assert.Empty(t, cfg.ExtendedResourceName)
+	})
+
+	t.Run("no dra-plugin label falls back to classic device-plugin config", func(t *testing.T) {
+		node := &apiv1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "node-1",
+				Labels: map[string]string{GPULabel: "nvidia-tesla-t4"},
+			},
+			Status: apiv1.NodeStatus{
+				Allocatable: apiv1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(1, resource.DecimalSI)},
+			},
+		}
+		cfg := provider.GetNodeGpuConfig(node)
+		assert.NotNil(t, cfg)
+		assert.False(t, cfg.ExposedViaDra())
+		assert.Equal(t, apiv1.ResourceName("nvidia.com/gpu"), cfg.ExtendedResourceName)
+	})
+
+	t.Run("no GPU label and no allocatable returns nil", func(t *testing.T) {
+		node := &apiv1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+		assert.Nil(t, provider.GetNodeGpuConfig(node))
+	})
 }

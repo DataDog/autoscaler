@@ -48,6 +48,14 @@ const (
 	GPULabel = "k8s.amazonaws.com/accelerator"
 	// nodeNotPresentErr indicates no node with the given identifier present in AWS
 	nodeNotPresentErr = "node is not present in aws"
+
+	// draPluginManagedLabelKey is a boolean label ("true") set on node groups whose GPU is
+	// managed by the NVIDIA DRA plugin instead of the classic device-plugin.
+	draPluginManagedLabelKey = "managed-by-gpu-dra-plugin"
+
+	// nvidiaDRADriverName is the driver name the live NVIDIA DRA driver publishes as
+	// spec.driver. There is exactly one NVIDIA DRA driver, so this is hardcoded.
+	nvidiaDRADriverName = "gpu.nvidia.com"
 )
 
 var (
@@ -102,7 +110,18 @@ func (aws *awsCloudProvider) GetAvailableGPUTypes() map[string]struct{} {
 // GetNodeGpuConfig returns the label, type and resource name for the GPU added to node. If node doesn't have
 // any GPUs, it returns nil.
 func (aws *awsCloudProvider) GetNodeGpuConfig(node *apiv1.Node) *cloudprovider.GpuConfig {
-	return gpu.GetNodeGPUFromCloudProvider(aws, node)
+	gpuConfig := gpu.GetNodeGPUFromCloudProvider(aws, node)
+	if gpuConfig == nil {
+		return nil
+	}
+	// DRA-managed GPUs never appear in node Allocatable, so without this a DRA node gets
+	// permanently marked unready by GpuCustomResourcesProcessor. ExposedViaDra() is the
+	// opt-out signal.
+	if node.Labels[draPluginManagedLabelKey] == "true" {
+		gpuConfig.DraDriverName = nvidiaDRADriverName
+		gpuConfig.ExtendedResourceName = ""
+	}
+	return gpuConfig
 }
 
 // NodeGroups returns all node groups configured for this cloud provider.
