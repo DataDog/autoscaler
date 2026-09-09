@@ -42,7 +42,8 @@ import (
 // the claim and trigger scale-up.
 //
 // Nothing here is intended for upstream: this is a Datadog-specific way of keeping GPU
-// attribute data operator-editable without a CA rebuild/redeploy.
+// attribute data operator-editable without a CA rebuild/redeploy. Upstream tracks proper
+// DRA scale-from-zero support in https://github.com/kubernetes/autoscaler/issues/7799.
 
 // gpuDeviceType is the value of the "type" device attribute, matching what the NVIDIA
 // DRA driver emits at runtime. draPluginManagedLabelKey and nvidiaDRADriverName are
