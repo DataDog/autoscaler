@@ -29,18 +29,13 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// ConfigMap-backed alternative to the hardcoded GPU/MIG attribute maps in aws_dra.go and
-// aws_dra_mig.go. Instead of compiling GPU capability data into the binary, this reads it
-// from a ConfigMap so an operator can add a GPU model or fix a wrong MIG placement table by
-// editing the ConfigMap, with no CA rebuild/redeploy.
+// ConfigMap-backed GPU/MIG attribute data for aws_dra.go/aws_dra_mig.go, so an operator can
+// add a GPU model or fix a MIG table by editing the ConfigMap, no CA rebuild/redeploy.
 //
-// Follows the same pattern as the priority expander (expander/priority/priority.go): a
-// lightweight client-go Reflector/Indexer-backed lister (utils/kubernetes.
-// NewConfigMapListerForNamespace), no persistent parsed cache — every call re-reads the
-// local watch-cache and re-parses the YAML — and a fail-safe fallback (log + not-found,
-// never a crash) on any error. The lister's background watch means an edited ConfigMap
-// takes effect on the very next call, typically within a second or two, not up to the
-// hourly resync period.
+// Follows the priority expander's pattern (expander/priority/priority.go): a lightweight
+// Reflector/Indexer-backed lister (utils/kubernetes.NewConfigMapListerForNamespace), no
+// parsed cache, fail-safe fallback (log + not-found, never a crash) on any error. An edited
+// ConfigMap takes effect on the next call (~1-2s via the watch), not the hourly resync.
 
 const (
 	// gpuConfigMapName is the ConfigMap holding GPU/MIG capability data, read from the
@@ -182,12 +177,10 @@ type noopGPUDataSource struct{}
 func (noopGPUDataSource) fullGPUAttributes(string) (fullGPUAttrs, bool) { return fullGPUAttrs{}, false }
 func (noopGPUDataSource) migVariants(string) ([]migVariant, bool)       { return nil, false }
 
-// gpuDataSource is the process-wide source of GPU/MIG capability data consulted by
-// aws_dra.go/aws_dra_mig.go. Defaults to noopGPUDataSource (fail-safe: no fabrication for
-// any GPU short name) until initDraGPUDataSource runs; there is exactly one AWS cloud
-// provider per process, so this mirrors the existing single-init pattern used elsewhere in
-// this package (e.g. RegisterMetrics in aws_cloud_provider.go) rather than needing to be
-// threaded through AwsManager/AwsNodeGroup as an explicit dependency.
+// gpuDataSource is the process-wide GPU/MIG capability source used by aws_dra.go/
+// aws_dra_mig.go. Defaults to noopGPUDataSource (fail-safe: no fabrication) until
+// initDraGPUDataSource runs — single-init, same pattern as RegisterMetrics elsewhere
+// in this package, since there's exactly one AWS cloud provider per process.
 var gpuDataSource draGPUDataSource = noopGPUDataSource{}
 
 // initDraGPUDataSource wires up the ConfigMap-backed gpuDataSource from BuildAWS. Falls

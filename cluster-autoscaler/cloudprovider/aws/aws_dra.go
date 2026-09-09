@@ -27,38 +27,23 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// Dynamic Resource Allocation (DRA) scale-from-zero support for GPU node groups.
+// DRA scale-from-zero support for GPU node groups. TemplateNodeInfo() otherwise builds a
+// template node with no ResourceSlices, so the DRA scheduler plugin can't allocate a claim
+// against it and never scales up. This file fabricates the ResourceSlices the NVIDIA DRA
+// driver would publish, from EC2 instance metadata plus a ConfigMap (aws_dra_config.go).
 //
-// Cluster Autoscaler cannot make correct scale-from-zero decisions for pods that
-// use DRA ResourceClaims (e.g. GPU requests via DRA), because TemplateNodeInfo()
-// builds a template node with no ResourceSlices attached. During scale-up the DRA
-// scheduler plugin then finds no device inventory to allocate the claim against and
-// concludes the node group cannot help the pod, so it never scales up.
-//
-// This file fabricates the ResourceSlices that the NVIDIA DRA driver would publish
-// once the node boots, derived from the EC2 instance type's GPU metadata plus GPU
-// attribute data read from a ConfigMap (see aws_dra_config.go, draGPUDataSource). The
-// slices are attached to the template node so the scheduler's simulation can allocate
-// the claim and trigger scale-up.
-//
-// Nothing here is intended for upstream: this is a Datadog-specific way of keeping GPU
-// attribute data operator-editable without a CA rebuild/redeploy. Upstream tracks proper
-// DRA scale-from-zero support in https://github.com/kubernetes/autoscaler/issues/7799.
+// Datadog-specific; upstream tracks proper support in kubernetes/autoscaler#7799.
 
 // gpuDeviceType is the value of the "type" device attribute, matching what the NVIDIA
 // DRA driver emits at runtime. draPluginManagedLabelKey and nvidiaDRADriverName are
 // defined in aws_cloud_provider.go, shared with the GetNodeGpuConfig readiness opt-out.
 const gpuDeviceType = "gpu"
 
-// GPU attribute data is read from a ConfigMap at runtime (see aws_dra_config.go,
-// draGPUDataSource), keyed on the EC2 GpuInfo short name, since EC2 only exposes the short
-// name and per-device memory — everything else the driver publishes via NVML must be
-// reproduced there for CEL selectors to match during scale-up simulation.
+// GPU attribute data is read from a ConfigMap (aws_dra_config.go, draGPUDataSource) keyed
+// on the EC2 GpuInfo short name, since EC2 exposes only the short name and per-device memory.
 
-// buildResourceSlicesFromTemplate fabricates the DRA ResourceSlices for a template node,
-// reproducing what the NVIDIA DRA driver would publish on the real node. It returns nil
-// for node groups that are not DRA-enabled or have no GPUs, leaving non-DRA behaviour
-// unchanged.
+// buildResourceSlicesFromTemplate fabricates DRA ResourceSlices for a template node. Returns
+// nil for node groups that aren't DRA-plugin-managed or have no GPUs.
 func buildResourceSlicesFromTemplate(node *apiv1.Node, instanceType *InstanceType) []*resourceapi.ResourceSlice {
 	if node == nil || instanceType == nil {
 		return nil

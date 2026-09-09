@@ -28,31 +28,20 @@ import (
 )
 
 // MIG (Multi-Instance GPU) scale-from-zero support, the Phase 2 extension of aws_dra.go.
+// Reproduces the partitionable-device ResourceSlices the NVIDIA DRA driver publishes for
+// a MIG-enabled node, so scale-from-zero can allocate a MIG claim against the template.
 //
-// A MIG-capable GPU can be carved into isolated partitions ("profiles"); with dynamic MIG
-// + DRA the NVIDIA driver reconfigures partitions per-pod at schedule time, so one
-// MIG-enabled node group replaces the combinatorial explosion of per-profile node groups.
-// For scale-from-zero the scheduler must be able to allocate a MIG ResourceClaim against
-// the template node, so this file reproduces the partitionable-device ResourceSlices the
-// driver publishes at runtime (KEP-4815).
+// Shape (verified against a real RTX PRO 6000 Blackwell g7e node): one SharedCounters
+// slice with one CounterSet per physical GPU, plus one devices slice per physical GPU
+// (whole-GPU device + every profile x placement, each ConsumesCounters from its GPU's
+// CounterSet) — G GPUs yields 1+G slices sharing (Driver, Pool.Name).
 //
-// SHAPE (verified against a real RTX PRO 6000 Blackwell g7e node):
+// Gotcha: counter names are hyphenated in CounterSet/ConsumesCounters (copy-engines) but
+// camelCase in device Capacity (copyEngines) — both verbatim from the driver.
 //
-//   - one counters slice: SharedCounters, one CounterSet per physical GPU, no devices
-//   - one devices slice PER physical GPU: the whole-GPU device plus every MIG
-//     (profile x placement), each with ConsumesCounters referencing its GPU's CounterSet
-//
-// So a node with G GPUs yields 1 + G ResourceSlices, all sharing (Driver, Pool.Name).
-//
-// Two counter-name conventions, both verbatim from the driver: CounterSet / ConsumesCounters
-// use hyphenated names (copy-engines), while device Capacity uses camelCase (copyEngines).
-//
-// The tables are read from a ConfigMap at runtime (see aws_dra_config.go,
-// draGPUDataSource), populated from a real node's published ResourceSlice (capture with
-// `kubectl get resourceslice -o json`) rather than compiled into the binary — see
-// draGPUDataSource.migVariants. Only the plain profiles are modelled — the driver also
-// publishes +gfx/+me/+me.all media/graphics variants, which are omitted here (a claim for
-// a plain profile does not need them).
+// Tables are ConfigMap-driven (aws_dra_config.go, draGPUDataSource.migVariants), captured
+// from a real node's published ResourceSlice rather than compiled in. Only plain profiles
+// are modelled — the driver's +gfx/+me/+me.all variants aren't needed for a plain claim.
 
 const (
 	// migProfileAttr is the device attribute carrying the MIG profile name (e.g. "1g.24gb").
@@ -87,11 +76,9 @@ const (
 	rtxPro6000ShortName = "RTX PRO Server 6000"
 )
 
-// engineCounts is the per-device hardware-unit budget shared by a device's capacity and its
-// counter consumption (a MIG device statically consumes exactly what it exposes). Fields are
-// exported with JSON/YAML tags so this same type is both the internal representation used
-// throughout this file AND the ConfigMap-unmarshal target (see aws_dra_config.go) — no
-// separate mirror struct/converter layer.
+// engineCounts is the per-device hardware-unit budget (a MIG device statically consumes
+// exactly what it exposes). Exported with JSON/YAML tags so it doubles as the ConfigMap
+// unmarshal target (aws_dra_config.go) — no separate mirror struct.
 type engineCounts struct {
 	Multiprocessors int64  `json:"multiprocessors,omitempty"`
 	CopyEngines     int64  `json:"copyEngines,omitempty"`
@@ -124,10 +111,9 @@ type migVariant struct {
 	Profiles              []migProfile `json:"profiles"`
 }
 
-// validate checks every resource.Quantity string an operator can supply in the ConfigMap
-// before it reaches this file's resource.MustParse calls, which panic on an invalid quantity.
-// A variant failing validation is dropped entirely rather than partially applied (see
-// aws_dra_config.go, configMapGPUDataSource.migVariants).
+// validate checks operator-supplied resource.Quantity strings before they reach this file's
+// resource.MustParse calls, which panic on an invalid quantity. A variant failing validation
+// is dropped entirely rather than partially applied (aws_dra_config.go, migVariants).
 func (v migVariant) validate() error {
 	if v.GPUMemoryMiB <= 0 {
 		return fmt.Errorf("gpuMemoryMiB must be positive, got %d", v.GPUMemoryMiB)
@@ -144,11 +130,10 @@ func (v migVariant) validate() error {
 }
 
 // migVariantMatchToleranceFraction bounds how far a variant's gpuMemoryMiB may diverge from
-// EC2's reported per-device memory (as a fraction of the variant's memory) and still be
-// treated as the same physical SKU — e.g. the RTX PRO Server 6000's EC2-reported 98304MiB
-// vs. its driver-verified "whole.memory" of 95Gi/97280MiB is a real, observed ~1% gap. A flat
-// MiB tolerance doesn't generalize across GPU memory scales, so this is proportional, with a
-// floor for small-memory GPUs where a flat percentage would be too tight.
+// EC2's reported per-device memory and still count as the same SKU — e.g. RTX PRO Server
+// 6000's EC2-reported 98304MiB vs. its driver-verified 97280MiB is a real ~1% gap.
+// Proportional (not flat MiB) so it generalizes across GPU memory scales, with a floor for
+// small-memory GPUs where a flat percentage would be too tight.
 const (
 	migVariantMatchToleranceFraction = 0.02 // 2%, double the largest gap observed so far
 	migVariantMatchToleranceFloorMiB = 1024
@@ -167,11 +152,8 @@ func migVariantMatchTolerance(variantGPUMemoryMiB int64) int64 {
 }
 
 // selectMIGVariant picks the variant of a GPU model whose per-device memory matches EC2's
-// report within migVariantMatchTolerance. Returns false if the model has no MIG table in the
-// ConfigMap-backed data source, or no variant is close enough to trust (see aws_dra_config.go,
-// gpuDataSource; today's ConfigMap ships VERIFIED tables for RTX PRO 6000 and H100,
-// transcribed from real nodes' published ResourceSlices, and an UNVERIFIED placeholder for
-// A100).
+// report within tolerance. Returns false if the model has no MIG table in the ConfigMap
+// (gpuDataSource), or no variant is close enough to trust.
 func selectMIGVariant(shortName string, gpuMemoryMiB int64) (migVariant, bool) {
 	variants, ok := gpuDataSource.migVariants(shortName)
 	if !ok || len(variants) == 0 {
@@ -199,14 +181,10 @@ func selectMIGVariant(shortName string, gpuMemoryMiB int64) (migVariant, bool) {
 
 // buildMIGResourceSlices builds the counters slice plus one devices slice per GPU for a
 // MIG-enabled node group, matching the real driver's shape. Returns nil if the SKU has no
-// MIG table (so the node group fails safe rather than advertising a bogus inventory).
+// MIG table, so the node group fails safe rather than advertising a bogus inventory.
 //
-// A single physical GPU's devices are split across multiple ResourceSlices if they exceed
-// resourceapi.ResourceSliceMaxDevices (128) — the API rejects a slice over that limit. No known
-// NVIDIA MIG GPU today has anywhere near 128 (profile x placement) devices on one physical GPU
-// (H100, the densest table here, has 18), so this is defensive rather than reachable with
-// today's hardware; it's here so a future denser MIG geometry fails a k8s API validation error
-// at slice-creation time on the real node rather than silently producing an invalid template.
+// A GPU's devices split across multiple slices if they exceed the API's 128-device limit —
+// defensive, since no known GPU today (H100's 18 is the densest here) is close to that.
 func buildMIGResourceSlices(node *apiv1.Node, instanceType *InstanceType, driver string) []*resourceapi.ResourceSlice {
 	v, ok := selectMIGVariant(instanceType.GPUShortName, instanceType.GPUMemoryMiB)
 	if !ok {
