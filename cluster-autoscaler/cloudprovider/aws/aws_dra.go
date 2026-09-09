@@ -50,14 +50,10 @@ import (
 // defined in aws_cloud_provider.go, shared with the GetNodeGpuConfig readiness opt-out.
 const gpuDeviceType = "gpu"
 
-// GPU attribute data, keyed on the EC2 GpuInfo short name (InstanceType.GPUShortName), is
-// read from a ConfigMap at runtime via draGPUDataSource (see aws_dra_config.go) rather than
-// compiled into the binary. EC2 only exposes the short name (e.g. "A10G", "H100") and
-// per-device memory; every other attribute the NVIDIA driver publishes via NVML at runtime
-// must be reproduced in the ConfigMap so CEL selectors on those attributes evaluate
-// correctly during scale-up simulation. An instance type whose short name is absent from
-// the ConfigMap still gets a ResourceSlice with type=gpu and memory capacity, just without
-// the richer attributes.
+// GPU attribute data is read from a ConfigMap at runtime (see aws_dra_config.go,
+// draGPUDataSource), keyed on the EC2 GpuInfo short name, since EC2 only exposes the short
+// name and per-device memory — everything else the driver publishes via NVML must be
+// reproduced there for CEL selectors to match during scale-up simulation.
 
 // buildResourceSlicesFromTemplate fabricates the DRA ResourceSlices for a template node,
 // reproducing what the NVIDIA DRA driver would publish on the real node. It returns nil
@@ -76,19 +72,9 @@ func buildResourceSlicesFromTemplate(node *apiv1.Node, instanceType *InstanceTyp
 	// CA logs (EC2 short names are not always known ahead of time).
 	klog.V(4).Infof("DRA: building ResourceSlices for node group GPU %q (%s, driver %s)", instanceType.GPUShortName, instanceType.InstanceType, driver)
 
-	// GPUShortName/GPUMemoryMiB are populated only via the dynamic EC2 API path
-	// (aws_util.go), never by the static instance-type list (--aws-use-static-instance-list),
-	// so this combination means the operator is running that mode.
-	//
-	// Two options here: warn and keep going with a degraded full-GPU slice (current behavior),
-	// or fail safe and return nil like the "unknown SKU"/no-MIG-table paths do. We warn rather
-	// than suppress because the degraded slice is still useful for the common case: a claim
-	// selecting only on type=gpu (no attribute/memory constraint) is satisfied correctly by it,
-	// and static-instance-list is chosen specifically for private/airgapped clusters where the
-	// EC2 API isn't reachable at all — silently returning nil there would make DRA scale-from-
-	// zero permanently non-functional for every GPU node group with no operator-visible cause
-	// beyond this log line. A claim that does constrain on attributes or memory won't match
-	// during simulation either way (missing vs. wrong), so nothing is lost by not suppressing.
+	// Empty short name + memory means --aws-use-static-instance-list is in use (EC2 API
+	// unreachable). Warn and keep the degraded, attribute-less slice rather than returning
+	// nil, so scale-from-zero still works for claims that don't constrain on attributes.
 	if instanceType.GPUShortName == "" && instanceType.GPUMemoryMiB == 0 {
 		klog.Warningf("DRA enabled for node group with GPU instance type %s but GPUShortName/GPUMemoryMiB are unset (likely --aws-use-static-instance-list); fabricated ResourceSlices will be missing attributes and MIG groups will get none", instanceType.InstanceType)
 	}
@@ -145,13 +131,9 @@ func buildFullGPUResourceSlices(node *apiv1.Node, instanceType *InstanceType, dr
 	return slices
 }
 
-// gpuDeviceAttributes returns the device attributes for a GPU short name's looked-up
-// fullGPUAttrs. "type" is always present; the richer attributes are added only when found is
-// true (the short name is known to the ConfigMap-backed data source, see aws_dra_config.go,
-// gpuDataSource). Runtime-only attributes the driver publishes from NVML/sysfs
-// (driverVersion, cudaDriverVersion, uuid, pciBusID, pcieRoot, addressingMode) are
-// deliberately omitted — they cannot be known pre-scale, so CEL selectors referencing them
-// will not match template slices.
+// gpuDeviceAttributes returns the device attributes for a looked-up fullGPUAttrs. "type" is
+// always present; richer attributes are added only if found. Runtime-only attributes NVML
+// publishes (driverVersion, uuid, pciBusID, ...) are omitted — unknowable pre-scale.
 func gpuDeviceAttributes(a fullGPUAttrs, found bool) map[resourceapi.QualifiedName]resourceapi.DeviceAttribute {
 	attrs := map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
 		"type": {StringValue: ptr.To(gpuDeviceType)},
