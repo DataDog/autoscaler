@@ -40,18 +40,18 @@ func TestBuildResourceSlicesFromTemplate_NonDRA(t *testing.T) {
 		instanceType *InstanceType
 	}{
 		{
-			name:         "no dra-driver label returns nil",
+			name:         "no dra-plugin-managed label returns nil",
 			labels:       map[string]string{},
 			instanceType: &InstanceType{InstanceType: "g5.xlarge", GPU: 1, GPUShortName: "A10G"},
 		},
 		{
-			name:         "dra-driver set but no GPU returns nil",
-			labels:       map[string]string{draDriverLabelKey: "gpu.nvidia.com"},
+			name:         "dra-plugin-managed set but no GPU returns nil",
+			labels:       map[string]string{draPluginManagedLabelKey: "true"},
 			instanceType: &InstanceType{InstanceType: "m5.xlarge", GPU: 0},
 		},
 		{
 			name:         "nil instance type returns nil",
-			labels:       map[string]string{draDriverLabelKey: "gpu.nvidia.com"},
+			labels:       map[string]string{draPluginManagedLabelKey: "true"},
 			instanceType: nil,
 		},
 	}
@@ -64,7 +64,7 @@ func TestBuildResourceSlicesFromTemplate_NonDRA(t *testing.T) {
 }
 
 func TestBuildResourceSlicesFromTemplate_FullGPU(t *testing.T) {
-	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	node := draNode("node-1", map[string]string{draPluginManagedLabelKey: "true"})
 	// g5.12xlarge has 4 A10G GPUs; the real driver emits one slice per GPU.
 	it := &InstanceType{InstanceType: "g5.12xlarge", GPU: 4, GPUShortName: "A10G", GPUMemoryMiB: 24576}
 
@@ -108,7 +108,7 @@ func TestBuildResourceSlicesFromTemplate_FullGPU_MemoryOverride(t *testing.T) {
 		"H200": {ProductName: "NVIDIA H200", Brand: "Nvidia", Architecture: "Hopper", MemoryMiB: 143771},
 	}}
 
-	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	node := draNode("node-1", map[string]string{draPluginManagedLabelKey: "true"})
 	it := &InstanceType{InstanceType: "p5e.48xlarge", GPU: 1, GPUShortName: "H200", GPUMemoryMiB: 144000}
 
 	slices := buildResourceSlicesFromTemplate(node, it)
@@ -119,7 +119,7 @@ func TestBuildResourceSlicesFromTemplate_FullGPU_MemoryOverride(t *testing.T) {
 }
 
 func TestBuildResourceSlicesFromTemplate_FullGPU_UnknownSKU(t *testing.T) {
-	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	node := draNode("node-1", map[string]string{draPluginManagedLabelKey: "true"})
 	it := &InstanceType{InstanceType: "gNext.xlarge", GPU: 1, GPUShortName: "B200", GPUMemoryMiB: 0}
 
 	slices := buildResourceSlicesFromTemplate(node, it)
@@ -138,7 +138,7 @@ func TestBuildResourceSlicesFromTemplate_FullGPU_UnknownSKU(t *testing.T) {
 // device slice holding the whole-GPU device plus the plain MIG (profile x placement) set.
 func TestBuildMIGResourceSlices_RTXPro6000(t *testing.T) {
 	node := draNode("node-1", map[string]string{
-		draDriverLabelKey: "gpu.nvidia.com",
+		draPluginManagedLabelKey: "true",
 	})
 	// rtxPro6000ShortName has a MIG profile table in testGPUDataSource, so the MIG path is
 	// auto-detected without any opt-in label.
@@ -193,7 +193,7 @@ func TestBuildMIGResourceSlices_RTXPro6000(t *testing.T) {
 // well-formed slice set; values are placeholders pending a real capture.
 func TestBuildMIGResourceSlices_A100Structure(t *testing.T) {
 	node := draNode("node-1", map[string]string{
-		draDriverLabelKey: "gpu.nvidia.com",
+		draPluginManagedLabelKey: "true",
 	})
 	// A100 has a MIG profile table in testGPUDataSource, so the MIG path is auto-detected.
 	it := &InstanceType{InstanceType: "p4d.24xlarge", GPU: 1, GPUShortName: "A100", GPUMemoryMiB: 40960}
@@ -233,7 +233,7 @@ func TestBuildMIGResourceSlices_DeviceChunking(t *testing.T) {
 	}}
 
 	node := draNode("node-1", map[string]string{
-		draDriverLabelKey: "gpu.nvidia.com",
+		draPluginManagedLabelKey: "true",
 	})
 	// "DenseGPU" has a MIG profile table in the fake data source set up above, so the MIG
 	// path is auto-detected.
@@ -262,7 +262,7 @@ func TestBuildMIGResourceSlices_DeviceChunking(t *testing.T) {
 // auto-detect in buildResourceSlicesFromTemplate never calls into the MIG path for it, and
 // instead falls back to the (degraded but non-nil) full-GPU slices.
 func TestBuildResourceSlicesFromTemplate_NoMIGTableFallsBackToFullGPU(t *testing.T) {
-	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	node := draNode("node-1", map[string]string{draPluginManagedLabelKey: "true"})
 	// L4 has no MIG table in testGPUDataSource.
 	it := &InstanceType{InstanceType: "g6.xlarge", GPU: 1, GPUShortName: "L4", GPUMemoryMiB: 24576}
 
@@ -275,7 +275,7 @@ func TestBuildResourceSlicesFromTemplate_NoMIGTableFallsBackToFullGPU(t *testing
 // no partial slices) when called for a short name with no MIG table, independent of how a
 // caller decided to invoke it.
 func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
-	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	node := draNode("node-1", map[string]string{draPluginManagedLabelKey: "true"})
 	// L4 has no MIG table -> no slices, so the node group won't falsely trigger scale-up.
 	it := &InstanceType{InstanceType: "g6.xlarge", GPU: 1, GPUShortName: "L4", GPUMemoryMiB: 24576}
 
@@ -288,7 +288,7 @@ func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
 // slices) instead of picking the nearest variant regardless of distance — picking, e.g., the
 // A100 fixture's 40GiB variant for an 80GiB instance would advertise the wrong profiles.
 func TestBuildMIGResourceSlices_MemoryMismatch(t *testing.T) {
-	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	node := draNode("node-1", map[string]string{draPluginManagedLabelKey: "true"})
 	// A100 has a MIG table (so the MIG path is auto-detected), but testGPUDataSource's only
 	// A100 variant is 40960 MiB; 80000 is far outside tolerance.
 	it := &InstanceType{InstanceType: "p4de.24xlarge", GPU: 1, GPUShortName: "A100", GPUMemoryMiB: 80000}

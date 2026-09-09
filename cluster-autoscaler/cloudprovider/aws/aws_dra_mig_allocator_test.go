@@ -103,7 +103,7 @@ func migClaim(name, profile string) *resourceapi.ResourceClaim {
 // which this branch (CA 1.35) vendors. This test would fail if run against v0.34.2.
 func TestMIGCounterConflictDetection(t *testing.T) {
 	node := draNode("test-node", map[string]string{
-		draDriverLabelKey: "gpu.nvidia.com",
+		draPluginManagedLabelKey: "true",
 	})
 	instanceType := &InstanceType{
 		InstanceType: "g7e.4xlarge",

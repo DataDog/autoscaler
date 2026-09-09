@@ -44,17 +44,10 @@ import (
 // Nothing here is intended for upstream: this is a Datadog-specific way of keeping GPU
 // attribute data operator-editable without a CA rebuild/redeploy.
 
-const (
-	// draDriverLabelKey opts a node group into DRA ResourceSlice generation and names
-	// the DRA driver the fabricated slices belong to (e.g. "gpu.nvidia.com"). It is set
-	// as a node label on the node group's kubelet labels and reaches the template node
-	// via the node-template/label ASG tag path (extractLabelsFromAsg).
-	draDriverLabelKey = "node.datadoghq.com/dra-driver"
-
-	// gpuDeviceType is the value of the "type" device attribute, matching what the
-	// NVIDIA DRA driver emits at runtime.
-	gpuDeviceType = "gpu"
-)
+// gpuDeviceType is the value of the "type" device attribute, matching what the NVIDIA
+// DRA driver emits at runtime. draPluginManagedLabelKey and nvidiaDRADriverName are
+// defined in aws_cloud_provider.go, shared with the GetNodeGpuConfig readiness opt-out.
+const gpuDeviceType = "gpu"
 
 // GPU attribute data, keyed on the EC2 GpuInfo short name (InstanceType.GPUShortName), is
 // read from a ConfigMap at runtime via draGPUDataSource (see aws_dra_config.go) rather than
@@ -73,10 +66,10 @@ func buildResourceSlicesFromTemplate(node *apiv1.Node, instanceType *InstanceTyp
 	if node == nil || instanceType == nil {
 		return nil
 	}
-	driver := node.Labels[draDriverLabelKey]
-	if driver == "" || instanceType.GPU == 0 {
+	if node.Labels[draPluginManagedLabelKey] != "true" || instanceType.GPU == 0 {
 		return nil
 	}
+	driver := nvidiaDRADriverName
 
 	// Log the observed GPU short name so the correct ConfigMap key can be discovered from
 	// CA logs (EC2 short names are not always known ahead of time).
