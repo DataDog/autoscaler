@@ -51,11 +51,6 @@ const (
 	// via the node-template/label ASG tag path (extractLabelsFromAsg).
 	draDriverLabelKey = "node.datadoghq.com/dra-driver"
 
-	// draMIGEnabledLabelKey marks a node group as MIG-enabled. When set to "true", the
-	// builder emits MIG profile-placement devices plus counter sets instead of a single
-	// full-GPU device. See aws_dra_mig.go.
-	draMIGEnabledLabelKey = "node.datadoghq.com/dra-mig-enabled"
-
 	// gpuDeviceType is the value of the "type" device attribute, matching what the
 	// NVIDIA DRA driver emits at runtime.
 	gpuDeviceType = "gpu"
@@ -104,8 +99,12 @@ func buildResourceSlicesFromTemplate(node *apiv1.Node, instanceType *InstanceTyp
 		klog.Warningf("DRA enabled for node group with GPU instance type %s but GPUShortName/GPUMemoryMiB are unset (likely --aws-use-static-instance-list); fabricated ResourceSlices will be missing attributes and MIG groups will get none", instanceType.InstanceType)
 	}
 
-	// MIG-enabled node groups advertise partitionable devices (see aws_dra_mig.go).
-	if node.Labels[draMIGEnabledLabelKey] == "true" {
+	// A GPU is MIG-capable, and thus advertises partitionable devices (see aws_dra_mig.go),
+	// exactly when the ConfigMap-backed data source has a MIG profile table for its short
+	// name — the NVIDIA DRA plugin runs with DynamicMIG=true uniformly, so any MIG-capable
+	// GPU publishes MIG slices at runtime. A GPU with no table is not MIG-capable and gets
+	// full-GPU slices, the only path available for it.
+	if _, ok := gpuDataSource.migVariants(instanceType.GPUShortName); ok {
 		return buildMIGResourceSlices(node, instanceType, driver)
 	}
 

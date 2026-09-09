@@ -138,9 +138,10 @@ func TestBuildResourceSlicesFromTemplate_FullGPU_UnknownSKU(t *testing.T) {
 // device slice holding the whole-GPU device plus the plain MIG (profile x placement) set.
 func TestBuildMIGResourceSlices_RTXPro6000(t *testing.T) {
 	node := draNode("node-1", map[string]string{
-		draDriverLabelKey:     "gpu.nvidia.com",
-		draMIGEnabledLabelKey: "true",
+		draDriverLabelKey: "gpu.nvidia.com",
 	})
+	// rtxPro6000ShortName has a MIG profile table in testGPUDataSource, so the MIG path is
+	// auto-detected without any opt-in label.
 	it := &InstanceType{InstanceType: "g7e.12xlarge", GPU: 2, GPUShortName: rtxPro6000ShortName, GPUMemoryMiB: 98304}
 
 	slices := buildResourceSlicesFromTemplate(node, it)
@@ -192,9 +193,9 @@ func TestBuildMIGResourceSlices_RTXPro6000(t *testing.T) {
 // well-formed slice set; values are placeholders pending a real capture.
 func TestBuildMIGResourceSlices_A100Structure(t *testing.T) {
 	node := draNode("node-1", map[string]string{
-		draDriverLabelKey:     "gpu.nvidia.com",
-		draMIGEnabledLabelKey: "true",
+		draDriverLabelKey: "gpu.nvidia.com",
 	})
+	// A100 has a MIG profile table in testGPUDataSource, so the MIG path is auto-detected.
 	it := &InstanceType{InstanceType: "p4d.24xlarge", GPU: 1, GPUShortName: "A100", GPUMemoryMiB: 40960}
 
 	slices := buildResourceSlicesFromTemplate(node, it)
@@ -232,9 +233,10 @@ func TestBuildMIGResourceSlices_DeviceChunking(t *testing.T) {
 	}}
 
 	node := draNode("node-1", map[string]string{
-		draDriverLabelKey:     "gpu.nvidia.com",
-		draMIGEnabledLabelKey: "true",
+		draDriverLabelKey: "gpu.nvidia.com",
 	})
+	// "DenseGPU" has a MIG profile table in the fake data source set up above, so the MIG
+	// path is auto-detected.
 	it := &InstanceType{InstanceType: "dense.xlarge", GPU: 1, GPUShortName: "DenseGPU", GPUMemoryMiB: 1000}
 
 	slices := buildResourceSlicesFromTemplate(node, it)
@@ -255,15 +257,29 @@ func TestBuildMIGResourceSlices_DeviceChunking(t *testing.T) {
 	}
 }
 
-func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
-	node := draNode("node-1", map[string]string{
-		draDriverLabelKey:     "gpu.nvidia.com",
-		draMIGEnabledLabelKey: "true",
-	})
-	// L4 has no MIG table -> no slices, so the node group won't falsely trigger scale-up.
+// TestBuildResourceSlicesFromTemplate_NoMIGTableFallsBackToFullGPU checks that a GPU with no
+// MIG profile table in the data source is treated as not MIG-capable end to end: the
+// auto-detect in buildResourceSlicesFromTemplate never calls into the MIG path for it, and
+// instead falls back to the (degraded but non-nil) full-GPU slices.
+func TestBuildResourceSlicesFromTemplate_NoMIGTableFallsBackToFullGPU(t *testing.T) {
+	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	// L4 has no MIG table in testGPUDataSource.
 	it := &InstanceType{InstanceType: "g6.xlarge", GPU: 1, GPUShortName: "L4", GPUMemoryMiB: 24576}
 
 	slices := buildResourceSlicesFromTemplate(node, it)
+	require.Len(t, slices, 1, "no MIG table -> full-GPU fallback, one slice for the one GPU")
+	assertStringAttr(t, slices[0].Spec.Devices[0], "type", "gpu")
+}
+
+// TestBuildMIGResourceSlices_UnknownSKU checks buildMIGResourceSlices itself fails safe (nil,
+// no partial slices) when called for a short name with no MIG table, independent of how a
+// caller decided to invoke it.
+func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
+	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	// L4 has no MIG table -> no slices, so the node group won't falsely trigger scale-up.
+	it := &InstanceType{InstanceType: "g6.xlarge", GPU: 1, GPUShortName: "L4", GPUMemoryMiB: 24576}
+
+	slices := buildMIGResourceSlices(node, it, "gpu.nvidia.com")
 	assert.Nil(t, slices)
 }
 
@@ -272,11 +288,9 @@ func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
 // slices) instead of picking the nearest variant regardless of distance — picking, e.g., the
 // A100 fixture's 40GiB variant for an 80GiB instance would advertise the wrong profiles.
 func TestBuildMIGResourceSlices_MemoryMismatch(t *testing.T) {
-	node := draNode("node-1", map[string]string{
-		draDriverLabelKey:     "gpu.nvidia.com",
-		draMIGEnabledLabelKey: "true",
-	})
-	// testGPUDataSource's only A100 variant is 40960 MiB; 80000 is far outside tolerance.
+	node := draNode("node-1", map[string]string{draDriverLabelKey: "gpu.nvidia.com"})
+	// A100 has a MIG table (so the MIG path is auto-detected), but testGPUDataSource's only
+	// A100 variant is 40960 MiB; 80000 is far outside tolerance.
 	it := &InstanceType{InstanceType: "p4de.24xlarge", GPU: 1, GPUShortName: "A100", GPUMemoryMiB: 80000}
 
 	slices := buildResourceSlicesFromTemplate(node, it)
