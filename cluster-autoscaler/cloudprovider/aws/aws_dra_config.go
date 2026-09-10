@@ -19,11 +19,14 @@ package aws
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	coreoptions "k8s.io/autoscaler/cluster-autoscaler/core/options"
-	"k8s.io/autoscaler/cluster-autoscaler/utils/kubernetes"
+	kube_client "k8s.io/client-go/kubernetes"
 	v1lister "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
@@ -196,6 +199,19 @@ func initDraGPUDataSource(opts *coreoptions.AutoscalerOptions) {
 		recorder = opts.AutoscalingKubeClients.Recorder
 	}
 	stopChannel := make(chan struct{}) // never closed, mirrors expander/factory's ConfigMap lister setup
-	cmLister := kubernetes.NewConfigMapListerForNamespace(opts.KubeClient, stopChannel, opts.ConfigNamespace)
-	gpuDataSource = newConfigMapGPUDataSource(cmLister.ConfigMaps(opts.ConfigNamespace), recorder)
+	cmLister := newScopedConfigMapLister(opts.KubeClient, stopChannel, opts.ConfigNamespace, gpuConfigMapName)
+	gpuDataSource = newConfigMapGPUDataSource(cmLister, recorder)
+}
+
+// newScopedConfigMapLister builds a ConfigMap lister/watcher restricted to a single named
+// object, unlike utils/kubernetes.NewConfigMapListerForNamespace (which this mirrors) that
+// watches every ConfigMap in the namespace via fields.Everything(). Scoping down avoids a
+// second full-namespace ConfigMap reflector alongside the priority expander's, which uses
+// that shared helper.
+func newScopedConfigMapLister(kubeClient kube_client.Interface, stopChannel <-chan struct{}, namespace, name string) v1lister.ConfigMapNamespaceLister {
+	selector := fields.OneTermEqualSelector("metadata.name", name)
+	listWatcher := cache.NewListWatchFromClient(kubeClient.CoreV1().RESTClient(), "configmaps", namespace, selector)
+	store, reflector := cache.NewNamespaceKeyedIndexerAndReflector(listWatcher, &apiv1.ConfigMap{}, time.Hour)
+	go reflector.Run(stopChannel)
+	return v1lister.NewConfigMapLister(store).ConfigMaps(namespace)
 }
