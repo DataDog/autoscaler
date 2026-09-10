@@ -69,8 +69,8 @@ func buildResourceSlicesFromTemplate(node *apiv1.Node, instanceType *InstanceTyp
 	// name — the NVIDIA DRA plugin runs with DynamicMIG=true uniformly, so any MIG-capable
 	// GPU publishes MIG slices at runtime. A GPU with no table is not MIG-capable and gets
 	// full-GPU slices, the only path available for it.
-	if _, ok := gpuDataSource.migVariants(instanceType.GPUShortName); ok {
-		return buildMIGResourceSlices(node, instanceType, driver)
+	if variants, ok := gpuDataSource.migVariants(instanceType.GPUShortName); ok {
+		return buildMIGResourceSlices(node, instanceType, driver, variants)
 	}
 
 	return buildFullGPUResourceSlices(node, instanceType, driver)

@@ -304,3 +304,41 @@ RTX PRO Server 6000:
 		t.Fatalf("got %d profiles, want %d", len(got[0].Profiles), len(want[0].Profiles))
 	}
 }
+
+// TestExampleConfigMapIsValid pins the shipped example ConfigMap (the file operators
+// actually copy) against schema/validate() drift: it must unmarshal cleanly into the real
+// types, and every MIG variant must pass validate() (parseable quantities, in-range
+// placements).
+func TestExampleConfigMapIsValid(t *testing.T) {
+	raw, err := os.ReadFile("aws-dra-gpu-config-example.yaml")
+	if err != nil {
+		t.Fatalf("failed to read example ConfigMap: %v", err)
+	}
+	var cm apiv1.ConfigMap
+	if err := yaml.Unmarshal(raw, &cm); err != nil {
+		t.Fatalf("failed to parse example ConfigMap: %v", err)
+	}
+
+	var attrs map[string]fullGPUAttrs
+	if err := yaml.Unmarshal([]byte(cm.Data[fullGPUAttributesKey]), &attrs); err != nil {
+		t.Fatalf("failed to parse %s: %v", fullGPUAttributesKey, err)
+	}
+	if len(attrs) == 0 {
+		t.Fatalf("%s parsed to zero entries", fullGPUAttributesKey)
+	}
+
+	var tables map[string][]migVariant
+	if err := yaml.Unmarshal([]byte(cm.Data[migProfileTablesKey]), &tables); err != nil {
+		t.Fatalf("failed to parse %s: %v", migProfileTablesKey, err)
+	}
+	if len(tables) == 0 {
+		t.Fatalf("%s parsed to zero entries", migProfileTablesKey)
+	}
+	for shortName, variants := range tables {
+		for i, v := range variants {
+			if err := v.validate(); err != nil {
+				t.Errorf("%s variant %d: %v", shortName, i, err)
+			}
+		}
+	}
+}

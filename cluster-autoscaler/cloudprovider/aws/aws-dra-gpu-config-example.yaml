@@ -8,9 +8,14 @@ data:
   # real NVIDIA DRA driver publishes via NVML at runtime (productName/brand/architecture/
   # cudaComputeCapability). An instance type whose short name is absent still gets a
   # ResourceSlice with type=gpu and memory capacity, just without the richer attributes.
+  # This section only takes effect for a short name with NO entry in mig-profile-tables.yaml
+  # below (a GPU with a MIG table always takes the MIG path, see aws_dra.go) -- of the
+  # entries here, that's only A10G; H100 and RTX PRO Server 6000 both have MIG tables, so
+  # their entries (including RTX PRO Server 6000's memoryMiB override, illustrated below)
+  # never actually apply while that MIG table exists, but are kept as a reference example.
   # memoryMiB is optional and overrides EC2's reported per-device memory when the driver's
-  # actual published capacity differs (e.g. reserved memory) — see RTX PRO Server 6000 below,
-  # where EC2 reports 98304MiB but the driver's verified capacity is 95Gi/97280MiB.
+  # actual published capacity differs (e.g. reserved memory) — e.g. for RTX PRO Server 6000,
+  # EC2 reports 98304MiB but the driver's verified capacity is 95Gi/97280MiB.
   full-gpu-attributes.yaml: |
     A10G:
       productName: "NVIDIA A10G"

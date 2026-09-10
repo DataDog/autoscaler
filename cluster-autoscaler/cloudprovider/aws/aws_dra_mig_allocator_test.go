@@ -112,7 +112,9 @@ func TestMIGCounterConflictDetection(t *testing.T) {
 		GPUMemoryMiB: 98304,
 	}
 
-	slices := buildMIGResourceSlices(node, instanceType, "gpu.nvidia.com")
+	variants, ok := gpuDataSource.migVariants(instanceType.GPUShortName)
+	require.True(t, ok)
+	slices := buildMIGResourceSlices(node, instanceType, "gpu.nvidia.com", variants)
 	require.NotEmpty(t, slices)
 
 	// Simulate the 1g.24gb partition at placement 0 (gpu-0-mig-1g24gb-14-0) already

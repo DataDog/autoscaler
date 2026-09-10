@@ -27,6 +27,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// rtxPro6000ShortName is the EC2 GpuInfo short name for the NVIDIA RTX PRO Server 6000
+// Blackwell (g7e instance family), as returned by DescribeInstanceTypes. Test-only: no
+// non-test code references a specific GPU short name.
+const rtxPro6000ShortName = "RTX PRO Server 6000"
+
 func draNode(name string, labels map[string]string) *apiv1.Node {
 	return &apiv1.Node{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
@@ -272,14 +277,14 @@ func TestBuildResourceSlicesFromTemplate_NoMIGTableFallsBackToFullGPU(t *testing
 }
 
 // TestBuildMIGResourceSlices_UnknownSKU checks buildMIGResourceSlices itself fails safe (nil,
-// no partial slices) when called for a short name with no MIG table, independent of how a
-// caller decided to invoke it.
+// no partial slices) when called with no MIG variants, independent of how a caller decided
+// to invoke it.
 func TestBuildMIGResourceSlices_UnknownSKU(t *testing.T) {
 	node := draNode("node-1", map[string]string{draPluginManagedLabelKey: "true"})
 	// L4 has no MIG table -> no slices, so the node group won't falsely trigger scale-up.
 	it := &InstanceType{InstanceType: "g6.xlarge", GPU: 1, GPUShortName: "L4", GPUMemoryMiB: 24576}
 
-	slices := buildMIGResourceSlices(node, it, "gpu.nvidia.com")
+	slices := buildMIGResourceSlices(node, it, "gpu.nvidia.com", nil)
 	assert.Nil(t, slices)
 }
 

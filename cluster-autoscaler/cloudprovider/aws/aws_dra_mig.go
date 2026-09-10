@@ -70,10 +70,6 @@ const (
 	capOFAEngines      = "ofaEngines"
 	capMemory          = "memory"
 	capMultiprocessors = "multiprocessors"
-
-	// rtxPro6000ShortName is the EC2 GpuInfo short name for the NVIDIA RTX PRO Server 6000
-	// Blackwell (g7e instance family), as returned by DescribeInstanceTypes.
-	rtxPro6000ShortName = "RTX PRO Server 6000"
 )
 
 // engineCounts is the per-device hardware-unit budget (a MIG device statically consumes
@@ -112,11 +108,17 @@ type migVariant struct {
 }
 
 // validate checks operator-supplied resource.Quantity strings before they reach this file's
-// resource.MustParse calls, which panic on an invalid quantity. A variant failing validation
-// is dropped entirely rather than partially applied (aws_dra_config.go, migVariants).
+// resource.MustParse calls, which panic on an invalid quantity, and that every placement fits
+// within the GPU's declared memory slices — an out-of-range placement makes migDevice consume
+// a memory-slice counter counterSetForGPU never created, which the allocator can't satisfy,
+// silently making the whole GPU model unallocatable. A variant failing validation is dropped
+// entirely rather than partially applied (aws_dra_config.go, migVariants).
 func (v migVariant) validate() error {
 	if v.GPUMemoryMiB <= 0 {
 		return fmt.Errorf("gpuMemoryMiB must be positive, got %d", v.GPUMemoryMiB)
+	}
+	if v.MemorySlices <= 0 {
+		return fmt.Errorf("memorySlices must be positive, got %d", v.MemorySlices)
 	}
 	if _, err := resource.ParseQuantity(v.Whole.Memory); err != nil {
 		return fmt.Errorf("whole.memory %q: %w", v.Whole.Memory, err)
@@ -124,6 +126,11 @@ func (v migVariant) validate() error {
 	for i, p := range v.Profiles {
 		if _, err := resource.ParseQuantity(p.Engines.Memory); err != nil {
 			return fmt.Errorf("profiles[%d] (%s) engines.memory %q: %w", i, p.Name, p.Engines.Memory, err)
+		}
+		for _, start := range p.Placements {
+			if start < 0 || start+p.MemorySlices > v.MemorySlices {
+				return fmt.Errorf("profiles[%d] (%s) placement %d + memorySlices %d exceeds variant's %d memorySlices", i, p.Name, start, p.MemorySlices, v.MemorySlices)
+			}
 		}
 	}
 	return nil
@@ -151,12 +158,11 @@ func migVariantMatchTolerance(variantGPUMemoryMiB int64) int64 {
 	return tolerance
 }
 
-// selectMIGVariant picks the variant of a GPU model whose per-device memory matches EC2's
-// report within tolerance. Returns false if the model has no MIG table in the ConfigMap
-// (gpuDataSource), or no variant is close enough to trust.
-func selectMIGVariant(shortName string, gpuMemoryMiB int64) (migVariant, bool) {
-	variants, ok := gpuDataSource.migVariants(shortName)
-	if !ok || len(variants) == 0 {
+// selectMIGVariant picks the variant, from an already-fetched table, whose per-device memory
+// matches EC2's report within tolerance. Returns false if variants is empty, or no variant is
+// close enough to trust.
+func selectMIGVariant(variants []migVariant, gpuMemoryMiB int64) (migVariant, bool) {
+	if len(variants) == 0 {
 		return migVariant{}, false
 	}
 	memoryDelta := func(v migVariant) int64 {
@@ -180,15 +186,22 @@ func selectMIGVariant(shortName string, gpuMemoryMiB int64) (migVariant, bool) {
 }
 
 // buildMIGResourceSlices builds the counters slice plus one devices slice per GPU for a
-// MIG-enabled node group, matching the real driver's shape. Returns nil if the SKU has no
-// MIG table, so the node group fails safe rather than advertising a bogus inventory.
+// MIG-enabled node group, matching the real driver's shape. variants is the MIG profile
+// table already fetched by the caller (buildResourceSlicesFromTemplate) for this short name,
+// passed down rather than re-fetched here to avoid a second ConfigMap lookup/parse/validate
+// and the TOCTOU window that would open between the two lookups. Returns nil if no variant
+// is usable, so the node group fails safe rather than advertising a bogus inventory.
 //
 // A GPU's devices split across multiple slices if they exceed the API's 128-device limit —
 // defensive, since no known GPU today (H100's 18 is the densest here) is close to that.
-func buildMIGResourceSlices(node *apiv1.Node, instanceType *InstanceType, driver string) []*resourceapi.ResourceSlice {
-	v, ok := selectMIGVariant(instanceType.GPUShortName, instanceType.GPUMemoryMiB)
+func buildMIGResourceSlices(node *apiv1.Node, instanceType *InstanceType, driver string, variants []migVariant) []*resourceapi.ResourceSlice {
+	v, ok := selectMIGVariant(variants, instanceType.GPUMemoryMiB)
 	if !ok {
-		klog.Warningf("DRA MIG enabled for node group with GPU %q but no MIG profile table exists; not advertising MIG ResourceSlices for %s", instanceType.GPUShortName, node.Name)
+		if len(variants) == 0 {
+			klog.Warningf("DRA MIG enabled for node group with GPU %q but no MIG profile table exists; not advertising MIG ResourceSlices for %s", instanceType.GPUShortName, node.Name)
+		} else {
+			klog.Warningf("DRA MIG enabled for node group with GPU %q but no MIG profile variant is within memory tolerance of EC2-reported %dMiB; not advertising MIG ResourceSlices for %s", instanceType.GPUShortName, instanceType.GPUMemoryMiB, node.Name)
+		}
 		return nil
 	}
 
