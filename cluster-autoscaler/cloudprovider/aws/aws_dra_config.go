@@ -18,6 +18,7 @@ package aws
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -41,9 +42,10 @@ import (
 // ConfigMap takes effect on the next call (~1-2s via the watch), not the hourly resync.
 
 const (
-	// gpuConfigMapName is the ConfigMap holding GPU/MIG capability data, read from the
-	// namespace CA itself runs in (opts.ConfigNamespace).
-	gpuConfigMapName = "cluster-autoscaler-aws-dra-gpu-config"
+	// defaultGpuConfigMapName is the fallback ConfigMap name used when
+	// AWS_DRA_GPU_CONFIG_MAP_NAME is unset, read from the namespace CA itself runs in
+	// (opts.ConfigNamespace).
+	defaultGpuConfigMapName = "aws-dra-gpu-config"
 	// fullGPUAttributesKey holds the Phase-1 (full-GPU) attribute map, one entry per EC2 GPU
 	// short name. Mirrors gpuFullProductName/gpuBrand/gpuArchitecture/gpuCudaComputeCapability.
 	fullGPUAttributesKey = "full-gpu-attributes.yaml"
@@ -51,6 +53,18 @@ const (
 	// hardcoded migProfileTables shape (short name -> list of memory variants).
 	migProfileTablesKey = "mig-profile-tables.yaml"
 )
+
+// gpuConfigMapName is the ConfigMap holding GPU/MIG capability data. Overridable via
+// AWS_DRA_GPU_CONFIG_MAP_NAME so a rename or per-cluster override doesn't need a CA
+// rebuild, mirroring AZURE_CLUSTER_AUTOSCALER_USER_AGENT_SUFFIX in azure_util.go.
+var gpuConfigMapName = resolveGpuConfigMapName()
+
+func resolveGpuConfigMapName() string {
+	if name := os.Getenv("AWS_DRA_GPU_CONFIG_MAP_NAME"); name != "" {
+		return name
+	}
+	return defaultGpuConfigMapName
+}
 
 // draGPUDataSource abstracts where Phase-1/Phase-2 GPU capability data comes from, so
 // aws_dra.go/aws_dra_mig.go don't care whether it's compiled-in or ConfigMap-backed.
