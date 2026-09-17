@@ -48,8 +48,11 @@ type NodeGroupChangeObserver interface {
 // of state of scale up/down in the cluster
 type NodeGroupChangeObserversList struct {
 	observers []NodeGroupChangeObserver
-	// TODO(vadasambar): consider using separate mutexes for functions not related to each other
-	mutex sync.Mutex
+	// Scale-up failures can be dispatched while ClusterStateRegistry is locked.
+	// Scale-up/down callbacks acquire that registry lock, so failure dispatch
+	// must not share their mutex. Failure observers synchronize their own state.
+	mutex              sync.Mutex
+	failedScaleUpMutex sync.Mutex
 }
 
 // Register adds new observer to the list.
@@ -79,8 +82,8 @@ func (l *NodeGroupChangeObserversList) RegisterScaleDown(nodeGroup cloudprovider
 
 // RegisterFailedScaleUp calls RegisterFailedScaleUp for each observer.
 func (l *NodeGroupChangeObserversList) RegisterFailedScaleUp(nodeGroup cloudprovider.NodeGroup, delta int, errorInfo cloudprovider.InstanceErrorInfo, currentTime time.Time) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+	l.failedScaleUpMutex.Lock()
+	defer l.failedScaleUpMutex.Unlock()
 	for _, observer := range l.observers {
 		observer.RegisterFailedScaleUp(nodeGroup, delta, errorInfo, currentTime)
 	}
