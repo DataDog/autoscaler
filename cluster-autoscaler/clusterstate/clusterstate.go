@@ -337,8 +337,15 @@ func (csr *ClusterStateRegistry) RegisterScaleDown(nodeGroup cloudprovider.NodeG
 	csr.scaleDownRequests = append(csr.scaleDownRequests, request)
 }
 
+type scaleUpFailure struct {
+	nodeGroup cloudprovider.NodeGroup
+	delta     int
+	errorInfo cloudprovider.InstanceErrorInfo
+}
+
 // To be executed under a lock.
-func (csr *ClusterStateRegistry) updateScaleRequests(currentTime time.Time) {
+func (csr *ClusterStateRegistry) updateScaleRequests(currentTime time.Time) []scaleUpFailure {
+	var failures []scaleUpFailure
 	// clean up stale backoff info
 	csr.backoff.RemoveStaleBackoffData(currentTime)
 
@@ -360,11 +367,15 @@ func (csr *ClusterStateRegistry) updateScaleRequests(currentTime time.Time) {
 			csr.logRecorder.Eventf(apiv1.EventTypeWarning, "ScaleUpTimedOut",
 				"Nodes added to group %s failed to register within %v",
 				scaleUpRequest.NodeGroup.Id(), currentTime.Sub(scaleUpRequest.Time))
-			csr.scaleStateNotifier.RegisterFailedScaleUp(scaleUpRequest.NodeGroup, scaleUpRequest.Increase, cloudprovider.InstanceErrorInfo{
-				ErrorClass:   cloudprovider.OtherErrorClass,
-				ErrorCode:    string(metrics.Timeout),
-				ErrorMessage: fmt.Sprintf("Scale-up timed out for node group %v after %v", nodeGroupName, currentTime.Sub(scaleUpRequest.Time)),
-			}, currentTime)
+			failures = append(failures, scaleUpFailure{
+				nodeGroup: scaleUpRequest.NodeGroup,
+				delta:     scaleUpRequest.Increase,
+				errorInfo: cloudprovider.InstanceErrorInfo{
+					ErrorClass:   cloudprovider.OtherErrorClass,
+					ErrorCode:    string(metrics.Timeout),
+					ErrorMessage: fmt.Sprintf("Scale-up timed out for node group %v after %v", nodeGroupName, currentTime.Sub(scaleUpRequest.Time)),
+				},
+			})
 
 			// Attempt to revert the failed scale-up by decreasing target size.
 			// This prevents cloud providers from indefinitely retrying failed provisioning attempts.
@@ -391,6 +402,7 @@ func (csr *ClusterStateRegistry) updateScaleRequests(currentTime time.Time) {
 		}
 	}
 	csr.scaleDownRequests = newScaleDownRequests
+	return failures
 }
 
 // Doesn't need csr lock, because both templateNodeInfoRegistry and backoff are thread-safe.
@@ -430,17 +442,22 @@ func (csr *ClusterStateRegistry) UpdateNodes(nodes []*apiv1.Node, currentTime ti
 	if err != nil {
 		return err
 	}
-	csr.updateClusterStateRegistry(
+	failures := csr.updateClusterStateRegistry(
 		nodes,
 		cloudProviderNodeInstances,
 		currentTime,
 		targetSizes,
 	)
+	// The notifier holds its own mutex while calling observers, including CSR.
+	// Dispatch after unlocking CSR to avoid inversion with concurrent scale-down notifications.
+	for _, failure := range failures {
+		csr.scaleStateNotifier.RegisterFailedScaleUp(failure.nodeGroup, failure.delta, failure.errorInfo, currentTime)
+	}
 	return nil
 }
 
 func (csr *ClusterStateRegistry) updateClusterStateRegistry(nodes []*apiv1.Node,
-	cloudProviderNodeInstances map[string][]cloudprovider.Instance, currentTime time.Time, targetSizes map[string]int) {
+	cloudProviderNodeInstances map[string][]cloudprovider.Instance, currentTime time.Time, targetSizes map[string]int) []scaleUpFailure {
 	cloudProviderNodesRemoved := csr.getCloudProviderDeletedNodes(nodes)
 	notRegistered := getNotRegisteredNodes(nodes, cloudProviderNodeInstances, currentTime)
 
@@ -457,11 +474,12 @@ func (csr *ClusterStateRegistry) updateClusterStateRegistry(nodes []*apiv1.Node,
 	// update acceptable ranges based on requests from last loop and targetSizes
 	// updateScaleRequests relies on acceptableRanges being up to date
 	csr.updateAcceptableRanges(targetSizes)
-	csr.updateScaleRequests(currentTime)
-	csr.handleInstanceCreationErrors(currentTime)
+	failures := csr.updateScaleRequests(currentTime)
+	failures = append(failures, csr.handleInstanceCreationErrors(currentTime)...)
 	//  recalculate acceptable ranges after removing timed out requests
 	csr.updateAcceptableRanges(targetSizes)
 	csr.updateIncorrectNodeGroupSizes(currentTime)
+	return failures
 }
 
 // Recalculate cluster state after scale-ups or scale-downs were registered.
@@ -1240,24 +1258,25 @@ func (csr *ClusterStateRegistry) GetAutoscaledNodesCount() (currentSize, targetS
 	return currentSize, targetSize
 }
 
-func (csr *ClusterStateRegistry) handleInstanceCreationErrors(currentTime time.Time) {
+func (csr *ClusterStateRegistry) handleInstanceCreationErrors(currentTime time.Time) []scaleUpFailure {
 	nodeGroups := csr.getRunningNodeGroups()
-
+	var failures []scaleUpFailure
 	for _, nodeGroup := range nodeGroups {
-		csr.handleInstanceCreationErrorsForNodeGroup(
+		failures = append(failures, csr.handleInstanceCreationErrorsForNodeGroup(
 			nodeGroup,
 			csr.cloudProviderNodeInstances[nodeGroup.Id()],
 			csr.previousCloudProviderNodeInstances[nodeGroup.Id()],
-			currentTime)
+			currentTime)...)
 	}
+	return failures
 }
 
 func (csr *ClusterStateRegistry) handleInstanceCreationErrorsForNodeGroup(
 	nodeGroup cloudprovider.NodeGroup,
 	currentInstances []cloudprovider.Instance,
 	previousInstances []cloudprovider.Instance,
-	currentTime time.Time) {
-
+	currentTime time.Time) []scaleUpFailure {
+	var failures []scaleUpFailure
 	_, currentUniqueErrorMessagesForErrorCode, currentErrorCodeToInstance := csr.buildInstanceToErrorCodeMappings(currentInstances)
 	previousInstanceToErrorCode, _, _ := csr.buildInstanceToErrorCodeMappings(previousInstances)
 
@@ -1293,13 +1312,18 @@ func (csr *ClusterStateRegistry) handleInstanceCreationErrorsForNodeGroup(
 				csr.buildErrorMessageEventString(currentUniqueErrorMessagesForErrorCode[errorCode]))
 			// Decrease the scale up request by the number of deleted nodes
 			csr.registerOrUpdateScaleUpNoLock(nodeGroup, -len(unseenInstanceIds), currentTime)
-			csr.scaleStateNotifier.RegisterFailedScaleUp(nodeGroup, len(unseenInstanceIds), cloudprovider.InstanceErrorInfo{
-				ErrorClass:   errorCode.class,
-				ErrorCode:    errorCode.code,
-				ErrorMessage: csr.buildErrorMessageEventString(currentUniqueErrorMessagesForErrorCode[errorCode]),
-			}, currentTime)
+			failures = append(failures, scaleUpFailure{
+				nodeGroup: nodeGroup,
+				delta:     len(unseenInstanceIds),
+				errorInfo: cloudprovider.InstanceErrorInfo{
+					ErrorClass:   errorCode.class,
+					ErrorCode:    errorCode.code,
+					ErrorMessage: csr.buildErrorMessageEventString(currentUniqueErrorMessagesForErrorCode[errorCode]),
+				},
+			})
 		}
 	}
+	return failures
 }
 
 func (csr *ClusterStateRegistry) buildErrorMessageEventString(uniqErrorMessages []string) string {
