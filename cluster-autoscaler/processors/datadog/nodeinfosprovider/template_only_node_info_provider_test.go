@@ -25,8 +25,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	testprovider "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/test"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
+	"k8s.io/autoscaler/cluster-autoscaler/processors/datadog/common"
 
 	. "k8s.io/autoscaler/cluster-autoscaler/utils/test"
 
@@ -36,7 +38,10 @@ import (
 func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	tni := schedulerframework.NewNodeInfo(nil, nil)
 	tn := BuildTestNode("tn", 100, 100)
-	tn.SetLabels(map[string]string{apiv1.LabelTopologyZone: "planet-earth"})
+	tn.SetLabels(map[string]string{
+		apiv1.LabelTopologyZone:                  "planet-earth",
+		common.DatadogRemoteStorageCapacityLabel: "300Gi",
+	})
 	tni.SetNode(tn)
 
 	provider1 := testprovider.NewTestCloudProviderBuilder().
@@ -61,4 +66,5 @@ func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	assert.Contains(t, res, "ng2")
 	assert.Contains(t, res["ng1"].Node().GetLabels(), apiv1.LabelZoneFailureDomain)
 	assert.Equal(t, res["ng1"].Node().GetLabels()[apiv1.LabelZoneFailureDomain], "planet-earth")
+	assert.Equal(t, resource.MustParse("300Gi"), res["ng1"].Node().Status.Allocatable[common.DatadogEphemeralRemoteDataResource])
 }

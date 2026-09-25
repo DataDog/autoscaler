@@ -70,7 +70,7 @@ type TemplateOnlyNodeInfoProvider struct {
 // Process returns nodeInfos built from node groups (ASGs, MIGs, VMSS) templates only, not real-world nodes.
 // Reason for using this instead of upstream's MixedTemplateNodeInfoProvider at Datadog are:
 // * On upstream (using real nodes once they show up) "upscale from zero" and balance-similar don't work together
-// * We have to alter nodes in order to support accounting for local-data volumes
+// * We have to alter nodes in order to support accounting for managed storage volumes
 // A downside of building nodeInfos from templates (nodegroups sppecs) only is that it's more costly than
 // using real nodes, which is why we're doing it asynchronously.
 func (p *TemplateOnlyNodeInfoProvider) Process(ctx *context.AutoscalingContext, nodes []*apiv1.Node, daemonsets []*appsv1.DaemonSet, taintConfig taints.TaintConfig, currentTime time.Time) (map[string]*schedulerframework.NodeInfo, errors.AutoscalerError) {
@@ -102,6 +102,9 @@ func (p *TemplateOnlyNodeInfoProvider) Process(ctx *context.AutoscalingContext, 
 			}
 			if common.NodeHasLocalData(nodeInfo.Node()) {
 				common.SetNodeLocalDataResource(nodeInfo)
+			}
+			if common.NodeHasRemoteData(nodeInfo.Node()) {
+				common.SetNodeRemoteDataResource(nodeInfo)
 			}
 		}
 
@@ -165,10 +168,13 @@ func (p *TemplateOnlyNodeInfoProvider) refresh() {
 			continue
 		}
 
-		// Virtual nodes in NodeInfo templates (built from ASG / MIGS / VMSS) having the
-		// local-storage:true label now also gets the Datadog local-storage custom resource
+		// Decorate virtual nodes built from ASG / MIG / VMSS templates with the
+		// storage resources advertised by their labels.
 		if common.NodeHasLocalData(nodeInfo.Node()) {
 			common.SetNodeLocalDataResource(nodeInfo)
+		}
+		if common.NodeHasRemoteData(nodeInfo.Node()) {
+			common.SetNodeRemoteDataResource(nodeInfo)
 		}
 
 		result[id] = &nodeInfoCacheEntry{
