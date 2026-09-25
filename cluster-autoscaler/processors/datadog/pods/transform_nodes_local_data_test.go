@@ -170,9 +170,9 @@ func buildTestTopoLVMNode(name string, age time.Duration, localStorageCapacityLa
 	return node
 }
 
-func buildTestRemoteTopoLVMNode(name string, age time.Duration, remoteStorageCapacityLabel string, remoteDataQuantity *resource.Quantity) *corev1.Node {
+func buildTestRemoteTopoLVMNode(name string, age time.Duration, remoteLVMStorageCapacityLabel string, remoteDataQuantity *resource.Quantity) *corev1.Node {
 	node := buildTestNode(name, age, false, "", nil)
-	node.Labels[common.DatadogRemoteStorageCapacityLabel] = remoteStorageCapacityLabel
+	node.Labels[common.DatadogRemoteLVMStorageCapacityLabel] = remoteLVMStorageCapacityLabel
 
 	if remoteDataQuantity != nil {
 		node.Status.Capacity[common.DatadogEphemeralRemoteDataResource] = remoteDataQuantity.DeepCopy()

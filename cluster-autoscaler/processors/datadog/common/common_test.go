@@ -107,7 +107,7 @@ func TestNodeHasRemoteData(t *testing.T) {
 		{
 			name: "remote capacity label",
 			node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-				DatadogRemoteStorageCapacityLabel: "100Gi",
+				DatadogRemoteLVMStorageCapacityLabel: "100Gi",
 			}}},
 			expected: true,
 		},
@@ -287,7 +287,7 @@ func TestSetNodeRemoteDataResource(t *testing.T) {
 	remoteStorageQuantity := resource.MustParse("300Gi")
 	ni := schedulerframework.NewNodeInfo(&corev1.Node{}, nil)
 	ni.SetNode(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-		DatadogRemoteStorageCapacityLabel: remoteStorageQuantity.String(),
+		DatadogRemoteLVMStorageCapacityLabel: remoteStorageQuantity.String(),
 	}}})
 
 	SetNodeRemoteDataResource(ni)
@@ -299,7 +299,7 @@ func TestSetNodeRemoteDataResource(t *testing.T) {
 func TestSetNodeRemoteDataResourceWithInvalidCapacity(t *testing.T) {
 	ni := schedulerframework.NewNodeInfo(&corev1.Node{}, nil)
 	ni.SetNode(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-		DatadogRemoteStorageCapacityLabel: "invalid",
+		DatadogRemoteLVMStorageCapacityLabel: "invalid",
 	}}})
 
 	SetNodeRemoteDataResource(ni)

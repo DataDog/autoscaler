@@ -39,8 +39,8 @@ func TestTemplateOnlyNodeInfoProviderProcess(t *testing.T) {
 	tni := schedulerframework.NewNodeInfo(nil, nil)
 	tn := BuildTestNode("tn", 100, 100)
 	tn.SetLabels(map[string]string{
-		apiv1.LabelTopologyZone:                  "planet-earth",
-		common.DatadogRemoteStorageCapacityLabel: "300Gi",
+		apiv1.LabelTopologyZone:                     "planet-earth",
+		common.DatadogRemoteLVMStorageCapacityLabel: "300Gi",
 	})
 	tni.SetNode(tn)
 

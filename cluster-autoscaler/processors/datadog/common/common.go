@@ -30,8 +30,8 @@ const (
 	DatadogLocalStorageCapacityLabel = "nodegroups.datadoghq.com/local-storage-capacity"
 	// DatadogLocalStorageProvisionerLabel identifies the software managing a node's local storage.
 	DatadogLocalStorageProvisionerLabel = "nodegroups.datadoghq.com/local-storage-provisioner"
-	// DatadogRemoteStorageCapacityLabel stores the usable capacity of remote_data_vg.
-	DatadogRemoteStorageCapacityLabel = "nodegroups.datadoghq.com/remote-storage-capacity"
+	// DatadogRemoteLVMStorageCapacityLabel stores the usable capacity of remote_data_vg.
+	DatadogRemoteLVMStorageCapacityLabel = "nodegroups.datadoghq.com/remote-lvm-storage-capacity"
 
 	// DatadogStorageProvisionerTopoLVM is the supported value of DatadogLocalStorageProvisionerLabel.
 	DatadogStorageProvisionerTopoLVM = "topolvm"
@@ -79,7 +79,7 @@ func NodeHasRemoteData(node *apiv1.Node) bool {
 	if node == nil {
 		return false
 	}
-	_, ok := node.GetLabels()[DatadogRemoteStorageCapacityLabel]
+	_, ok := node.GetLabels()[DatadogRemoteLVMStorageCapacityLabel]
 	return ok
 }
 
@@ -155,7 +155,7 @@ func SetNodeRemoteDataResource(nodeInfo ReducedNodeInfo) {
 		return
 	}
 
-	capacity := node.Labels[DatadogRemoteStorageCapacityLabel]
+	capacity := node.Labels[DatadogRemoteLVMStorageCapacityLabel]
 	capacityResource, err := resource.ParseQuantity(capacity)
 	if err != nil {
 		klog.Warningf("failed to parse remote TopoLVM storage capacity information (%s) for node (%s): %v", capacity, node.Name, err)
