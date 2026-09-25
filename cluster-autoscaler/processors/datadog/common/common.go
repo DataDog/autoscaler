@@ -30,6 +30,8 @@ const (
 	DatadogLocalStorageCapacityLabel = "nodegroups.datadoghq.com/local-storage-capacity"
 	// DatadogLocalStorageProvisionerLabel identifies the software managing a node's local storage.
 	DatadogLocalStorageProvisionerLabel = "nodegroups.datadoghq.com/local-storage-provisioner"
+	// DatadogRemoteLVMStorageCapacityLabel stores the usable capacity of remote_data_vg.
+	DatadogRemoteLVMStorageCapacityLabel = "nodegroups.datadoghq.com/remote-lvm-storage-capacity"
 
 	// DatadogStorageProvisionerTopoLVM is the supported value of DatadogLocalStorageProvisionerLabel.
 	DatadogStorageProvisionerTopoLVM = "topolvm"
@@ -49,6 +51,10 @@ const (
 	// DatadogEphemeralLocalDataResource represents capacity available to generic
 	// ephemeral volumes backed by the ephemeral-local-data StorageClass.
 	DatadogEphemeralLocalDataResource apiv1.ResourceName = "storageclass/ephemeral-local-data"
+
+	// DatadogEphemeralRemoteDataResource represents capacity available to generic
+	// ephemeral volumes backed by the ephemeral-remote-data StorageClass.
+	DatadogEphemeralRemoteDataResource apiv1.ResourceName = "storageclass/ephemeral-remote-data"
 )
 
 var (
@@ -65,6 +71,16 @@ func NodeHasLocalData(node *apiv1.Node) bool {
 	labels := node.GetLabels()
 	return labels[DatadogLocalStorageLabel] == "true" ||
 		labels[DatadogLocalStorageProvisionerLabel] == DatadogStorageProvisionerTopoLVM
+}
+
+// NodeHasRemoteData returns true when the node template advertises a remote
+// TopoLVM volume group.
+func NodeHasRemoteData(node *apiv1.Node) bool {
+	if node == nil {
+		return false
+	}
+	_, ok := node.GetLabels()[DatadogRemoteLVMStorageCapacityLabel]
+	return ok
 }
 
 // ReducedNodeInfo is a reduced NodeInfo interface mean to requires just what's
@@ -128,5 +144,32 @@ func SetNodeLocalDataResource(nodeInfo ReducedNodeInfo) {
 	// We can't RemoveNode() out of extra caution as we did previously (with older
 	// Autoscaler codebases when ClusterSnapshot.List() returned concrete nodeInfo
 	// implementations, because the NodeInfo _interface_ has no RemoveNode() method.
+	nodeInfo.SetNode(node)
+}
+
+// SetNodeRemoteDataResource updates a NodeInfo with the virtual resource used
+// to account for ephemeral-remote-data volumes during scheduling simulation.
+func SetNodeRemoteDataResource(nodeInfo ReducedNodeInfo) {
+	node := nodeInfo.Node()
+	if node == nil {
+		return
+	}
+
+	capacity := node.Labels[DatadogRemoteLVMStorageCapacityLabel]
+	capacityResource, err := resource.ParseQuantity(capacity)
+	if err != nil {
+		klog.Warningf("failed to parse remote TopoLVM storage capacity information (%s) for node (%s): %v", capacity, node.Name, err)
+		return
+	}
+
+	if node.Status.Allocatable == nil {
+		node.Status.Allocatable = apiv1.ResourceList{}
+	}
+	if node.Status.Capacity == nil {
+		node.Status.Capacity = apiv1.ResourceList{}
+	}
+
+	node.Status.Capacity[DatadogEphemeralRemoteDataResource] = capacityResource.DeepCopy()
+	node.Status.Allocatable[DatadogEphemeralRemoteDataResource] = capacityResource.DeepCopy()
 	nodeInfo.SetNode(node)
 }

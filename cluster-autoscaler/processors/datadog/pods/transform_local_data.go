@@ -32,6 +32,11 @@ limitations under the License.
 	We use this resource to ensure that pods that have PVCs that request local-storage
 	will get scheduled on nodes that have enough storage available.
 
+	Generic ephemeral TopoLVM volumes use the same mechanism with separate,
+	byte-sized virtual resources for ephemeral-local-data and
+	ephemeral-remote-data. Keeping the resources separate prevents local-disk
+	capacity from satisfying a remote-disk request, or vice versa.
+
   Caveats:
   * That's obviously not upstreamable
   * With that resource req, none of the existing real nodes can be considered
@@ -70,7 +75,10 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-const storageClassNameEphemeralLocalData = "ephemeral-local-data"
+var ephemeralTopoLVMStorageClasses = map[string]apiv1.ResourceName{
+	"ephemeral-local-data":  common.DatadogEphemeralLocalDataResource,
+	"ephemeral-remote-data": common.DatadogEphemeralRemoteDataResource,
+}
 
 var localDataStorageClasses = map[string]struct{}{
 	"local-data":       {},
@@ -104,7 +112,7 @@ func (p *transformLocalData) CleanUp() {
 	})
 }
 
-// Process replace volumes to local-data pv by our custom resource
+// Process replaces supported local and TopoLVM volumes with virtual resource requests.
 func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*apiv1.Pod) ([]*apiv1.Pod, error) {
 	if p.pvcLister == nil {
 		p.pvcLister = NewPersistentVolumeClaimLister(ctx.ClientSet, p.stopChannel)
@@ -148,7 +156,7 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 			}
 
 			storageClassName := *pvcSpec.StorageClassName
-			if storageClassName == storageClassNameEphemeralLocalData {
+			if storageResource, ok := ephemeralTopoLVMStorageClasses[storageClassName]; ok {
 				// Persistent TopoLVM claims are intentionally unsupported. Their data
 				// would pin them to a specific node and cannot be satisfied by scale-up.
 				if vol.Ephemeral == nil {
@@ -164,8 +172,8 @@ func (p *transformLocalData) Process(ctx *context.AutoscalingContext, pods []*ap
 				}
 
 				ensureContainerResources(&po.Spec.Containers[0])
-				addResource(po.Spec.Containers[0].Resources.Requests, common.DatadogEphemeralLocalDataResource, storage)
-				addResource(po.Spec.Containers[0].Resources.Limits, common.DatadogEphemeralLocalDataResource, storage)
+				addResource(po.Spec.Containers[0].Resources.Requests, storageResource, storage)
+				addResource(po.Spec.Containers[0].Resources.Limits, storageResource, storage)
 				continue
 			}
 

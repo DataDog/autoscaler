@@ -96,6 +96,30 @@ func TestNodeHasLocalData(t *testing.T) {
 	}
 }
 
+func TestNodeHasRemoteData(t *testing.T) {
+	tests := []struct {
+		name     string
+		node     *corev1.Node
+		expected bool
+	}{
+		{name: "nil node", expected: false},
+		{name: "no capacity label", node: &corev1.Node{}, expected: false},
+		{
+			name: "remote capacity label",
+			node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+				DatadogRemoteLVMStorageCapacityLabel: "100Gi",
+			}}},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, NodeHasRemoteData(tt.node))
+		})
+	}
+}
+
 func TestSetNodeLocalDataResourceDefault(t *testing.T) {
 	ni := schedulerframework.NewNodeInfo(
 		&corev1.Node{},
@@ -256,5 +280,30 @@ func TestSetNodeLocalDataResourceForTopoLVMWithoutCapacity(t *testing.T) {
 	SetNodeLocalDataResource(ni)
 
 	_, hasCapacity := ni.Node().Status.Allocatable[DatadogEphemeralLocalDataResource]
+	assert.False(t, hasCapacity)
+}
+
+func TestSetNodeRemoteDataResource(t *testing.T) {
+	remoteStorageQuantity := resource.MustParse("300Gi")
+	ni := schedulerframework.NewNodeInfo(&corev1.Node{}, nil)
+	ni.SetNode(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+		DatadogRemoteLVMStorageCapacityLabel: remoteStorageQuantity.String(),
+	}}})
+
+	SetNodeRemoteDataResource(ni)
+
+	assert.Equal(t, remoteStorageQuantity, ni.Node().Status.Capacity[DatadogEphemeralRemoteDataResource])
+	assert.Equal(t, remoteStorageQuantity, ni.Node().Status.Allocatable[DatadogEphemeralRemoteDataResource])
+}
+
+func TestSetNodeRemoteDataResourceWithInvalidCapacity(t *testing.T) {
+	ni := schedulerframework.NewNodeInfo(&corev1.Node{}, nil)
+	ni.SetNode(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+		DatadogRemoteLVMStorageCapacityLabel: "invalid",
+	}}})
+
+	SetNodeRemoteDataResource(ni)
+
+	_, hasCapacity := ni.Node().Status.Allocatable[DatadogEphemeralRemoteDataResource]
 	assert.False(t, hasCapacity)
 }
