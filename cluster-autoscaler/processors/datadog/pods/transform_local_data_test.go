@@ -38,6 +38,7 @@ var (
 	testLocalClass         = "local-data"
 	testLocalBlockClass    = "local-data-block"
 	testTopoLVMClass       = "ephemeral-local-data"
+	testRemoteTopoLVMClass = "ephemeral-remote-data"
 	testNamespace          = "foons"
 	testEmptyResources     = corev1.ResourceList{}
 	testDefaultLdResources = corev1.ResourceList{
@@ -57,6 +58,13 @@ var (
 		common.DatadogLocalDataExistsResource:    common.DatadogLocalDataQuantity.DeepCopy(),
 		common.DatadogLocalStorageResource:       localStorageCapacity.DeepCopy(),
 		common.DatadogEphemeralLocalDataResource: localStorageCapacity.DeepCopy(),
+	}
+	testRemoteTopoLVMResources = corev1.ResourceList{
+		common.DatadogEphemeralRemoteDataResource: localStorageCapacity.DeepCopy(),
+	}
+	testMixedTopoLVMResources = corev1.ResourceList{
+		common.DatadogEphemeralLocalDataResource:  localStorageCapacity.DeepCopy(),
+		common.DatadogEphemeralRemoteDataResource: localStorageCapacity.DeepCopy(),
 	}
 )
 
@@ -179,6 +187,36 @@ func TestTransformLocalDataProcess(t *testing.T) {
 			[]*corev1.Pod{addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "scratch", testTopoLVMClass, "")},
 			[]*corev1.PersistentVolumeClaim{},
 			[]*corev1.Pod{addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "scratch", testTopoLVMClass, "")},
+		},
+		{
+			"remote topolvm generic ephemeral volume is replaced by its storage request",
+			[]*corev1.Pod{addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "scratch", testRemoteTopoLVMClass, localStorage)},
+			[]*corev1.PersistentVolumeClaim{},
+			[]*corev1.Pod{buildPod("pod1", testRemoteTopoLVMResources, testRemoteTopoLVMResources)},
+		},
+		{
+			"local and remote topolvm capacities remain distinct",
+			[]*corev1.Pod{addEphemeralVolume(
+				addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "local", testTopoLVMClass, localStorage),
+				"remote", testRemoteTopoLVMClass, localStorage,
+			)},
+			[]*corev1.PersistentVolumeClaim{},
+			[]*corev1.Pod{buildPod("pod1", testMixedTopoLVMResources, testMixedTopoLVMResources)},
+		},
+		{
+			"multiple remote topolvm volumes are summed",
+			[]*corev1.Pod{addEphemeralVolume(
+				addEphemeralVolume(buildPod("pod1", testEmptyResources, testEmptyResources), "remote-1", testRemoteTopoLVMClass, "100Gi"),
+				"remote-2", testRemoteTopoLVMClass, "50Gi",
+			)},
+			[]*corev1.PersistentVolumeClaim{},
+			[]*corev1.Pod{buildPod("pod1", resourceList(common.DatadogEphemeralRemoteDataResource, "150Gi"), resourceList(common.DatadogEphemeralRemoteDataResource, "150Gi"))},
+		},
+		{
+			"persistent remote topolvm volume is not transformed",
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
+			[]*corev1.PersistentVolumeClaim{buildPVCWithStorage("pvc-1", testRemoteTopoLVMClass, localStorage)},
+			[]*corev1.Pod{buildPod("pod1", testEmptyResources, testEmptyResources, "pvc-1")},
 		},
 	}
 

@@ -61,7 +61,7 @@ const (
 
 type transformDataNodes struct{}
 
-// NewTransformDataNodes returns a processor injecting local data custom resource
+// NewTransformDataNodes returns a processor injecting storage custom resources.
 func NewTransformDataNodes() *transformDataNodes {
 	return &transformDataNodes{}
 }
@@ -69,7 +69,7 @@ func NewTransformDataNodes() *transformDataNodes {
 // CleanUp tears down a transformDataNodes processor
 func (p *transformDataNodes) CleanUp() {}
 
-// Process injects local data custom resources to nodes offering local-data storage, that became ready since less than 5mn
+// Process injects storage custom resources into recently ready nodes that advertise supported storage.
 func (p *transformDataNodes) Process(ctx *context.AutoscalingContext, pods []*apiv1.Pod) ([]*apiv1.Pod, error) {
 	nodeInfos, err := ctx.ClusterSnapshot.NodeInfos().List()
 	if err != nil {
@@ -78,7 +78,7 @@ func (p *transformDataNodes) Process(ctx *context.AutoscalingContext, pods []*ap
 
 	for _, nodeInfo := range nodeInfos {
 		node := nodeInfo.Node()
-		if !common.NodeHasLocalData(node) {
+		if !common.NodeHasLocalData(node) && !common.NodeHasRemoteData(node) {
 			continue
 		}
 
@@ -93,7 +93,12 @@ func (p *transformDataNodes) Process(ctx *context.AutoscalingContext, pods []*ap
 			continue
 		}
 
-		common.SetNodeLocalDataResource(nodeInfo)
+		if common.NodeHasLocalData(node) {
+			common.SetNodeLocalDataResource(nodeInfo)
+		}
+		if common.NodeHasRemoteData(node) {
+			common.SetNodeRemoteDataResource(nodeInfo)
+		}
 	}
 
 	return pods, nil
