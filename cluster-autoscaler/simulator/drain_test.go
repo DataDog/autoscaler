@@ -385,7 +385,7 @@ func TestGetPodsToMove(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:              "bar",
 				Namespace:         "default",
-				DeletionTimestamp: &metav1.Time{Time: testTime.Add(-time.Duration(extendedGracePeriod/2) * time.Second)},
+				DeletionTimestamp: &metav1.Time{Time: testTime.Add(time.Duration(extendedGracePeriod/2) * time.Second)},
 				OwnerReferences:   GenerateOwnerReferences(rc.Name, "ReplicationController", "core/v1", ""),
 			},
 			Spec: apiv1.PodSpec{

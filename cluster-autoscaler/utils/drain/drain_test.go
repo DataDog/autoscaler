@@ -28,7 +28,6 @@ import (
 func TestIsPodLongTerminating(t *testing.T) {
 	testTime := time.Date(2020, time.December, 18, 17, 0, 0, 0, time.UTC)
 	twoMinGracePeriod := int64(2 * 60)
-	zeroGracePeriod := int64(0)
 
 	tests := []struct {
 		name string
@@ -41,65 +40,14 @@ func TestIsPodLongTerminating(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					DeletionTimestamp: nil,
 				},
-				Spec: apiv1.PodSpec{
-					TerminationGracePeriodSeconds: &zeroGracePeriod,
-				},
 			},
 			want: false,
 		},
 		{
-			name: "Just deleted no grace period defined",
+			name: "Deletion timestamp in the future",
 			pod: apiv1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					DeletionTimestamp: &metav1.Time{Time: testTime}, // default Grace Period is 30s so this pod can still be terminating
-				},
-				Spec: apiv1.PodSpec{
-					TerminationGracePeriodSeconds: nil,
-				},
-			},
-			want: false,
-		},
-		{
-			name: "Deleted for longer than PodLongTerminatingExtraThreshold with no grace period",
-			pod: apiv1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					DeletionTimestamp: &metav1.Time{Time: testTime.Add(-3 * PodLongTerminatingExtraThreshold)},
-				},
-				Spec: apiv1.PodSpec{
-					TerminationGracePeriodSeconds: nil,
-				},
-			},
-			want: true,
-		},
-		{
-			name: "Just deleted with grace period defined to 0",
-			pod: apiv1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					DeletionTimestamp: &metav1.Time{Time: testTime},
-				},
-				Spec: apiv1.PodSpec{
-					TerminationGracePeriodSeconds: &zeroGracePeriod,
-				},
-			},
-			want: false,
-		},
-		{
-			name: "Deleted for longer than PodLongTerminatingExtraThreshold with grace period defined to 0",
-			pod: apiv1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					DeletionTimestamp: &metav1.Time{Time: testTime.Add(-2 * PodLongTerminatingExtraThreshold)},
-				},
-				Spec: apiv1.PodSpec{
-					TerminationGracePeriodSeconds: &zeroGracePeriod,
-				},
-			},
-			want: true,
-		},
-		{
-			name: "Deleted for longer than PodLongTerminatingExtraThreshold but not longer than grace period (2 min)",
-			pod: apiv1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					DeletionTimestamp: &metav1.Time{Time: testTime.Add(-2 * PodLongTerminatingExtraThreshold)},
+					DeletionTimestamp: &metav1.Time{Time: testTime.Add(time.Minute)},
 				},
 				Spec: apiv1.PodSpec{
 					TerminationGracePeriodSeconds: &twoMinGracePeriod,
@@ -108,10 +56,28 @@ func TestIsPodLongTerminating(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "Deleted for longer than grace period (2 min) and PodLongTerminatingExtraThreshold",
+			name: "Deletion timestamp passed but not longer than PodLongTerminatingExtraThreshold",
 			pod: apiv1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					DeletionTimestamp: &metav1.Time{Time: testTime.Add(-2*PodLongTerminatingExtraThreshold - time.Duration(twoMinGracePeriod)*time.Second)},
+					DeletionTimestamp: &metav1.Time{Time: testTime.Add(-PodLongTerminatingExtraThreshold / 2)},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Deletion timestamp passed for longer than PodLongTerminatingExtraThreshold",
+			pod: apiv1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					DeletionTimestamp: &metav1.Time{Time: testTime.Add(-2 * PodLongTerminatingExtraThreshold)},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "Deletion timestamp passed for longer than PodLongTerminatingExtraThreshold but not longer than grace period (2 min)",
+			pod: apiv1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					DeletionTimestamp: &metav1.Time{Time: testTime.Add(-2 * PodLongTerminatingExtraThreshold)},
 				},
 				Spec: apiv1.PodSpec{
 					TerminationGracePeriodSeconds: &twoMinGracePeriod,
