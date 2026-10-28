@@ -170,10 +170,5 @@ func IsPodLongTerminating(pod *apiv1.Pod, currentTime time.Time) bool {
 		return false
 	}
 
-	gracePeriod := pod.Spec.TerminationGracePeriodSeconds
-	if gracePeriod == nil {
-		defaultGracePeriod := int64(apiv1.DefaultTerminationGracePeriodSeconds)
-		gracePeriod = &defaultGracePeriod
-	}
-	return pod.DeletionTimestamp.Time.Add(time.Duration(*gracePeriod) * time.Second).Add(PodLongTerminatingExtraThreshold).Before(currentTime)
+	return pod.DeletionTimestamp.Time.Add(PodLongTerminatingExtraThreshold).Before(currentTime)
 }
